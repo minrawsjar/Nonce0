@@ -34,7 +34,7 @@ Project X is a private payment protocol where the key that authorizes a spend is
 - Non-USDC payments — Arc is stablecoin-native and Gateway is USDC-specific; a swap leg would add its own privacy leak (visible swap size/timing) for little payoff
 - ENS — dropped. Not part of this build.
 - Retrofitting or scanning other protocols
-- A 5th sponsor (1inch/SwapVM or otherwise) — holding at 3: Arc, Chainlink, Graph
+- A 4th/5th sponsor (World ID, 1inch/SwapVM, or otherwise) — holding at 3: Arc, Chainlink, Graph. World ID was seriously considered as a fix for the ring-enrollment Sybil vector (§3, §12) — a real, well-composed fix, not a bolt-on — but left out on scope-discipline grounds and because the World track wasn't assessed as a strong winning chance. Mitigated instead with Graph-side heuristics (§8.1), explicitly labeled as raising attacker cost, not eliminating the vector.
 
 ---
 
@@ -43,7 +43,7 @@ Project X is a private payment protocol where the key that authorizes a spend is
 | | Detail |
 |---|---|
 | Hides | Which ring member signed; the amount; sender's network origin (IP); intent parameters (recipient, amount, timing) before execution; the compliance-check input |
-| Does not claim to prevent | A global passive network adversary; simultaneous compromise of all 3 relay hops; weak OPSEC |
+| Does not claim to prevent | A global passive network adversary; simultaneous compromise of all 3 relay hops; weak OPSEC; a well-resourced, patient adversary Sybil-enrolling ring members to erode the anonymity set — the §8.1 heuristics raise the cost of this attack, they do not eliminate it |
 | Trust assumption for fund safety | None — spend authorization is a hash-based signature checked directly on-chain; no relay, enclave, or operator sits in that path |
 | Trust assumption for anonymity | The ring's OR-proof mechanism (§6) and the relay mesh's hop diversity (§7) |
 | Trust assumption for intent execution | The Chainlink CRE TEE holds intent parameters confidentially until the trigger condition fires |
@@ -208,16 +208,20 @@ If real hardware TEE attestation (Intel TDX/SGX or equivalent) isn't practical i
 
 **Why it matters:** poor decoy selection is a documented, real way ring-signature systems get deanonymized — Monero's early history includes exactly this failure mode via weak mixin selection and output-age analysis.
 
-**Substreams module** — input: raw chain events; output: enrollment events (new `pkCommitment` joining the ring-eligible pool) and per-member usage counts (aggregate, not per-payment linkage).
+**Known gap, addressed below:** enrollment is a bare `pkCommitment` hash — free and unlimited. An adversary can flood the pool with Sybil commitments; the original "weight toward diversity in `enrolledAt`" rule actually favors a freshly-enrolled Sybil batch on volume, since it's rewarding spread across a population the attacker just filled. World ID and a bonding/staking mechanism were both considered as hard fixes and deliberately left out of scope (§2) — mitigated instead with the two heuristics below. These raise the cost of the attack; they do not eliminate it (§3).
+
+**Substreams module** — input: raw chain events; output: enrollment events (new `pkCommitment` joining the ring-eligible pool), per-member usage counts (aggregate, not per-payment linkage), funding provenance (traced a few hops back from the enrolling address), and other on-chain activity by that address.
 
 **Subgraph schema:**
 
 ```graphql
 type RingMember @entity {
-  id: ID!                  # pkCommitment
+  id: ID!                     # pkCommitment
   enrolledAt: BigInt!
-  timesUsedInRing: Int!    # aggregate count only, never which ring/payment
+  timesUsedInRing: Int!       # aggregate count only, never which ring/payment
   lastUsedAt: BigInt
+  fundingSourceCluster: ID!   # groups members whose funding traces back to the same source(s)
+  hasOtherActivity: Boolean!  # any on-chain activity besides enrollment/ring use
 }
 
 type RingPool @entity {
@@ -228,7 +232,12 @@ type RingPool @entity {
 }
 ```
 
-**Selection algorithm (wallet client, at ring-construction time):** query `RingMember` entities, exclude anything used above a reuse-frequency threshold, weight toward diversity in `enrolledAt`, sample 7 decoys plus the real signer.
+**Selection algorithm (wallet client, at ring-construction time):**
+1. Exclude anything used above a reuse-frequency threshold.
+2. **Funding-clustering heuristic:** deprioritize members whose `fundingSourceCluster` accounts for an unusually large share of the pool — a real, well-precedented Sybil tell (the same technique airdrop-farming detection uses to trace many "independent" addresses back to a common source).
+3. **Organic-activity heuristic:** prefer members with `hasOtherActivity = true` over ones that only exist to sit in the ring pool.
+4. Weight toward diversity in `enrolledAt` only among what survives steps 2–3 — applying this before the Sybil heuristics is exactly what made the original algorithm favor a flood attack.
+5. Sample 7 decoys plus the real signer.
 
 ### 8.2 Relay hop selection — Markov chain over the node pool
 
@@ -353,6 +362,7 @@ One Confidential Workflow, two jobs, both genuinely requiring confidentiality:
 | Gateway draw latency unverified (§9.3) | Medium | Check Circle docs before treating "simultaneous" as a design assumption |
 | PQXDH hop-encryption upgrade adds scope | Low-Medium | Ship with classical hop encryption for MVP if time is short, label as known gap |
 | Arc's "open scope" invites scope creep | Medium | Any new Arc idea must pass the §9.4 bar before it's approved |
+| Ring enrollment is Sybil-able (free, unlimited `pkCommitment` registration) | High | Funding-clustering + organic-activity heuristics in §8.1. World ID and bonding both considered, deliberately left out of scope (§2). Have the one-line judge answer ready: identified, mitigated what's cheap, made an informed scoping call — not unaddressed. |
 
 ---
 
