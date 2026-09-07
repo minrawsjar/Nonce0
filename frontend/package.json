@@ -1,0 +1,24 @@
+{
+  "name": "nonce0-frontend",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Landing page and scanner dashboard. No framework, no build step, no dependencies.",
+  "scripts": {
+    "dev": "node --watch ../backend/server.js",
+    "start": "node ../backend/server.js"
+  },
+  "comment": [
+    "There is no bundler and there never needs to be: index.html and app.html are",
+    "plain HTML, styles.css and app.css are plain CSS, app.js is a browser module.",
+    "",
+    "`npm run dev` runs the API server, which serves this directory same-origin --",
+    "so /api/scan works from the dashboard with no CORS and no proxy config. Static",
+    "files are read from disk per request, so editing HTML/CSS/SVG needs only a",
+    "browser refresh; --watch is there for when you edit the server itself.",
+    "",
+    "No node_modules lives here. The scanner's zero-dependency claim is enforced by",
+    "backend/ being a SIBLING of src/, and this package keeps that shape."
+  ],
+  "dependencies": {},
+  "devDependencies": {}
+}

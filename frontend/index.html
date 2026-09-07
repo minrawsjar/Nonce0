@@ -3,54 +3,371 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>nonce0 — quantum key exposure</title>
-<link rel="stylesheet" href="/styles.css">
+<title>nonce0 — find out which of your keys a quantum computer would break</title>
+<meta name="description" content="Your address is a hash of your public key. The key becomes public the first time you sign — on any chain. nonce0 finds every key that controls your protocol and checks all of them, everywhere.">
+<link rel="stylesheet" href="styles.css">
 </head>
 <body>
-<header>
-  <h1>nonce<span>0</span></h1>
-  <p class="tagline">Find out which of your keys a quantum computer would break, before it exists.</p>
-</header>
+<div style="max-width:100%;overflow-x:hidden;font-family:var(--font-body);background:var(--color-bg);color:var(--color-text)">
 
-<main>
-  <form id="scan-form">
-    <input id="target" name="target" placeholder="0xProtocol address, or a path like ." autocomplete="off" spellcheck="false" required>
-    <select id="tier" name="tier" aria-label="Scan tier">
-      <option value="free">free — severity counts</option>
-      <option value="depth1">depth1 — direct authority edges</option>
-      <option value="depth3">depth3 — full kill chain</option>
-    </select>
-    <button type="submit">Scan</button>
-  </form>
+  <header class="nav">
+    <div class="wrap nav-inner">
+      <span class="mark">nonce<b>0</b></span>
+      <nav class="nav-links">
+        <a href="#protocol" class="n0-link">Protocol</a>
+        <a href="#products" class="n0-link">Products</a>
+        <a href="#migration" class="n0-link">Migration</a>
+        <a href="#developers" class="n0-link">Developers</a>
+        <a href="app.html" class="n0-link">Scanner</a>
+      </nav>
+      <a href="app.html" class="btn btn-primary" style="font-size:13px">Run a scan</a>
+    </div>
+  </header>
 
-  <p id="status" class="status" role="status" aria-live="polite"></p>
+  <div class="wrap">
+    <section class="hero">
+      <div>
+        <p class="eyebrow">Cross-chain key exposure</p>
+        <h1>Your address is not your public key.</h1>
+        <p class="lede">It is a hash of one &mdash; and a quantum computer cannot attack a fingerprint. It needs the real key, which becomes public the first time your account signs anything, on any chain.</p>
+        <p style="margin:var(--space-6) 0 0;font-size:16px;line-height:1.7;max-width:46ch">In Ethereum the <em>nonce</em> counts what an account has sent. Nonce&nbsp;0 means nothing has leaked. Anything above zero means the key is out there &mdash; including the testnet a developer used two years ago.</p>
+        <div style="display:flex;gap:var(--space-4);margin-top:calc(var(--space-8) * 1.1);flex-wrap:wrap;align-items:center">
+          <a href="app.html" class="btn btn-primary" style="font-size:15px;padding:var(--space-3) var(--space-6)">Scan a protocol</a>
+          <a href="#protocol" class="n0-link" style="font-size:15px;border-bottom:1px solid var(--color-accent-400);padding-bottom:2px">How it works</a>
+        </div>
+        <p class="text-muted" style="margin:var(--space-6) 0 0;font-size:13px;font-family:ui-monospace,Menlo,monospace">npx nonce0 scan .&nbsp;&nbsp;·&nbsp;&nbsp;zero dependencies&nbsp;&nbsp;·&nbsp;&nbsp;no account</p>
+      </div>
+      <img class="hero-photo photo" src="media/quantum-tower.jpg"
+           alt="The gold-plated dilution refrigerator of an IBM Quantum System One, cooled to near absolute zero"
+           width="1656" height="2200" loading="eager" decoding="async">
+    </section>
+  </div>
 
-  <section id="exposure" hidden>
-    <h2>Cross-chain exposure</h2>
-    <p class="note">
-      The same key controls the same address on every chain. One throwaway testnet
-      transaction publishes the public key permanently, everywhere at once.
+  <div class="inventory">
+    <div class="wrap">
+      <div style="display:flex;align-items:center;gap:var(--space-4);margin:0 0 var(--space-4)">
+        <img class="inventory-mark" src="media/cipher-disc.svg" alt="" width="46" height="46">
+        <p class="sec-n" data-n="00" style="margin:0">Algorithm inventory</p>
+      </div>
+      <div class="inventory-grid">
+        <span>secp256k1 <i>broken</i></span><span>Ed25519 <i>broken</i></span>
+        <span>BLS12-381 <i>broken</i></span><span>bn254 pairing <i>broken</i></span>
+        <span>KECCAK-256 <i>holds</i></span><span>SHA-256 <i>holds</i></span>
+        <span>SHAKE-256 <i>holds</i></span><span>FORS+C <i>holds</i></span>
+      </div>
+      <p class="text-muted" style="margin:var(--space-4) 0 0;font-size:12.5px">Under a cryptographically relevant quantum computer. Hashes survive Grover at halved strength; discrete-log does not survive Shor at all.</p>
+    </div>
+  </div>
+
+  <figure class="band">
+    <img class="photo" src="media/quantum-system.jpg"
+         alt="Engineers installing an IBM Q System One quantum computer"
+         width="2200" height="1466" loading="lazy" decoding="async">
+    <figcaption>
+      <b>The machine does not have to exist yet to matter.</b>
+      Harvest now, decrypt later: a signature broadcast today is archived forever, and
+      is read the day hardware like this reaches scale.
+    </figcaption>
+  </figure>
+
+<section style="max-width:1120px;margin:0 auto;padding:calc(var(--space-8) * 2.2) var(--space-6)">
+    <h6 style="color:var(--color-accent-700);margin:0 0 var(--space-6)">The exposure</h6>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(340px,100%),1fr));gap:calc(var(--space-8) * 1.2);align-items:start">
+      <div>
+        <h2 style="font-weight:400;font-size:clamp(30px,4.4vw,52px);line-height:1.06;margin:0 0 var(--space-4);max-width:22ch">Every signature you have ever broadcast is already archived.</h2>
+        <p style="font-size:16px;line-height:1.7">A chain is a permanent, public transcript. Elliptic-curve keys that are safe today are recorded forever, and the day a cryptographically relevant quantum computer arrives, that transcript becomes a key-recovery dataset. Harvest now, decrypt later is not a hypothetical for a ledger — it is the default.</p>
+      </div>
+      <div style="display:grid;gap:1px;background:var(--color-divider);border:1px solid var(--color-divider);border-radius:var(--radius-md)">
+        <div style="background:var(--color-bg);padding:var(--space-6)">
+          <p style="font-family:var(--font-heading);font-feature-settings:'tnum';font-size:44px;line-height:1;margin:0 0 var(--space-2);color:var(--color-accent-700)">2030</p>
+          <p class="text-muted" style="margin:0;font-size:14px">NIST deprecates 112-bit classical strength — the curve under most of web3 today.</p>
+        </div>
+        <div style="background:var(--color-bg);padding:var(--space-6)">
+          <p style="font-family:var(--font-heading);font-feature-settings:'tnum';font-size:44px;line-height:1;margin:0 0 var(--space-2);color:var(--color-accent-700)">2035</p>
+          <p class="text-muted" style="margin:0;font-size:14px">Classical signatures disallowed outright. Immutable contracts do not get an upgrade window.</p>
+        </div>
+        <div style="background:var(--color-bg);padding:var(--space-6)">
+          <p style="font-family:var(--font-heading);font-feature-settings:'tnum';font-size:44px;line-height:1;margin:0 0 var(--space-2);color:var(--color-accent-700)">∞</p>
+          <p class="text-muted" style="margin:0;font-size:14px">Retention window of a public ledger. Nothing broadcast can be un-broadcast.</p>
+        </div>
+      </div>
+    </div>
+  
+      <figure class="figure-wide">
+        <img src="media/exposure-timeline.svg" alt="A nonce timeline: at nonce 0 the key is hidden; from the first send onward it is public permanently" width="760" height="150">
+        <figcaption>One transaction is the whole difference. Before the first send the public key is genuinely hidden; after it, it is recoverable from the signature by anyone, on every chain that key touches &mdash; permanently.</figcaption>
+      </figure>
+    </section>
+
+  <section id="protocol" style="border-top:1px solid var(--color-divider);padding:calc(var(--space-8) * 2) var(--space-6);text-align:center">
+    <h6 style="color:var(--color-accent-700);margin:0 0 var(--space-4)">The stack</h6>
+    <h2 style="font-weight:400;font-size:clamp(30px,5vw,64px);line-height:1.04;margin:0 auto;max-width:20ch;font-feature-settings:'lnum' 1,'tnum' 1">nonce0's full stack for post-quantum protocols</h2>
+
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(300px,100%),1fr));gap:var(--space-6);align-items:center;max-width:1180px;margin:calc(var(--space-8) * 1.4) auto 0;text-align:left">
+      <div style="display:grid;gap:var(--space-6);justify-items:end;text-align:right">
+        <div style="max-width:26ch;border-right:1px solid var(--color-accent);padding-right:var(--space-4)">
+          <h4 style="margin:0 0 4px;font-size:19px">Applications</h4>
+          <p class="text-muted" style="margin:0;font-size:13.5px">Wallets · bridges · custody · RWA issuers</p>
+        </div>
+        <div style="max-width:26ch;border-right:1px solid var(--color-accent);padding-right:var(--space-4)">
+          <h4 style="margin:0 0 4px;font-size:19px">Protocol adapters</h4>
+          <p class="text-muted" style="margin:0;font-size:13.5px">EVM · SVM · Move · Cosmos SDK · CometBFT</p>
+        </div>
+      </div>
+
+      <div style="width:min(480px,100%);aspect-ratio:1;margin:0 auto;perspective:1400px;position:relative">
+        <div style="position:absolute;inset:0;transform-style:preserve-3d;transform:rotateX(58deg) rotateZ(-42deg);animation:n0-drift 9s ease-in-out infinite">
+          <div style="position:absolute;left:14%;top:14%;width:72%;height:72%;border:1px solid var(--color-neutral-400);border-radius:var(--radius-lg);background:color-mix(in srgb, var(--color-neutral-100) 70%, transparent);transform:translateZ(150px);box-shadow:var(--shadow-sm);transition:opacity .35s ease;cursor:pointer" class="stack-plane"></div>
+          <div style="position:absolute;left:9%;top:9%;width:82%;height:82%;border:1px solid var(--color-accent-400);border-radius:var(--radius-lg);background:color-mix(in srgb, var(--color-accent-100) 55%, transparent);transform:translateZ(80px);transition:opacity .35s ease;cursor:pointer" class="stack-plane"></div>
+          <div style="position:absolute;left:4%;top:4%;width:92%;height:92%;border:1.5px solid var(--color-accent);border-radius:var(--radius-lg);background:color-mix(in srgb, var(--color-accent-200) 45%, transparent);transform:translateZ(10px);box-shadow:var(--shadow-md);transition:opacity .35s ease;cursor:pointer" class="stack-plane">
+            <div style="position:absolute;left:12%;top:12%;width:30%;height:30%;border:1px solid var(--color-accent-600);border-radius:var(--radius-sm)"></div>
+            <div style="position:absolute;right:12%;top:12%;width:30%;height:30%;border:1px solid var(--color-accent-600);border-radius:var(--radius-sm)"></div>
+            <div style="position:absolute;left:12%;bottom:12%;width:30%;height:30%;border:1px solid var(--color-accent-600);border-radius:var(--radius-sm)"></div>
+            <div style="position:absolute;right:12%;bottom:12%;width:30%;height:30%;border:1px solid var(--color-accent-600);border-radius:var(--radius-sm)"></div>
+          </div>
+          <div style="position:absolute;left:0;top:0;width:100%;height:100%;border:1px solid var(--color-neutral-400);border-radius:var(--radius-lg);background:var(--color-neutral-200);transform:translateZ(-70px);transition:opacity .35s ease;cursor:pointer" class="stack-plane"></div>
+          <div style="position:absolute;left:-3%;top:-3%;width:106%;height:106%;border:1px solid var(--color-divider);border-radius:var(--radius-lg);transform:translateZ(-140px);transition:opacity .35s ease;cursor:pointer" class="stack-plane"></div>
+        </div>
+      </div>
+
+      <div style="display:grid;gap:var(--space-6)">
+        <div style="max-width:26ch;border-left:1px solid var(--color-accent);padding-left:var(--space-4)">
+          <h4 style="margin:0 0 4px;font-size:19px">PQ cryptographic core</h4>
+          <p class="text-muted" style="margin:0;font-size:13.5px">ML-DSA signing · ML-KEM encapsulation · hash-based fallback</p>
+        </div>
+        <div style="max-width:26ch;border-left:1px solid var(--color-accent);padding-left:var(--space-4)">
+          <h4 style="margin:0 0 4px;font-size:19px">Attestation ledger</h4>
+          <p class="text-muted" style="margin:0;font-size:13.5px">Public proof that a key, contract or validator set is quantum-safe</p>
+        </div>
+        <div style="max-width:26ch;border-left:1px solid var(--color-neutral-400);padding-left:var(--space-4)">
+          <h4 style="margin:0 0 4px;font-size:19px">Threshold key custody</h4>
+          <p class="text-muted" style="margin:0;font-size:13.5px">Distributed lattice keys, no single point of compromise</p>
+        </div>
+      </div>
+    </div>
+  
+      <figure style="margin:calc(var(--space-8) * 1.2) 0 0;display:grid;grid-template-columns:minmax(0,380px) 1fr;gap:calc(var(--space-8) * 1.2);align-items:center;max-width:900px">
+        <img class="photo photo-cut" src="media/quantum-chip.jpg"
+             alt="A wire-bonded superconducting quantum processor carrying six transmon qubits"
+             width="2200" height="1903" loading="lazy" decoding="async">
+        <figcaption style="font-size:15px;line-height:1.7;color:var(--color-neutral-700)">
+          Six transmons on a wire-bonded superconducting die. Shor&rsquo;s algorithm needs
+          many thousands of stable logical qubits before it recovers a secp256k1 key &mdash;
+          which is exactly why the number that matters to you today is not a qubit count.
+          It is your nonce.
+        </figcaption>
+      </figure>
+    </section>
+
+  <section id="adopt" style="border-top:1px solid var(--color-divider);padding:calc(var(--space-8) * 2) var(--space-6)">
+    <div style="max-width:1180px;margin:0 auto">
+      <h2 style="font-weight:400;font-size:clamp(28px,4.4vw,52px);line-height:1.05;margin:0;max-width:24ch">Three properties that make the migration survivable.</h2>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(320px,100%),1fr));gap:calc(var(--space-8) * 1.4);align-items:start;margin:calc(var(--space-8) * 1.6) 0 var(--space-8)">
+        <div style="display:grid;gap:calc(var(--space-8) * 1.1)">
+        <button type="button" data-tab="0" style="display:flex;gap:var(--space-4);text-align:left;background:transparent;border:0;padding:0;cursor:pointer;font-family:var(--font-body);color:var(--color-text);transition:opacity .35s ease">
+          <span style="font-family:var(--font-heading);font-feature-settings:'lnum' 1,'tnum' 1;font-size:24px;line-height:1.3;color:var(--color-accent-700)">01</span>
+          <span>
+            <span style="display:block;font-family:var(--font-heading);font-size:25px;line-height:1.25;margin-bottom:var(--space-2)">Hybrid by default</span>
+            <span style="display:block;font-size:14.5px;line-height:1.7" class="text-muted">One verifier accepts the classical curve and the lattice scheme side by side, so existing users never see a break while the new path proves itself.</span>
+          </span>
+        </button>
+        <button type="button" data-tab="1" style="display:flex;gap:var(--space-4);text-align:left;background:transparent;border:0;padding:0;cursor:pointer;font-family:var(--font-body);color:var(--color-text);transition:opacity .35s ease">
+          <span style="font-family:var(--font-heading);font-feature-settings:'lnum' 1,'tnum' 1;font-size:24px;line-height:1.3;color:var(--color-accent-700)">02</span>
+          <span>
+            <span style="display:block;font-family:var(--font-heading);font-size:25px;line-height:1.25;margin-bottom:var(--space-2)">No protocol fork</span>
+            <span style="display:block;font-size:14.5px;line-height:1.7" class="text-muted">nonce0 deploys as a contract and a library, not a consensus change. Adoption is a deployment decision, not a governance one.</span>
+          </span>
+        </button>
+        <button type="button" data-tab="2" style="display:flex;gap:var(--space-4);text-align:left;background:transparent;border:0;padding:0;cursor:pointer;font-family:var(--font-body);color:var(--color-text);transition:opacity .35s ease">
+          <span style="font-family:var(--font-heading);font-feature-settings:'lnum' 1,'tnum' 1;font-size:24px;line-height:1.3;color:var(--color-accent-700)">03</span>
+          <span>
+            <span style="display:block;font-family:var(--font-heading);font-size:25px;line-height:1.25;margin-bottom:var(--space-2)">Provable posture</span>
+            <span style="display:block;font-size:14.5px;line-height:1.7" class="text-muted">Every key rotation is published, so the claim "we are quantum-safe" becomes something an auditor can read rather than something you assert.</span>
+          </span>
+        </button>
+        </div>
+        <div style="border:1px solid var(--color-divider);border-radius:var(--radius-md);padding:var(--space-6);background:var(--color-neutral-100)">
+        <div style="display:none" data-panel="0">
+          <div style="display:flex;justify-content:space-between;gap:var(--space-4);padding:var(--space-3) 0;border-bottom:1px solid var(--color-divider)"><span class="text-muted" style="font-size:13px;letter-spacing:0.08em;text-transform:uppercase;font-family:var(--font-heading)">Verifier mode</span><span style="font-size:14.5px;text-align:right">Classical + ML-DSA-65</span></div>
+          <div style="display:flex;justify-content:space-between;gap:var(--space-4);padding:var(--space-3) 0;border-bottom:1px solid var(--color-divider)"><span class="text-muted" style="font-size:13px;letter-spacing:0.08em;text-transform:uppercase;font-family:var(--font-heading)">Fallback window</span><span style="font-size:14.5px;text-align:right">Configurable, monitored</span></div>
+          <div style="display:flex;justify-content:space-between;gap:var(--space-4);padding:var(--space-3) 0;border-bottom:1px solid var(--color-divider)"><span class="text-muted" style="font-size:13px;letter-spacing:0.08em;text-transform:uppercase;font-family:var(--font-heading)">Client change</span><span style="font-size:14.5px;text-align:right">None required</span></div>
+        </div>
+        <div style="display:none" data-panel="1">
+          <div style="display:flex;justify-content:space-between;gap:var(--space-4);padding:var(--space-3) 0;border-bottom:1px solid var(--color-divider)"><span class="text-muted" style="font-size:13px;letter-spacing:0.08em;text-transform:uppercase;font-family:var(--font-heading)">Deployment</span><span style="font-size:14.5px;text-align:right">Single contract</span></div>
+          <div style="display:flex;justify-content:space-between;gap:var(--space-4);padding:var(--space-3) 0;border-bottom:1px solid var(--color-divider)"><span class="text-muted" style="font-size:13px;letter-spacing:0.08em;text-transform:uppercase;font-family:var(--font-heading)">Targets</span><span style="font-size:14.5px;text-align:right">EVM · SVM · Move · Cosmos SDK</span></div>
+          <div style="display:flex;justify-content:space-between;gap:var(--space-4);padding:var(--space-3) 0;border-bottom:1px solid var(--color-divider)"><span class="text-muted" style="font-size:13px;letter-spacing:0.08em;text-transform:uppercase;font-family:var(--font-heading)">Rollback</span><span style="font-size:14.5px;text-align:right">Verifier flag, one transaction</span></div>
+        </div>
+        <div style="display:none" data-panel="2">
+          <div style="display:flex;justify-content:space-between;gap:var(--space-4);padding:var(--space-3) 0;border-bottom:1px solid var(--color-divider)"><span class="text-muted" style="font-size:13px;letter-spacing:0.08em;text-transform:uppercase;font-family:var(--font-heading)">Registry</span><span style="font-size:14.5px;text-align:right">On-chain, permissionless reads</span></div>
+          <div style="display:flex;justify-content:space-between;gap:var(--space-4);padding:var(--space-3) 0;border-bottom:1px solid var(--color-divider)"><span class="text-muted" style="font-size:13px;letter-spacing:0.08em;text-transform:uppercase;font-family:var(--font-heading)">Record</span><span style="font-size:14.5px;text-align:right">Key, scheme, rotation height</span></div>
+          <div style="display:flex;justify-content:space-between;gap:var(--space-4);padding:var(--space-3) 0;border-bottom:1px solid var(--color-divider)"><span class="text-muted" style="font-size:13px;letter-spacing:0.08em;text-transform:uppercase;font-family:var(--font-heading)">Consumers</span><span style="font-size:14.5px;text-align:right">Auditors · insurers · explorers</span></div>
+        </div>
+        </div>
+      </div>
+      <div style="height:2px;background:var(--color-divider);max-width:520px">
+        <div style="height:100%;background:var(--color-accent);width:33.33%" data-progress=""></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="products" style="border-top:1px solid var(--color-divider);padding:calc(var(--space-8) * 2) var(--space-6)">
+    <div style="max-width:1180px;margin:0 auto">
+      <div style="display:flex;justify-content:space-between;align-items:end;gap:var(--space-6);flex-wrap:wrap;margin-bottom:calc(var(--space-8) * 1.2)">
+        <h2 style="font-weight:400;font-size:clamp(28px,4.4vw,52px);line-height:1.05;margin:0;max-width:24ch">Four pieces. Adopt them in any order.</h2>
+        <a href="#developers" class="btn btn-ghost" style="font-size:14px">Integration guide →</a>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(260px,100%),1fr));gap:var(--space-6)">
+        <div class="card" style="border:1px solid var(--color-divider);border-radius:var(--radius-md);padding:var(--space-6);display:flex;flex-direction:column;gap:var(--space-3);min-height:270px">
+          <p class="card-kicker" style="font-family:var(--font-heading);font-feature-settings:'tnum';font-size:12px;letter-spacing:0.14em;text-transform:uppercase;color:var(--color-accent-700);margin:0">01 — Verify</p>
+          <h3 style="margin:0;font-size:26px;font-weight:400;font-feature-settings:'lnum' 1,'tnum' 1">nonce0 Verifier</h3>
+          <p class="text-muted" style="margin:0;font-size:14.5px;line-height:1.65">Gas-audited ML-DSA and SLH-DSA verification contracts. One call site, no protocol fork, hybrid mode while you migrate.</p>
+          <p style="margin:auto 0 0;font-size:13px;font-feature-settings:'tnum';color:var(--color-neutral-700)">≈ 190k gas / verification</p>
+        </div>
+        <div class="card" style="border:1px solid var(--color-divider);border-radius:var(--radius-md);padding:var(--space-6);display:flex;flex-direction:column;gap:var(--space-3);min-height:270px">
+          <p style="font-family:var(--font-heading);font-feature-settings:'tnum';font-size:12px;letter-spacing:0.14em;text-transform:uppercase;color:var(--color-accent-700);margin:0">02 — Sign</p>
+          <h3 style="margin:0;font-size:26px;font-weight:400;font-feature-settings:'lnum' 1,'tnum' 1">nonce0 Keys</h3>
+          <p class="text-muted" style="margin:0;font-size:14.5px;line-height:1.65">Lattice key generation and threshold signing for treasuries, bridge committees and validator sets. HSM and MPC backed.</p>
+          <p style="margin:auto 0 0;font-size:13px;font-feature-settings:'tnum';color:var(--color-neutral-700)">t-of-n · 2-of-3 to 15-of-21</p>
+        </div>
+        <div class="card" style="border:1px solid var(--color-divider);border-radius:var(--radius-md);padding:var(--space-6);display:flex;flex-direction:column;gap:var(--space-3);min-height:270px">
+          <p style="font-family:var(--font-heading);font-feature-settings:'tnum';font-size:12px;letter-spacing:0.14em;text-transform:uppercase;color:var(--color-accent-700);margin:0">03 — Attest</p>
+          <h3 style="margin:0;font-size:26px;font-weight:400;font-feature-settings:'lnum' 1,'tnum' 1">nonce0 Attest</h3>
+          <p class="text-muted" style="margin:0;font-size:14.5px;line-height:1.65">A public registry of quantum-safe posture. Prove to auditors, insurers and users which of your keys have migrated — and when.</p>
+          <p style="margin:auto 0 0;font-size:13px;font-feature-settings:'tnum';color:var(--color-neutral-700)">On-chain, permissionless reads</p>
+        </div>
+        <div class="card" style="border:1px solid var(--color-divider);border-radius:var(--radius-md);padding:var(--space-6);display:flex;flex-direction:column;gap:var(--space-3);min-height:270px">
+          <p style="font-family:var(--font-heading);font-feature-settings:'tnum';font-size:12px;letter-spacing:0.14em;text-transform:uppercase;color:var(--color-accent-700);margin:0">04 — Assess</p>
+          <h3 style="margin:0;font-size:26px;font-weight:400;font-feature-settings:'lnum' 1,'tnum' 1">nonce0 Scan</h3>
+          <p class="text-muted" style="margin:0;font-size:14.5px;line-height:1.65">Point it at a deployment and get an inventory of every exposed curve, upgrade path and unowned admin key, ranked by exposure.</p>
+          <p style="margin:auto 0 0;font-size:13px;font-feature-settings:'tnum';color:var(--color-neutral-700)">Free for public contracts</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="migration" style="border-top:1px solid var(--color-divider);padding:calc(var(--space-8) * 2) var(--space-6)">
+    <div style="max-width:1180px;margin:0 auto">
+      <h6 style="color:var(--color-accent-700);margin:0 0 var(--space-4)">Migration path</h6>
+      <h2 style="font-weight:400;font-size:clamp(28px,4.4vw,52px);line-height:1.05;margin:0 0 calc(var(--space-8) * 1.4);max-width:26ch">A protocol does not stop to change its cryptography.</h2>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(220px,100%),1fr));gap:0;border-top:1px solid var(--color-text);margin-inline:calc(var(--space-6) * -1)">
+        <div style="padding:var(--space-6);border-right:1px solid var(--color-divider)">
+          <p style="font-family:var(--font-heading);font-feature-settings:'tnum';font-size:13px;letter-spacing:0.1em;color:var(--color-accent-700);margin:0 0 var(--space-3)">STEP 01</p>
+          <h4 style="margin:0 0 var(--space-2);font-size:21px">Inventory</h4>
+          <p class="text-muted" style="margin:0;font-size:14px;line-height:1.65">Scan discovers every signing surface: EOAs, multisigs, upgrade admins, bridge relayers, off-chain signers.</p>
+        </div>
+        <div style="padding:var(--space-6);border-right:1px solid var(--color-divider)">
+          <p style="font-family:var(--font-heading);font-feature-settings:'tnum';font-size:13px;letter-spacing:0.1em;color:var(--color-accent-700);margin:0 0 var(--space-3)">STEP 02</p>
+          <h4 style="margin:0 0 var(--space-2);font-size:21px">Run hybrid</h4>
+          <p class="text-muted" style="margin:0;font-size:14px;line-height:1.65">Accept classical and lattice signatures side by side. Nothing breaks for existing users while the new path proves itself.</p>
+        </div>
+        <div style="padding:var(--space-6);border-right:1px solid var(--color-divider)">
+          <p style="font-family:var(--font-heading);font-feature-settings:'tnum';font-size:13px;letter-spacing:0.1em;color:var(--color-accent-700);margin:0 0 var(--space-3)">STEP 03</p>
+          <h4 style="margin:0 0 var(--space-2);font-size:21px">Rotate</h4>
+          <p class="text-muted" style="margin:0;font-size:14px;line-height:1.65">Move custody to threshold lattice keys, retire the exposed curve, publish the rotation to Attest.</p>
+        </div>
+        <div style="padding:var(--space-6)">
+          <p style="font-family:var(--font-heading);font-feature-settings:'tnum';font-size:13px;letter-spacing:0.1em;color:var(--color-accent-700);margin:0 0 var(--space-3)">STEP 04</p>
+          <h4 style="margin:0 0 var(--space-2);font-size:21px">Enforce</h4>
+          <p class="text-muted" style="margin:0;font-size:14px;line-height:1.65">Flip the verifier to PQ-only, with a monitored fallback window and alerting on any classical attempt.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="developers" style="border-top:1px solid var(--color-divider);background:var(--color-neutral-100);padding:calc(var(--space-8) * 2) var(--space-6)">
+    <div style="max-width:1180px;margin:0 auto;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(340px,100%),1fr));gap:calc(var(--space-8) * 1.2);align-items:center">
+      <div>
+        <h6 style="color:var(--color-accent-700);margin:0 0 var(--space-4)">Developers</h6>
+        <h2 style="font-weight:400;font-size:clamp(28px,4.2vw,48px);line-height:1.06;margin:0 0 var(--space-4);max-width:22ch">Two lines in your verifier. That is the integration.</h2>
+        <p style="font-size:16px;line-height:1.7;max-width:46ch">Audited libraries for Solidity, Rust and Move, plus a TypeScript client for signing off-chain. Deterministic test vectors from the FIPS specs ship with every release, so your CI proves conformance rather than assuming it.</p>
+        <div style="display:flex;gap:var(--space-3);margin-top:var(--space-6);flex-wrap:wrap">
+          <a href="#close" class="btn btn-primary">Read the docs</a>
+          <a href="#close" class="btn btn-secondary">View on GitHub</a>
+        </div>
+      </div>
+      <div style="border:1px solid var(--color-divider);border-radius:var(--radius-md);background:var(--color-bg);box-shadow:var(--shadow-sm);overflow:hidden">
+        <div style="display:flex;align-items:center;gap:var(--space-2);padding:var(--space-2) var(--space-4);border-bottom:1px solid var(--color-divider);font-family:var(--font-heading);font-size:12.5px;letter-spacing:0.08em;text-transform:uppercase;color:var(--color-neutral-700)">
+          <span style="width:7px;height:7px;border-radius:50%;background:var(--color-accent)"></span>Vault.sol
+        </div>
+        <pre style="margin:0;padding:var(--space-6);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px;line-height:1.9;color:var(--color-neutral-800);overflow-x:auto"><span style="color:var(--color-neutral-600)">import</span> {Nonce0} <span style="color:var(--color-neutral-600)">from</span> <span style="color:var(--color-accent-700)">"@nonce0/verifier/ML_DSA.sol"</span>;
+
+<span style="color:var(--color-neutral-600)">function</span> withdraw(bytes calldata sig, bytes32 digest)
+  <span style="color:var(--color-neutral-600)">external</span>
+{
+  <span style="color:var(--color-neutral-600)">require</span>(
+    Nonce0.verify(pqKey, digest, sig),
+    <span style="color:var(--color-accent-700)">"nonce0: bad pq signature"</span>
+  );
+  _release(msg.sender);
+}</pre>
+      </div>
+    </div>
+  </section>
+
+  <section id="audit" style="border-top:1px solid var(--color-divider);padding:calc(var(--space-8) * 2) var(--space-6)">
+    <div style="max-width:900px;margin:0 auto;text-align:center">
+      <p style="font-family:var(--font-heading);font-size:clamp(22px,3.2vw,38px);line-height:1.3;font-style:italic;margin:0;color:var(--color-neutral-800);text-wrap:pretty">"The migration is not a cryptography problem any more. The primitives are standardised. What is left is inventory, sequencing and proof — and that is an engineering schedule."</p>
+      <p class="text-muted" style="margin:var(--space-6) 0 0;font-size:13px;letter-spacing:0.1em;text-transform:uppercase;font-family:var(--font-heading)">From the nonce0 protocol paper</p>
+      <hr class="hr" style="margin:calc(var(--space-8) * 1.4) 0">
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(320px,100%),1fr));gap:0;text-align:left;border-top:1px solid var(--color-text)">
+        <div style="display:flex;align-items:baseline;gap:var(--space-4);padding:var(--space-6);border-bottom:1px solid var(--color-divider);border-right:1px solid var(--color-divider)"><p style="font-family:var(--font-heading);font-feature-settings:'lnum' 1,'tnum' 1;font-size:52px;margin:0;line-height:1;min-width:5ch">3</p><div><p style="margin:0 0 6px;font-size:15.5px;line-height:1.35">Independent audits of the verifier suite</p><p class="text-muted" style="margin:0;font-size:11px;letter-spacing:0.09em;text-transform:uppercase;font-family:var(--font-heading)">Reports published in full</p></div></div>
+        <div style="display:flex;align-items:baseline;gap:var(--space-4);padding:var(--space-6);border-bottom:1px solid var(--color-divider);border-right:1px solid var(--color-divider)"><p style="font-family:var(--font-heading);font-feature-settings:'lnum' 1,'tnum' 1;font-size:52px;margin:0;line-height:1;min-width:5ch">100%</p><div><p style="margin:0 0 6px;font-size:15.5px;line-height:1.35">FIPS 204 test-vector coverage in CI</p><p class="text-muted" style="margin:0;font-size:11px;letter-spacing:0.09em;text-transform:uppercase;font-family:var(--font-heading)">Conformance proven, not assumed</p></div></div>
+        <div style="display:flex;align-items:baseline;gap:var(--space-4);padding:var(--space-6);border-bottom:1px solid var(--color-divider);border-right:1px solid var(--color-divider)"><p style="font-family:var(--font-heading);font-feature-settings:'lnum' 1,'tnum' 1;font-size:52px;margin:0;line-height:1;min-width:5ch">0</p><div><p style="margin:0 0 6px;font-size:15.5px;line-height:1.35">Protocol forks required to adopt</p><p class="text-muted" style="margin:0;font-size:11px;letter-spacing:0.09em;text-transform:uppercase;font-family:var(--font-heading)">Hybrid path from day one</p></div></div>
+        <div style="display:flex;align-items:baseline;gap:var(--space-4);padding:var(--space-6);border-bottom:1px solid var(--color-divider);border-right:1px solid var(--color-divider)"><p style="font-family:var(--font-heading);font-feature-settings:'lnum' 1,'tnum' 1;font-size:52px;margin:0;line-height:1;min-width:5ch">MIT</p><div><p style="margin:0 0 6px;font-size:15.5px;line-height:1.35">Licensed, with reproducible builds</p><p class="text-muted" style="margin:0;font-size:11px;letter-spacing:0.09em;text-transform:uppercase;font-family:var(--font-heading)">Verify the artifact you deploy</p></div></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="close" style="border-top:1px solid var(--color-divider);padding:calc(var(--space-8) * 2.4) var(--space-6);text-align:center;background:var(--color-neutral-900);color:var(--color-neutral-100)">
+    <p style="font-family:var(--font-heading);font-size:12px;letter-spacing:0.22em;text-transform:uppercase;color:var(--color-accent-400);margin:0 0 var(--space-6)">Testnet is open</p>
+    <h2 style="font-weight:400;font-size:clamp(32px,6vw,76px);line-height:1.02;margin:0 auto;max-width:20ch;color:var(--color-neutral-100)">Migrate before the transcript matters.</h2>
+    <div style="display:flex;gap:var(--space-3);justify-content:center;margin-top:var(--space-8);flex-wrap:wrap">
+      <a href="#close" class="btn" style="color:var(--color-accent-300);border-color:var(--color-accent-400);font-size:15px;padding:var(--space-3) var(--space-6)">Launch app</a>
+      <a href="#close" class="btn" style="color:var(--color-neutral-100);border-color:color-mix(in srgb, var(--color-neutral-100) 40%, transparent);font-size:15px;padding:var(--space-3) var(--space-6)">Talk to the team</a>
+    </div>
+  </section>
+
+  <footer style="padding:var(--space-8) var(--space-6);background:var(--color-neutral-900);color:var(--color-neutral-400);border-top:1px solid color-mix(in srgb, var(--color-neutral-100) 14%, transparent)">
+    <div style="max-width:1180px;margin:0 auto;display:flex;justify-content:space-between;gap:var(--space-6);flex-wrap:wrap;font-size:13px">
+      <span style="font-family:var(--font-heading);font-size:17px;color:var(--color-neutral-200);font-feature-settings:'lnum' 1,'tnum' 1">nonce<span style="color:var(--color-accent-400)">0</span></span>
+      <span style="display:flex;gap:var(--space-6);flex-wrap:wrap">
+        <a href="#protocol" style="color:var(--color-neutral-400);text-decoration:none">Protocol</a>
+        <a href="#products" style="color:var(--color-neutral-400);text-decoration:none">Products</a>
+        <a href="#developers" style="color:var(--color-neutral-400);text-decoration:none">Docs</a>
+        <a href="#audit" style="color:var(--color-neutral-400);text-decoration:none">Audits</a>
+      </span>
+      <span style="font-feature-settings:'tnum'">© 2026 nonce0 Labs</span>
+    </div>
+  </footer>
+</div>
+
+  <div class="wrap" style="border-top:1px solid var(--color-divider);padding:var(--space-6) 0 calc(var(--space-8) * 1.4);margin-top:calc(var(--space-8) * 2)">
+    <p class="credits" style="margin:0">
+      Photography &mdash;
+      <a href="https://commons.wikimedia.org/wiki/File:IBM_Quantum_System_One.jpg">IBM Quantum System One</a>
+      and <a href="https://commons.wikimedia.org/wiki/File:Wire_Bonded_Superconducting_Quantum_Chip_with_6_Transmons_003.png">Wire Bonded Superconducting Quantum Chip</a>
+      by OJB Quantum, <a href="https://creativecommons.org/licenses/by/4.0/">CC&nbsp;BY&nbsp;4.0</a>;
+      <a href="https://commons.wikimedia.org/wiki/File:IBM_Q_System_One_(Fraunhofer)_installation.jpg">IBM Q System One installation</a>
+      by IBM Research, <a href="https://creativecommons.org/licenses/by/2.0/">CC&nbsp;BY&nbsp;2.0</a>.
+      Diagrams are original work. nonce0 is not affiliated with IBM.
     </p>
-    <table>
-      <thead><tr><th>Chain</th><th>Nonce</th><th>Status</th><th>First exposing tx</th></tr></thead>
-      <tbody id="exposure-rows"></tbody>
-    </table>
-  </section>
+  </div>
 
-  <section id="findings" hidden>
-    <h2>Findings <span class="hint">ranked by what you can still do something about</span></h2>
-    <table>
-      <thead><tr><th>Rule</th><th>Severity</th><th>Fixability</th><th>Location</th><th>Next step</th></tr></thead>
-      <tbody id="finding-rows"></tbody>
-    </table>
-  </section>
-</main>
-
-<footer>
-  <span id="health" class="pill">checking…</span>
-  <span>nonce0 is the scanner · PQGuard is the contract suite it installs</span>
-</footer>
-
-<script type="module" src="/app.js"></script>
+</div>
+<script>
+// Tab panels — was canvas-runtime state, now 12 lines.
+(function () {
+  var tabs = document.querySelectorAll('[data-tab]');
+  var panels = document.querySelectorAll('[data-panel]');
+  var bar = document.querySelector('[data-progress]');
+  function select(i) {
+    tabs.forEach(function (t, n) { t.setAttribute('aria-selected', String(n === i)); t.style.opacity = n === i ? '1' : '.55'; });
+    panels.forEach(function (p, n) { p.style.display = n === i ? '' : 'none'; });
+    if (bar) bar.style.width = ((i + 1) / panels.length * 100).toFixed(2) + '%';
+  }
+  tabs.forEach(function (t) { t.addEventListener('click', function () { select(+t.dataset.tab); }); });
+  if (tabs.length) select(0);
+})();
+</script>
 </body>
 </html>

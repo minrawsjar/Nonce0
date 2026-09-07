@@ -33,7 +33,13 @@ const TIERS = {
   depth3: { depth: 3, price: 0.10,  returns: 'full kill chain, nested Safes, value at risk' },
 };
 
-const MIME = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.svg': 'image/svg+xml' };
+const MIME = {
+  '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css',
+  '.json': 'application/json', '.svg': 'image/svg+xml', '.md': 'text/markdown',
+  '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png',
+  '.webp': 'image/webp', '.avif': 'image/avif', '.ico': 'image/x-icon',
+  '.woff2': 'font/woff2', '.mp4': 'video/mp4',
+};
 
 function send(res, status, body, type = 'application/json') {
   const payload = type === 'application/json' ? JSON.stringify(body, null, 2) : body;
@@ -48,7 +54,10 @@ async function serveStatic(res, urlPath) {
   if (file !== FRONTEND && !file.startsWith(FRONTEND + sep)) return send(res, 403, { error: 'forbidden' });
   try {
     if ((await stat(file)).isDirectory()) return send(res, 404, { error: 'not found' });
-    send(res, 200, await readFile(file, 'utf8'), MIME[extname(file)] ?? 'application/octet-stream');
+    const type = MIME[extname(file).toLowerCase()] ?? 'application/octet-stream';
+    // Images and fonts are binary: reading them as utf8 corrupts them.
+    const text = type.startsWith('text/') || type === 'application/json' || type === 'image/svg+xml';
+    send(res, 200, await readFile(file, text ? 'utf8' : null), type);
   } catch {
     send(res, 404, { error: 'not found' });
   }
@@ -97,13 +106,13 @@ async function handleScan(req, res, url) {
   }
 
   try {
-    const findings = await scan(target, { depth: tier.depth });
+    const { findings, meta } = await scan(target, { depth: tier.depth });
     if (tierName === 'free') {
       const counts = {};
       for (const f of findings) counts[f.severity] = (counts[f.severity] ?? 0) + 1;
-      return send(res, 200, { target, tier: tierName, counts, total: findings.length });
+      return send(res, 200, { target, tier: tierName, counts, total: findings.length, meta });
     }
-    send(res, 200, { target, tier: tierName, findings });
+    send(res, 200, { target, tier: tierName, findings, meta });
   } catch (err) {
     // Never let a bad target take the process down mid-demo.
     send(res, 500, { error: 'scan failed', detail: err.message, target, tier: tierName });

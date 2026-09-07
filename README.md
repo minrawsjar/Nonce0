@@ -79,7 +79,7 @@ git clone --recurse-submodules <repo>   # contracts/lib/* are submodules
 npm test                                # node --test, no framework, no install
 npm run smoke                           # pack, extract with no node_modules, run
 
-node backend/server.js                  # http://localhost:8402, serves frontend/
+npm run dev --prefix frontend           # http://localhost:8402, landing + dashboard + API
 ```
 
 | Directory | What runs there | Install needed |
@@ -88,7 +88,7 @@ node backend/server.js                  # http://localhost:8402, serves frontend
 | `contracts/` | PQGuard, via `forge test` | `forge install` |
 | `indexer/` | the Substreams module, via `cargo` | `cargo build` |
 | `backend/` | the x402 scan API | `npm --prefix backend ci` |
-| `frontend/` | the dashboard, served by `backend/` | none — no build step |
+| `frontend/` | landing + dashboard, `npm run dev` | none — no build step |
 
 There is no `npm install` step for the scanner and there never will be. `api/` is
 the only directory with a `node_modules`, and it is a sibling of `src/` so Node's
