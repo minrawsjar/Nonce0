@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>nonce0 — find out which of your keys a quantum computer would break</title>
-<meta name="description" content="Your address is a hash of your public key. The key becomes public the first time you sign — on any chain. nonce0 finds every key that controls your protocol and checks all of them, everywhere.">
+<title>chaff — private payments that are still private after quantum</title>
+<meta name="description" content="A ring signature hides which of eight signed. A relay mesh hides where it came from. Neither breaks under Shor. Post-quantum private payments on Ethereum, settling in USDC over Arc.">
 <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -12,336 +12,211 @@
 
   <header class="nav">
     <div class="wrap nav-inner">
-      <span class="mark">nonce<b>0</b></span>
+      <span class="mark">chaff</span>
       <nav class="nav-links">
-        <a href="#protocol" class="n0-link">Protocol</a>
-        <a href="#products" class="n0-link">Products</a>
-        <a href="#migration" class="n0-link">Migration</a>
-        <a href="#developers" class="n0-link">Developers</a>
-        <a href="app.html" class="n0-link">Scanner</a>
+        <a href="#how" class="n0-link">How it works</a>
+        <a href="#why" class="n0-link">Why it doesn't exist</a>
+        <a href="#threat" class="n0-link">Threat model</a>
+        <a href="#build" class="n0-link">Built on</a>
       </nav>
-      <a href="app.html" class="btn btn-primary" style="font-size:13px">Run a scan</a>
+      <a href="#how" class="btn btn-primary" style="font-size:13px">Get the wallet</a>
     </div>
   </header>
 
   <div class="wrap">
     <section class="hero">
       <div>
-        <p class="eyebrow">Cross-chain key exposure</p>
-        <h1>Your address is not your public key.</h1>
-        <p class="lede">It is a hash of one &mdash; and a quantum computer cannot attack a fingerprint. It needs the real key, which becomes public the first time your account signs anything, on any chain.</p>
-        <p style="margin:var(--space-6) 0 0;font-size:16px;line-height:1.7;max-width:46ch">In Ethereum the <em>nonce</em> counts what an account has sent. Nonce&nbsp;0 means nothing has leaked. Anything above zero means the key is out there &mdash; including the testnet a developer used two years ago.</p>
+        <p class="eyebrow">Post-quantum · network-level · settlement</p>
+        <h1>Private payments that are still private after quantum.</h1>
+        <p class="lede">A ring signature hides which of eight signed. A relay mesh hides where it came from. Neither of them breaks under Shor.</p>
+        <p style="margin:var(--space-6) 0 0;font-size:16px;line-height:1.7;max-width:48ch">
+          Every private payment tool on Ethereum today hides <em>what</em> happened. None of them hide
+          <em>who connected to make it happen</em> — and every one is signed with cryptography a quantum
+          computer is already known how to break.
+        </p>
         <div style="display:flex;gap:var(--space-4);margin-top:calc(var(--space-8) * 1.1);flex-wrap:wrap;align-items:center">
-          <a href="app.html" class="btn btn-primary" style="font-size:15px;padding:var(--space-3) var(--space-6)">Scan a protocol</a>
-          <a href="#protocol" class="n0-link" style="font-size:15px;border-bottom:1px solid var(--color-accent-400);padding-bottom:2px">How it works</a>
+          <a href="#how" class="btn btn-primary" style="font-size:15px;padding:var(--space-3) var(--space-6)">Get the wallet</a>
+          <a href="#why" class="n0-link" style="font-size:15px;border-bottom:1px solid var(--color-accent-600);padding-bottom:2px">Why nothing like this exists</a>
         </div>
-        <p class="text-muted" style="margin:var(--space-6) 0 0;font-size:13px;font-family:ui-monospace,Menlo,monospace">npx nonce0 scan .&nbsp;&nbsp;·&nbsp;&nbsp;zero dependencies&nbsp;&nbsp;·&nbsp;&nbsp;no account</p>
+        <p class="text-muted" style="margin:var(--space-6) 0 0;font-size:13px;font-family:ui-monospace,Menlo,monospace">ring size 8 · proof of concept · testnet</p>
       </div>
-      <img class="hero-photo photo" src="media/quantum-tower.jpg"
-           alt="The gold-plated dilution refrigerator of an IBM Quantum System One, cooled to near absolute zero"
-           width="1656" height="2200" loading="eager" decoding="async">
+      <img class="hero-photo" src="media/ring-of-eight.svg"
+           alt="A ring of eight identical signers around a centre marked with a question mark"
+           width="460" height="460" loading="eager">
     </section>
   </div>
 
-  <div class="inventory">
-    <div class="wrap">
-      <div style="display:flex;align-items:center;gap:var(--space-4);margin:0 0 var(--space-4)">
-        <img class="inventory-mark" src="media/cipher-disc.svg" alt="" width="46" height="46">
-        <p class="sec-n" data-n="00" style="margin:0">Algorithm inventory</p>
+  <div class="wrap" id="how">
+    <figure class="figure-wide" style="margin-top:0">
+      <img src="media/flow.svg" alt="Wallet, ring-signed payment, relay mesh, confidential policy check, USDC settlement" width="980" height="240" loading="lazy">
+      <figcaption>Not three tools stitched together. One flow, in which each stage denies a different observer a different fact.</figcaption>
+    </figure>
+  </div>
+
+  <div class="wrap">
+    <section style="padding:calc(var(--space-8) * 2) 0">
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(290px,100%),1fr));gap:calc(var(--space-8) * 1.1)">
+
+        <div>
+          <p class="sec-n" data-n="01" style="margin:0 0 var(--space-3)">Quantum-secure</p>
+          <h3 style="font-weight:400;font-size:23px;line-height:1.2;margin:0 0 var(--space-3)">Signed with lattice math, not elliptic curves.</h3>
+          <p style="font-size:15px;line-height:1.7;margin:0;color:var(--color-neutral-700)">
+            Every payment is authorised by a post-quantum ring signature — the sender proves they are one
+            of a small group without revealing which one, on the same class of hard problem NIST
+            standardised against quantum attack. There is no “upgrade later”, because it was never
+            breakable that way.
+          </p>
+        </div>
+
+        <div>
+          <p class="sec-n" data-n="02" style="margin:0 0 var(--space-3)">Network-level</p>
+          <h3 style="font-weight:400;font-size:23px;line-height:1.2;margin:0 0 var(--space-3)">Hiding the payment is not hiding the person.</h3>
+          <p style="font-size:15px;line-height:1.7;margin:0;color:var(--color-neutral-700)">
+            Encrypting a transaction still leaves an IP address behind. Every payment is routed through a
+            relay mesh — three hops, batched, randomly delayed — so the moment your wallet connects is
+            never linkable to the moment your transaction lands.
+          </p>
+        </div>
+
+        <div>
+          <p class="sec-n" data-n="03" style="margin:0 0 var(--space-3)">Settlement</p>
+          <h3 style="font-weight:400;font-size:23px;line-height:1.2;margin:0 0 var(--space-3)">Trustless by construction, not by policy.</h3>
+          <p style="font-size:15px;line-height:1.7;margin:0;color:var(--color-neutral-700)">
+            The signature is verified entirely on-chain — no relay, operator or enclave anyone has to
+            trust for a payment to be valid. Funds settle in USDC over Arc, built for exactly this kind
+            of conditional, multi-step flow.
+          </p>
+        </div>
+
       </div>
-      <div class="inventory-grid">
-        <span>secp256k1 <i>broken</i></span><span>Ed25519 <i>broken</i></span>
-        <span>BLS12-381 <i>broken</i></span><span>bn254 pairing <i>broken</i></span>
-        <span>KECCAK-256 <i>holds</i></span><span>SHA-256 <i>holds</i></span>
-        <span>SHAKE-256 <i>holds</i></span><span>FORS+C <i>holds</i></span>
-      </div>
-      <p class="text-muted" style="margin:var(--space-4) 0 0;font-size:12.5px">Under a cryptographically relevant quantum computer. Hashes survive Grover at halved strength; discrete-log does not survive Shor at all.</p>
-    </div>
+    </section>
   </div>
 
   <figure class="band">
     <img class="photo" src="media/quantum-system.jpg"
-         alt="Engineers installing an IBM Q System One quantum computer"
-         width="2200" height="1466" loading="lazy" decoding="async">
+         alt="Engineers installing a quantum computer" width="2200" height="1466" loading="lazy" decoding="async">
     <figcaption>
       <b>The machine does not have to exist yet to matter.</b>
-      Harvest now, decrypt later: a signature broadcast today is archived forever, and
-      is read the day hardware like this reaches scale.
+      Harvest now, decrypt later: a signature broadcast today is archived forever, and read the day
+      hardware like this reaches scale. Every private payment made on elliptic curves is on that clock.
     </figcaption>
   </figure>
 
-<section style="max-width:1120px;margin:0 auto;padding:calc(var(--space-8) * 2.2) var(--space-6)">
-    <h6 style="color:var(--color-accent-700);margin:0 0 var(--space-6)">The exposure</h6>
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(340px,100%),1fr));gap:calc(var(--space-8) * 1.2);align-items:start">
-      <div>
-        <h2 style="font-weight:400;font-size:clamp(30px,4.4vw,52px);line-height:1.06;margin:0 0 var(--space-4);max-width:22ch">Every signature you have ever broadcast is already archived.</h2>
-        <p style="font-size:16px;line-height:1.7">A chain is a permanent, public transcript. Elliptic-curve keys that are safe today are recorded forever, and the day a cryptographically relevant quantum computer arrives, that transcript becomes a key-recovery dataset. Harvest now, decrypt later is not a hypothetical for a ledger — it is the default.</p>
+  <div class="inventory">
+    <div class="wrap">
+      <p class="sec-n" data-n="00" style="margin:0 0 var(--space-4)">What survives a quantum computer</p>
+      <div class="inventory-grid">
+        <span>secp256k1 <i>broken</i></span><span>Ed25519 <i>broken</i></span>
+        <span>BLS12-381 <i>broken</i></span><span>bn254 pairing <i>broken</i></span>
+        <span>Groth16 SNARK <i>broken</i></span><span>Pedersen hiding <i>broken</i></span>
+        <span>Ring-LWE <i>holds</i></span><span>Module-SIS <i>holds</i></span>
       </div>
-      <div style="display:grid;gap:1px;background:var(--color-divider);border:1px solid var(--color-divider);border-radius:var(--radius-md)">
-        <div style="background:var(--color-bg);padding:var(--space-6)">
-          <p style="font-family:var(--font-heading);font-feature-settings:'tnum';font-size:44px;line-height:1;margin:0 0 var(--space-2);color:var(--color-accent-700)">2030</p>
-          <p class="text-muted" style="margin:0;font-size:14px">NIST deprecates 112-bit classical strength — the curve under most of web3 today.</p>
-        </div>
-        <div style="background:var(--color-bg);padding:var(--space-6)">
-          <p style="font-family:var(--font-heading);font-feature-settings:'tnum';font-size:44px;line-height:1;margin:0 0 var(--space-2);color:var(--color-accent-700)">2035</p>
-          <p class="text-muted" style="margin:0;font-size:14px">Classical signatures disallowed outright. Immutable contracts do not get an upgrade window.</p>
-        </div>
-        <div style="background:var(--color-bg);padding:var(--space-6)">
-          <p style="font-family:var(--font-heading);font-feature-settings:'tnum';font-size:44px;line-height:1;margin:0 0 var(--space-2);color:var(--color-accent-700)">∞</p>
-          <p class="text-muted" style="margin:0;font-size:14px">Retention window of a public ledger. Nothing broadcast can be un-broadcast.</p>
-        </div>
-      </div>
+      <p class="text-muted" style="margin:var(--space-4) 0 0;font-size:12.5px">
+        Shor breaks discrete-log outright; Grover halves hash strength, which 256-bit output already
+        absorbs. Every shielded-payment protocol in production today sits in the top two rows.
+      </p>
     </div>
-  
-      <figure class="figure-wide">
-        <img src="media/exposure-timeline.svg" alt="A nonce timeline: at nonce 0 the key is hidden; from the first send onward it is public permanently" width="760" height="150">
-        <figcaption>One transaction is the whole difference. Before the first send the public key is genuinely hidden; after it, it is recoverable from the signature by anyone, on every chain that key touches &mdash; permanently.</figcaption>
-      </figure>
-    </section>
+  </div>
 
-  <section id="protocol" style="border-top:1px solid var(--color-divider);padding:calc(var(--space-8) * 2) var(--space-6);text-align:center">
-    <h6 style="color:var(--color-accent-700);margin:0 0 var(--space-4)">The stack</h6>
-    <h2 style="font-weight:400;font-size:clamp(30px,5vw,64px);line-height:1.04;margin:0 auto;max-width:20ch;font-feature-settings:'lnum' 1,'tnum' 1">nonce0's full stack for post-quantum protocols</h2>
-
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(300px,100%),1fr));gap:var(--space-6);align-items:center;max-width:1180px;margin:calc(var(--space-8) * 1.4) auto 0;text-align:left">
-      <div style="display:grid;gap:var(--space-6);justify-items:end;text-align:right">
-        <div style="max-width:26ch;border-right:1px solid var(--color-accent);padding-right:var(--space-4)">
-          <h4 style="margin:0 0 4px;font-size:19px">Applications</h4>
-          <p class="text-muted" style="margin:0;font-size:13.5px">Wallets · bridges · custody · RWA issuers</p>
-        </div>
-        <div style="max-width:26ch;border-right:1px solid var(--color-accent);padding-right:var(--space-4)">
-          <h4 style="margin:0 0 4px;font-size:19px">Protocol adapters</h4>
-          <p class="text-muted" style="margin:0;font-size:13.5px">EVM · SVM · Move · Cosmos SDK · CometBFT</p>
-        </div>
-      </div>
-
-      <div style="width:min(480px,100%);aspect-ratio:1;margin:0 auto;perspective:1400px;position:relative">
-        <div style="position:absolute;inset:0;transform-style:preserve-3d;transform:rotateX(58deg) rotateZ(-42deg);animation:n0-drift 9s ease-in-out infinite">
-          <div style="position:absolute;left:14%;top:14%;width:72%;height:72%;border:1px solid var(--color-neutral-400);border-radius:var(--radius-lg);background:color-mix(in srgb, var(--color-neutral-100) 70%, transparent);transform:translateZ(150px);box-shadow:var(--shadow-sm);transition:opacity .35s ease;cursor:pointer" class="stack-plane"></div>
-          <div style="position:absolute;left:9%;top:9%;width:82%;height:82%;border:1px solid var(--color-accent-400);border-radius:var(--radius-lg);background:color-mix(in srgb, var(--color-accent-100) 55%, transparent);transform:translateZ(80px);transition:opacity .35s ease;cursor:pointer" class="stack-plane"></div>
-          <div style="position:absolute;left:4%;top:4%;width:92%;height:92%;border:1.5px solid var(--color-accent);border-radius:var(--radius-lg);background:color-mix(in srgb, var(--color-accent-200) 45%, transparent);transform:translateZ(10px);box-shadow:var(--shadow-md);transition:opacity .35s ease;cursor:pointer" class="stack-plane">
-            <div style="position:absolute;left:12%;top:12%;width:30%;height:30%;border:1px solid var(--color-accent-600);border-radius:var(--radius-sm)"></div>
-            <div style="position:absolute;right:12%;top:12%;width:30%;height:30%;border:1px solid var(--color-accent-600);border-radius:var(--radius-sm)"></div>
-            <div style="position:absolute;left:12%;bottom:12%;width:30%;height:30%;border:1px solid var(--color-accent-600);border-radius:var(--radius-sm)"></div>
-            <div style="position:absolute;right:12%;bottom:12%;width:30%;height:30%;border:1px solid var(--color-accent-600);border-radius:var(--radius-sm)"></div>
+  <div class="wrap" id="why">
+    <section style="padding:calc(var(--space-8) * 2) 0">
+      <h2 style="font-weight:400;font-size:clamp(28px,4vw,46px);line-height:1.08;margin:0 0 var(--space-8);max-width:24ch">Why nothing like this exists yet.</h2>
+      <div style="display:grid;grid-template-columns:1.25fr 1fr;gap:calc(var(--space-8) * 1.4);align-items:start">
+        <div style="display:grid;gap:var(--space-6)">
+          <div style="border-top:1px solid var(--color-divider);padding-top:var(--space-4)">
+            <p style="margin:0;font-size:15px;line-height:1.7"><b>Railgun, Aztec, Privacy Pools</b> hide the payment — sender, amount, recipient — with elliptic-curve cryptography a quantum computer breaks. None of them touch network-origin privacy.</p>
           </div>
-          <div style="position:absolute;left:0;top:0;width:100%;height:100%;border:1px solid var(--color-neutral-400);border-radius:var(--radius-lg);background:var(--color-neutral-200);transform:translateZ(-70px);transition:opacity .35s ease;cursor:pointer" class="stack-plane"></div>
-          <div style="position:absolute;left:-3%;top:-3%;width:106%;height:106%;border:1px solid var(--color-divider);border-radius:var(--radius-lg);transform:translateZ(-140px);transition:opacity .35s ease;cursor:pointer" class="stack-plane"></div>
+          <div style="border-top:1px solid var(--color-divider);padding-top:var(--space-4)">
+            <p style="margin:0;font-size:15px;line-height:1.7"><b>Monero</b> is the closest existing shape — ring signatures plus network-layer obfuscation — but with pre-quantum cryptography, on a chain with no smart contracts.</p>
+          </div>
+          <div style="border-top:1px solid var(--color-divider);padding-top:var(--space-4)">
+            <p style="margin:0;font-size:15px;line-height:1.7"><b>Flashbots and private RPC</b> hide a transaction from the public mempool, not from the RPC provider. A different problem, and the one most often mistaken for this one.</p>
+          </div>
+          <div style="border-top:1px solid var(--color-accent-600);padding-top:var(--space-4)">
+            <p style="margin:0;font-size:15px;line-height:1.7;color:var(--color-neutral-900)">Nobody surveyed composes quantum-secure payment privacy with network-origin privacy, on Ethereum. <b>That composition is the claim</b> — not any single piece of it.</p>
+          </div>
         </div>
+        <figure style="margin:0">
+          <div class="plate"><img class="photo photo-cut" src="media/quantum-chip.jpg" alt="A wire-bonded superconducting quantum processor" width="2200" height="1903" loading="lazy" decoding="async"></div>
+          <figcaption style="font-size:13px;line-height:1.65;color:var(--color-neutral-600);margin-top:var(--space-3)">
+            Six transmons on a wire-bonded die. Shor needs many thousands of stable logical qubits before
+            it recovers a key — which is why the honest question is not “when”, but “what did you sign
+            that is still readable then”.
+          </figcaption>
+        </figure>
       </div>
-
-      <div style="display:grid;gap:var(--space-6)">
-        <div style="max-width:26ch;border-left:1px solid var(--color-accent);padding-left:var(--space-4)">
-          <h4 style="margin:0 0 4px;font-size:19px">PQ cryptographic core</h4>
-          <p class="text-muted" style="margin:0;font-size:13.5px">ML-DSA signing · ML-KEM encapsulation · hash-based fallback</p>
-        </div>
-        <div style="max-width:26ch;border-left:1px solid var(--color-accent);padding-left:var(--space-4)">
-          <h4 style="margin:0 0 4px;font-size:19px">Attestation ledger</h4>
-          <p class="text-muted" style="margin:0;font-size:13.5px">Public proof that a key, contract or validator set is quantum-safe</p>
-        </div>
-        <div style="max-width:26ch;border-left:1px solid var(--color-neutral-400);padding-left:var(--space-4)">
-          <h4 style="margin:0 0 4px;font-size:19px">Threshold key custody</h4>
-          <p class="text-muted" style="margin:0;font-size:13.5px">Distributed lattice keys, no single point of compromise</p>
-        </div>
-      </div>
-    </div>
-  
-      <figure style="margin:calc(var(--space-8) * 1.2) 0 0;display:grid;grid-template-columns:minmax(0,380px) 1fr;gap:calc(var(--space-8) * 1.2);align-items:center;max-width:900px">
-        <img class="photo photo-cut" src="media/quantum-chip.jpg"
-             alt="A wire-bonded superconducting quantum processor carrying six transmon qubits"
-             width="2200" height="1903" loading="lazy" decoding="async">
-        <figcaption style="font-size:15px;line-height:1.7;color:var(--color-neutral-700)">
-          Six transmons on a wire-bonded superconducting die. Shor&rsquo;s algorithm needs
-          many thousands of stable logical qubits before it recovers a secp256k1 key &mdash;
-          which is exactly why the number that matters to you today is not a qubit count.
-          It is your nonce.
-        </figcaption>
-      </figure>
     </section>
+  </div>
 
-  <section id="adopt" style="border-top:1px solid var(--color-divider);padding:calc(var(--space-8) * 2) var(--space-6)">
-    <div style="max-width:1180px;margin:0 auto">
-      <h2 style="font-weight:400;font-size:clamp(28px,4.4vw,52px);line-height:1.05;margin:0;max-width:24ch">Three properties that make the migration survivable.</h2>
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(320px,100%),1fr));gap:calc(var(--space-8) * 1.4);align-items:start;margin:calc(var(--space-8) * 1.6) 0 var(--space-8)">
-        <div style="display:grid;gap:calc(var(--space-8) * 1.1)">
-        <button type="button" data-tab="0" style="display:flex;gap:var(--space-4);text-align:left;background:transparent;border:0;padding:0;cursor:pointer;font-family:var(--font-body);color:var(--color-text);transition:opacity .35s ease">
-          <span style="font-family:var(--font-heading);font-feature-settings:'lnum' 1,'tnum' 1;font-size:24px;line-height:1.3;color:var(--color-accent-700)">01</span>
-          <span>
-            <span style="display:block;font-family:var(--font-heading);font-size:25px;line-height:1.25;margin-bottom:var(--space-2)">Hybrid by default</span>
-            <span style="display:block;font-size:14.5px;line-height:1.7" class="text-muted">One verifier accepts the classical curve and the lattice scheme side by side, so existing users never see a break while the new path proves itself.</span>
-          </span>
-        </button>
-        <button type="button" data-tab="1" style="display:flex;gap:var(--space-4);text-align:left;background:transparent;border:0;padding:0;cursor:pointer;font-family:var(--font-body);color:var(--color-text);transition:opacity .35s ease">
-          <span style="font-family:var(--font-heading);font-feature-settings:'lnum' 1,'tnum' 1;font-size:24px;line-height:1.3;color:var(--color-accent-700)">02</span>
-          <span>
-            <span style="display:block;font-family:var(--font-heading);font-size:25px;line-height:1.25;margin-bottom:var(--space-2)">No protocol fork</span>
-            <span style="display:block;font-size:14.5px;line-height:1.7" class="text-muted">nonce0 deploys as a contract and a library, not a consensus change. Adoption is a deployment decision, not a governance one.</span>
-          </span>
-        </button>
-        <button type="button" data-tab="2" style="display:flex;gap:var(--space-4);text-align:left;background:transparent;border:0;padding:0;cursor:pointer;font-family:var(--font-body);color:var(--color-text);transition:opacity .35s ease">
-          <span style="font-family:var(--font-heading);font-feature-settings:'lnum' 1,'tnum' 1;font-size:24px;line-height:1.3;color:var(--color-accent-700)">03</span>
-          <span>
-            <span style="display:block;font-family:var(--font-heading);font-size:25px;line-height:1.25;margin-bottom:var(--space-2)">Provable posture</span>
-            <span style="display:block;font-size:14.5px;line-height:1.7" class="text-muted">Every key rotation is published, so the claim "we are quantum-safe" becomes something an auditor can read rather than something you assert.</span>
-          </span>
-        </button>
+  <div class="wrap" id="threat">
+    <section style="padding:0 0 calc(var(--space-8) * 2)">
+      <p class="sec-n" data-n="04" style="margin:0 0 var(--space-4)">Threat model</p>
+      <h2 style="font-weight:400;font-size:clamp(26px,3.4vw,38px);line-height:1.1;margin:0 0 var(--space-8);max-width:28ch">Said plainly, including what it does not do.</h2>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(300px,100%),1fr));gap:var(--space-6)">
+        <div style="border:1px solid var(--color-divider);border-radius:var(--radius-md);padding:var(--space-6)">
+          <p style="font-family:var(--font-heading);font-size:17px;margin:0 0 var(--space-4);color:var(--color-accent-400)">What it hides</p>
+          <ul style="margin:0;padding-left:18px;font-size:14.5px;line-height:1.8;color:var(--color-neutral-700)">
+            <li>Which ring member signed a payment</li>
+            <li>The payment amount</li>
+            <li>The sender's network origin</li>
+            <li>The input evaluated by the policy check</li>
+          </ul>
         </div>
-        <div style="border:1px solid var(--color-divider);border-radius:var(--radius-md);padding:var(--space-6);background:var(--color-neutral-100)">
-        <div style="display:none" data-panel="0">
-          <div style="display:flex;justify-content:space-between;gap:var(--space-4);padding:var(--space-3) 0;border-bottom:1px solid var(--color-divider)"><span class="text-muted" style="font-size:13px;letter-spacing:0.08em;text-transform:uppercase;font-family:var(--font-heading)">Verifier mode</span><span style="font-size:14.5px;text-align:right">Classical + ML-DSA-65</span></div>
-          <div style="display:flex;justify-content:space-between;gap:var(--space-4);padding:var(--space-3) 0;border-bottom:1px solid var(--color-divider)"><span class="text-muted" style="font-size:13px;letter-spacing:0.08em;text-transform:uppercase;font-family:var(--font-heading)">Fallback window</span><span style="font-size:14.5px;text-align:right">Configurable, monitored</span></div>
-          <div style="display:flex;justify-content:space-between;gap:var(--space-4);padding:var(--space-3) 0;border-bottom:1px solid var(--color-divider)"><span class="text-muted" style="font-size:13px;letter-spacing:0.08em;text-transform:uppercase;font-family:var(--font-heading)">Client change</span><span style="font-size:14.5px;text-align:right">None required</span></div>
+        <div style="border:1px solid var(--color-divider);border-radius:var(--radius-md);padding:var(--space-6)">
+          <p style="font-family:var(--font-heading);font-size:17px;margin:0 0 var(--space-4);color:var(--color-accent-2-500)">What it does not claim</p>
+          <ul style="margin:0;padding-left:18px;font-size:14.5px;line-height:1.8;color:var(--color-neutral-700)">
+            <li>Defence against a global passive network adversary</li>
+            <li>Defence if every relay hop is compromised at once</li>
+            <li>Protection from your own timing and amount patterns</li>
+            <li>Ring size 8 is a proof of concept, not a production anonymity set</li>
+          </ul>
         </div>
-        <div style="display:none" data-panel="1">
-          <div style="display:flex;justify-content:space-between;gap:var(--space-4);padding:var(--space-3) 0;border-bottom:1px solid var(--color-divider)"><span class="text-muted" style="font-size:13px;letter-spacing:0.08em;text-transform:uppercase;font-family:var(--font-heading)">Deployment</span><span style="font-size:14.5px;text-align:right">Single contract</span></div>
-          <div style="display:flex;justify-content:space-between;gap:var(--space-4);padding:var(--space-3) 0;border-bottom:1px solid var(--color-divider)"><span class="text-muted" style="font-size:13px;letter-spacing:0.08em;text-transform:uppercase;font-family:var(--font-heading)">Targets</span><span style="font-size:14.5px;text-align:right">EVM · SVM · Move · Cosmos SDK</span></div>
-          <div style="display:flex;justify-content:space-between;gap:var(--space-4);padding:var(--space-3) 0;border-bottom:1px solid var(--color-divider)"><span class="text-muted" style="font-size:13px;letter-spacing:0.08em;text-transform:uppercase;font-family:var(--font-heading)">Rollback</span><span style="font-size:14.5px;text-align:right">Verifier flag, one transaction</span></div>
-        </div>
-        <div style="display:none" data-panel="2">
-          <div style="display:flex;justify-content:space-between;gap:var(--space-4);padding:var(--space-3) 0;border-bottom:1px solid var(--color-divider)"><span class="text-muted" style="font-size:13px;letter-spacing:0.08em;text-transform:uppercase;font-family:var(--font-heading)">Registry</span><span style="font-size:14.5px;text-align:right">On-chain, permissionless reads</span></div>
-          <div style="display:flex;justify-content:space-between;gap:var(--space-4);padding:var(--space-3) 0;border-bottom:1px solid var(--color-divider)"><span class="text-muted" style="font-size:13px;letter-spacing:0.08em;text-transform:uppercase;font-family:var(--font-heading)">Record</span><span style="font-size:14.5px;text-align:right">Key, scheme, rotation height</span></div>
-          <div style="display:flex;justify-content:space-between;gap:var(--space-4);padding:var(--space-3) 0;border-bottom:1px solid var(--color-divider)"><span class="text-muted" style="font-size:13px;letter-spacing:0.08em;text-transform:uppercase;font-family:var(--font-heading)">Consumers</span><span style="font-size:14.5px;text-align:right">Auditors · insurers · explorers</span></div>
-        </div>
+        <div style="border:1px solid var(--color-divider);border-radius:var(--radius-md);padding:var(--space-6)">
+          <p style="font-family:var(--font-heading);font-size:17px;margin:0 0 var(--space-4);color:var(--color-neutral-800)">What you trust</p>
+          <p style="margin:0;font-size:14.5px;line-height:1.8;color:var(--color-neutral-700)">
+            Nothing, for payment validity — the ring signature is verified on-chain by the contract
+            itself. The relay mesh is trusted only for network-origin privacy, and never for whether a
+            payment is valid.
+          </p>
         </div>
       </div>
-      <div style="height:2px;background:var(--color-divider);max-width:520px">
-        <div style="height:100%;background:var(--color-accent);width:33.33%" data-progress=""></div>
-      </div>
-    </div>
-  </section>
+    </section>
+  </div>
 
-  <section id="products" style="border-top:1px solid var(--color-divider);padding:calc(var(--space-8) * 2) var(--space-6)">
-    <div style="max-width:1180px;margin:0 auto">
-      <div style="display:flex;justify-content:space-between;align-items:end;gap:var(--space-6);flex-wrap:wrap;margin-bottom:calc(var(--space-8) * 1.2)">
-        <h2 style="font-weight:400;font-size:clamp(28px,4.4vw,52px);line-height:1.05;margin:0;max-width:24ch">Four pieces. Adopt them in any order.</h2>
-        <a href="#developers" class="btn btn-ghost" style="font-size:14px">Integration guide →</a>
-      </div>
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(260px,100%),1fr));gap:var(--space-6)">
-        <div class="card" style="border:1px solid var(--color-divider);border-radius:var(--radius-md);padding:var(--space-6);display:flex;flex-direction:column;gap:var(--space-3);min-height:270px">
-          <p class="card-kicker" style="font-family:var(--font-heading);font-feature-settings:'tnum';font-size:12px;letter-spacing:0.14em;text-transform:uppercase;color:var(--color-accent-700);margin:0">01 — Verify</p>
-          <h3 style="margin:0;font-size:26px;font-weight:400;font-feature-settings:'lnum' 1,'tnum' 1">nonce0 Verifier</h3>
-          <p class="text-muted" style="margin:0;font-size:14.5px;line-height:1.65">Gas-audited ML-DSA and SLH-DSA verification contracts. One call site, no protocol fork, hybrid mode while you migrate.</p>
-          <p style="margin:auto 0 0;font-size:13px;font-feature-settings:'tnum';color:var(--color-neutral-700)">≈ 190k gas / verification</p>
-        </div>
-        <div class="card" style="border:1px solid var(--color-divider);border-radius:var(--radius-md);padding:var(--space-6);display:flex;flex-direction:column;gap:var(--space-3);min-height:270px">
-          <p style="font-family:var(--font-heading);font-feature-settings:'tnum';font-size:12px;letter-spacing:0.14em;text-transform:uppercase;color:var(--color-accent-700);margin:0">02 — Sign</p>
-          <h3 style="margin:0;font-size:26px;font-weight:400;font-feature-settings:'lnum' 1,'tnum' 1">nonce0 Keys</h3>
-          <p class="text-muted" style="margin:0;font-size:14.5px;line-height:1.65">Lattice key generation and threshold signing for treasuries, bridge committees and validator sets. HSM and MPC backed.</p>
-          <p style="margin:auto 0 0;font-size:13px;font-feature-settings:'tnum';color:var(--color-neutral-700)">t-of-n · 2-of-3 to 15-of-21</p>
-        </div>
-        <div class="card" style="border:1px solid var(--color-divider);border-radius:var(--radius-md);padding:var(--space-6);display:flex;flex-direction:column;gap:var(--space-3);min-height:270px">
-          <p style="font-family:var(--font-heading);font-feature-settings:'tnum';font-size:12px;letter-spacing:0.14em;text-transform:uppercase;color:var(--color-accent-700);margin:0">03 — Attest</p>
-          <h3 style="margin:0;font-size:26px;font-weight:400;font-feature-settings:'lnum' 1,'tnum' 1">nonce0 Attest</h3>
-          <p class="text-muted" style="margin:0;font-size:14.5px;line-height:1.65">A public registry of quantum-safe posture. Prove to auditors, insurers and users which of your keys have migrated — and when.</p>
-          <p style="margin:auto 0 0;font-size:13px;font-feature-settings:'tnum';color:var(--color-neutral-700)">On-chain, permissionless reads</p>
-        </div>
-        <div class="card" style="border:1px solid var(--color-divider);border-radius:var(--radius-md);padding:var(--space-6);display:flex;flex-direction:column;gap:var(--space-3);min-height:270px">
-          <p style="font-family:var(--font-heading);font-feature-settings:'tnum';font-size:12px;letter-spacing:0.14em;text-transform:uppercase;color:var(--color-accent-700);margin:0">04 — Assess</p>
-          <h3 style="margin:0;font-size:26px;font-weight:400;font-feature-settings:'lnum' 1,'tnum' 1">nonce0 Scan</h3>
-          <p class="text-muted" style="margin:0;font-size:14.5px;line-height:1.65">Point it at a deployment and get an inventory of every exposed curve, upgrade path and unowned admin key, ranked by exposure.</p>
-          <p style="margin:auto 0 0;font-size:13px;font-feature-settings:'tnum';color:var(--color-neutral-700)">Free for public contracts</p>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <section id="migration" style="border-top:1px solid var(--color-divider);padding:calc(var(--space-8) * 2) var(--space-6)">
-    <div style="max-width:1180px;margin:0 auto">
-      <h6 style="color:var(--color-accent-700);margin:0 0 var(--space-4)">Migration path</h6>
-      <h2 style="font-weight:400;font-size:clamp(28px,4.4vw,52px);line-height:1.05;margin:0 0 calc(var(--space-8) * 1.4);max-width:26ch">A protocol does not stop to change its cryptography.</h2>
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(220px,100%),1fr));gap:0;border-top:1px solid var(--color-text);margin-inline:calc(var(--space-6) * -1)">
-        <div style="padding:var(--space-6);border-right:1px solid var(--color-divider)">
-          <p style="font-family:var(--font-heading);font-feature-settings:'tnum';font-size:13px;letter-spacing:0.1em;color:var(--color-accent-700);margin:0 0 var(--space-3)">STEP 01</p>
-          <h4 style="margin:0 0 var(--space-2);font-size:21px">Inventory</h4>
-          <p class="text-muted" style="margin:0;font-size:14px;line-height:1.65">Scan discovers every signing surface: EOAs, multisigs, upgrade admins, bridge relayers, off-chain signers.</p>
-        </div>
-        <div style="padding:var(--space-6);border-right:1px solid var(--color-divider)">
-          <p style="font-family:var(--font-heading);font-feature-settings:'tnum';font-size:13px;letter-spacing:0.1em;color:var(--color-accent-700);margin:0 0 var(--space-3)">STEP 02</p>
-          <h4 style="margin:0 0 var(--space-2);font-size:21px">Run hybrid</h4>
-          <p class="text-muted" style="margin:0;font-size:14px;line-height:1.65">Accept classical and lattice signatures side by side. Nothing breaks for existing users while the new path proves itself.</p>
-        </div>
-        <div style="padding:var(--space-6);border-right:1px solid var(--color-divider)">
-          <p style="font-family:var(--font-heading);font-feature-settings:'tnum';font-size:13px;letter-spacing:0.1em;color:var(--color-accent-700);margin:0 0 var(--space-3)">STEP 03</p>
-          <h4 style="margin:0 0 var(--space-2);font-size:21px">Rotate</h4>
-          <p class="text-muted" style="margin:0;font-size:14px;line-height:1.65">Move custody to threshold lattice keys, retire the exposed curve, publish the rotation to Attest.</p>
-        </div>
-        <div style="padding:var(--space-6)">
-          <p style="font-family:var(--font-heading);font-feature-settings:'tnum';font-size:13px;letter-spacing:0.1em;color:var(--color-accent-700);margin:0 0 var(--space-3)">STEP 04</p>
-          <h4 style="margin:0 0 var(--space-2);font-size:21px">Enforce</h4>
-          <p class="text-muted" style="margin:0;font-size:14px;line-height:1.65">Flip the verifier to PQ-only, with a monitored fallback window and alerting on any classical attempt.</p>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <section id="developers" style="border-top:1px solid var(--color-divider);background:var(--color-neutral-100);padding:calc(var(--space-8) * 2) var(--space-6)">
-    <div style="max-width:1180px;margin:0 auto;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(340px,100%),1fr));gap:calc(var(--space-8) * 1.2);align-items:center">
+  <div class="wrap" id="build">
+    <section style="padding:0 0 calc(var(--space-8) * 2);display:grid;grid-template-columns:1fr 1.15fr;gap:calc(var(--space-8) * 1.4);align-items:center">
+      <img class="photo" src="media/quantum-tower.jpg" alt="The gold-plated dilution refrigerator of a quantum computer" width="1656" height="2200" loading="lazy" decoding="async" style="max-width:300px;border-radius:var(--radius-md)">
       <div>
-        <h6 style="color:var(--color-accent-700);margin:0 0 var(--space-4)">Developers</h6>
-        <h2 style="font-weight:400;font-size:clamp(28px,4.2vw,48px);line-height:1.06;margin:0 0 var(--space-4);max-width:22ch">Two lines in your verifier. That is the integration.</h2>
-        <p style="font-size:16px;line-height:1.7;max-width:46ch">Audited libraries for Solidity, Rust and Move, plus a TypeScript client for signing off-chain. Deterministic test vectors from the FIPS specs ship with every release, so your CI proves conformance rather than assuming it.</p>
-        <div style="display:flex;gap:var(--space-3);margin-top:var(--space-6);flex-wrap:wrap">
-          <a href="#close" class="btn btn-primary">Read the docs</a>
-          <a href="#close" class="btn btn-secondary">View on GitHub</a>
+        <p class="sec-n" data-n="05" style="margin:0 0 var(--space-4)">Built on what's real</p>
+        <div style="display:grid;gap:var(--space-6)">
+          <div>
+            <p style="font-family:ui-monospace,Menlo,monospace;font-size:13px;color:var(--color-accent-400);margin:0 0 4px">ChipmunkRing (2025)</p>
+            <p style="margin:0;font-size:14.5px;line-height:1.7;color:var(--color-neutral-700)">A published lattice-based ring signature with working reference code. Not a hackathon invention.</p>
+          </div>
+          <div>
+            <p style="font-family:ui-monospace,Menlo,monospace;font-size:13px;color:var(--color-accent-400);margin:0 0 4px">MatRiCT / MatRiCT+</p>
+            <p style="margin:0;font-size:14.5px;line-height:1.7;color:var(--color-neutral-700)">Post-quantum ring-confidential-transaction design, already running in production on Hcash.</p>
+          </div>
+          <div>
+            <p style="font-family:ui-monospace,Menlo,monospace;font-size:13px;color:var(--color-accent-400);margin:0 0 4px">Ethereum's own roadmap</p>
+            <p style="margin:0;font-size:14.5px;line-height:1.7;color:var(--color-neutral-700)">Privacy and quantum-resistance are both live Ethereum Foundation workstreams. This maps onto both.</p>
+          </div>
         </div>
       </div>
-      <div style="border:1px solid var(--color-divider);border-radius:var(--radius-md);background:var(--color-bg);box-shadow:var(--shadow-sm);overflow:hidden">
-        <div style="display:flex;align-items:center;gap:var(--space-2);padding:var(--space-2) var(--space-4);border-bottom:1px solid var(--color-divider);font-family:var(--font-heading);font-size:12.5px;letter-spacing:0.08em;text-transform:uppercase;color:var(--color-neutral-700)">
-          <span style="width:7px;height:7px;border-radius:50%;background:var(--color-accent)"></span>Vault.sol
-        </div>
-        <pre style="margin:0;padding:var(--space-6);font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:13px;line-height:1.9;color:var(--color-neutral-800);overflow-x:auto"><span style="color:var(--color-neutral-600)">import</span> {Nonce0} <span style="color:var(--color-neutral-600)">from</span> <span style="color:var(--color-accent-700)">"@nonce0/verifier/ML_DSA.sol"</span>;
+    </section>
+  </div>
 
-<span style="color:var(--color-neutral-600)">function</span> withdraw(bytes calldata sig, bytes32 digest)
-  <span style="color:var(--color-neutral-600)">external</span>
-{
-  <span style="color:var(--color-neutral-600)">require</span>(
-    Nonce0.verify(pqKey, digest, sig),
-    <span style="color:var(--color-accent-700)">"nonce0: bad pq signature"</span>
-  );
-  _release(msg.sender);
-}</pre>
+  <div class="wrap">
+    <section style="border-top:1px solid var(--color-divider);padding:calc(var(--space-8) * 1.6) 0">
+      <h2 style="font-weight:400;font-size:clamp(26px,3.6vw,42px);line-height:1.1;margin:0;max-width:26ch">Private payments should not need a rewrite the day quantum computers arrive.</h2>
+      <p style="font-family:var(--font-heading);font-size:22px;color:var(--color-accent-400);margin:var(--space-4) 0 0">chaff is already there.</p>
+      <div style="display:flex;gap:var(--space-3);margin-top:calc(var(--space-8) * 1.2);flex-wrap:wrap">
+        <span class="pill-tag">Chainlink CRE</span><span class="pill-tag">Arc / USDC</span><span class="pill-tag">ETHOnline 2026</span>
       </div>
-    </div>
-  </section>
+    </section>
+  </div>
 
-  <section id="audit" style="border-top:1px solid var(--color-divider);padding:calc(var(--space-8) * 2) var(--space-6)">
-    <div style="max-width:900px;margin:0 auto;text-align:center">
-      <p style="font-family:var(--font-heading);font-size:clamp(22px,3.2vw,38px);line-height:1.3;font-style:italic;margin:0;color:var(--color-neutral-800);text-wrap:pretty">"The migration is not a cryptography problem any more. The primitives are standardised. What is left is inventory, sequencing and proof — and that is an engineering schedule."</p>
-      <p class="text-muted" style="margin:var(--space-6) 0 0;font-size:13px;letter-spacing:0.1em;text-transform:uppercase;font-family:var(--font-heading)">From the nonce0 protocol paper</p>
-      <hr class="hr" style="margin:calc(var(--space-8) * 1.4) 0">
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(320px,100%),1fr));gap:0;text-align:left;border-top:1px solid var(--color-text)">
-        <div style="display:flex;align-items:baseline;gap:var(--space-4);padding:var(--space-6);border-bottom:1px solid var(--color-divider);border-right:1px solid var(--color-divider)"><p style="font-family:var(--font-heading);font-feature-settings:'lnum' 1,'tnum' 1;font-size:52px;margin:0;line-height:1;min-width:5ch">3</p><div><p style="margin:0 0 6px;font-size:15.5px;line-height:1.35">Independent audits of the verifier suite</p><p class="text-muted" style="margin:0;font-size:11px;letter-spacing:0.09em;text-transform:uppercase;font-family:var(--font-heading)">Reports published in full</p></div></div>
-        <div style="display:flex;align-items:baseline;gap:var(--space-4);padding:var(--space-6);border-bottom:1px solid var(--color-divider);border-right:1px solid var(--color-divider)"><p style="font-family:var(--font-heading);font-feature-settings:'lnum' 1,'tnum' 1;font-size:52px;margin:0;line-height:1;min-width:5ch">100%</p><div><p style="margin:0 0 6px;font-size:15.5px;line-height:1.35">FIPS 204 test-vector coverage in CI</p><p class="text-muted" style="margin:0;font-size:11px;letter-spacing:0.09em;text-transform:uppercase;font-family:var(--font-heading)">Conformance proven, not assumed</p></div></div>
-        <div style="display:flex;align-items:baseline;gap:var(--space-4);padding:var(--space-6);border-bottom:1px solid var(--color-divider);border-right:1px solid var(--color-divider)"><p style="font-family:var(--font-heading);font-feature-settings:'lnum' 1,'tnum' 1;font-size:52px;margin:0;line-height:1;min-width:5ch">0</p><div><p style="margin:0 0 6px;font-size:15.5px;line-height:1.35">Protocol forks required to adopt</p><p class="text-muted" style="margin:0;font-size:11px;letter-spacing:0.09em;text-transform:uppercase;font-family:var(--font-heading)">Hybrid path from day one</p></div></div>
-        <div style="display:flex;align-items:baseline;gap:var(--space-4);padding:var(--space-6);border-bottom:1px solid var(--color-divider);border-right:1px solid var(--color-divider)"><p style="font-family:var(--font-heading);font-feature-settings:'lnum' 1,'tnum' 1;font-size:52px;margin:0;line-height:1;min-width:5ch">MIT</p><div><p style="margin:0 0 6px;font-size:15.5px;line-height:1.35">Licensed, with reproducible builds</p><p class="text-muted" style="margin:0;font-size:11px;letter-spacing:0.09em;text-transform:uppercase;font-family:var(--font-heading)">Verify the artifact you deploy</p></div></div>
-      </div>
-    </div>
-  </section>
-
-  <section id="close" style="border-top:1px solid var(--color-divider);padding:calc(var(--space-8) * 2.4) var(--space-6);text-align:center;background:var(--color-neutral-900);color:var(--color-neutral-100)">
-    <p style="font-family:var(--font-heading);font-size:12px;letter-spacing:0.22em;text-transform:uppercase;color:var(--color-accent-400);margin:0 0 var(--space-6)">Testnet is open</p>
-    <h2 style="font-weight:400;font-size:clamp(32px,6vw,76px);line-height:1.02;margin:0 auto;max-width:20ch;color:var(--color-neutral-100)">Migrate before the transcript matters.</h2>
-    <div style="display:flex;gap:var(--space-3);justify-content:center;margin-top:var(--space-8);flex-wrap:wrap">
-      <a href="#close" class="btn" style="color:var(--color-accent-300);border-color:var(--color-accent-400);font-size:15px;padding:var(--space-3) var(--space-6)">Launch app</a>
-      <a href="#close" class="btn" style="color:var(--color-neutral-100);border-color:color-mix(in srgb, var(--color-neutral-100) 40%, transparent);font-size:15px;padding:var(--space-3) var(--space-6)">Talk to the team</a>
-    </div>
-  </section>
-
-  <footer style="padding:var(--space-8) var(--space-6);background:var(--color-neutral-900);color:var(--color-neutral-400);border-top:1px solid color-mix(in srgb, var(--color-neutral-100) 14%, transparent)">
-    <div style="max-width:1180px;margin:0 auto;display:flex;justify-content:space-between;gap:var(--space-6);flex-wrap:wrap;font-size:13px">
-      <span style="font-family:var(--font-heading);font-size:17px;color:var(--color-neutral-200);font-feature-settings:'lnum' 1,'tnum' 1">nonce<span style="color:var(--color-accent-400)">0</span></span>
-      <span style="display:flex;gap:var(--space-6);flex-wrap:wrap">
-        <a href="#protocol" style="color:var(--color-neutral-400);text-decoration:none">Protocol</a>
-        <a href="#products" style="color:var(--color-neutral-400);text-decoration:none">Products</a>
-        <a href="#developers" style="color:var(--color-neutral-400);text-decoration:none">Docs</a>
-        <a href="#audit" style="color:var(--color-neutral-400);text-decoration:none">Audits</a>
-      </span>
-      <span style="font-feature-settings:'tnum'">© 2026 nonce0 Labs</span>
-    </div>
-  </footer>
-</div>
-
-  <div class="wrap" style="border-top:1px solid var(--color-divider);padding:var(--space-6) 0 calc(var(--space-8) * 1.4);margin-top:calc(var(--space-8) * 2)">
+  <div class="wrap" style="border-top:1px solid var(--color-divider);padding:var(--space-6) 0 calc(var(--space-8) * 1.4)">
     <p class="credits" style="margin:0">
       Photography &mdash;
       <a href="https://commons.wikimedia.org/wiki/File:IBM_Quantum_System_One.jpg">IBM Quantum System One</a>
@@ -349,25 +224,10 @@
       by OJB Quantum, <a href="https://creativecommons.org/licenses/by/4.0/">CC&nbsp;BY&nbsp;4.0</a>;
       <a href="https://commons.wikimedia.org/wiki/File:IBM_Q_System_One_(Fraunhofer)_installation.jpg">IBM Q System One installation</a>
       by IBM Research, <a href="https://creativecommons.org/licenses/by/2.0/">CC&nbsp;BY&nbsp;2.0</a>.
-      Diagrams are original work. nonce0 is not affiliated with IBM.
+      Diagrams are original work. chaff is not affiliated with IBM.
     </p>
   </div>
 
 </div>
-<script>
-// Tab panels — was canvas-runtime state, now 12 lines.
-(function () {
-  var tabs = document.querySelectorAll('[data-tab]');
-  var panels = document.querySelectorAll('[data-panel]');
-  var bar = document.querySelector('[data-progress]');
-  function select(i) {
-    tabs.forEach(function (t, n) { t.setAttribute('aria-selected', String(n === i)); t.style.opacity = n === i ? '1' : '.55'; });
-    panels.forEach(function (p, n) { p.style.display = n === i ? '' : 'none'; });
-    if (bar) bar.style.width = ((i + 1) / panels.length * 100).toFixed(2) + '%';
-  }
-  tabs.forEach(function (t) { t.addEventListener('click', function () { select(+t.dataset.tab); }); });
-  if (tabs.length) select(0);
-})();
-</script>
 </body>
 </html>

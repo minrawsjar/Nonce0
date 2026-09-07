@@ -9,6 +9,7 @@ Read in this order. Everything below is design; code lives above this directory.
 | **[nonce0-complete-design.md](nonce0-complete-design.md)** | **The whole system in one document.** Three layers, the Project X layer, `init`, `migrate`, the seam, contracts, threat model. Also as [PDF](nonce0-complete-design.pdf) (14pp) and [Excalidraw](nonce0-architecture.excalidraw). |
 | [integration-brief.md](integration-brief.md) | Verified findings the design assumes and does not re-argue. Read before proposing changes. |
 | [integration-design.md](integration-design.md) | Two-lane build structure, sponsor decisions, honesty guardrails. |
+| [privacy-layer-design.md](privacy-layer-design.md) | PQ wallets, ring-authorized authority, network privacy. Adds the *target selection* threat class the others do not cover. Also as [PDF](privacy-layer-design.pdf) (6pp). |
 
 ## Source specs
 

@@ -1,8 +1,8 @@
 {
-  "name": "nonce0-frontend",
+  "name": "chaff-frontend",
   "version": "0.0.0",
   "private": true,
-  "description": "Landing page and scanner dashboard. No framework, no build step, no dependencies.",
+  "description": "Landing page for chaff. No framework, no build step, no dependencies.",
   "scripts": {
     "dev": "node --watch ../backend/server.js",
     "start": "node ../backend/server.js"

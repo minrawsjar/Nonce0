@@ -2,44 +2,44 @@
 @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;600&family=Lora:wght@400;600&display=swap');
 
 :root {
-  --color-bg: #f3f2f2;
-  --color-surface: #eae9e9;
-  --color-text: #201f1d;
-  --color-accent: #b68235;
-  --color-accent-2: #ac803e;
-  --color-divider: color-mix(in srgb, #201f1d 16%, transparent);
+  --color-bg: #131019;
+  --color-surface: #1b1826;
+  --color-text: #e8e4f0;
+  --color-accent: #a396d9;
+  --color-accent-2: #d6a94f;
+  --color-divider: color-mix(in srgb, #e8e4f0 15%, transparent);
 
   /* Tonal ramps — generated in OKLCH on one shared lightness scale, so the
      same step of any role matches the others in visual value. */
-  --color-neutral-100: #f8f4f4;
-  --color-neutral-200: #eae7e7;
-  --color-neutral-300: #d7d3d3;
-  --color-neutral-400: #bab6b6;
-  --color-neutral-500: #9b9797;
-  --color-neutral-600: #7d7979;
-  --color-neutral-700: #605d5d;
-  --color-neutral-800: #444141;
-  --color-neutral-900: #2d2b2b;
+  --color-neutral-100: #1b1826;
+  --color-neutral-200: #232030;
+  --color-neutral-300: #2f2b3d;
+  --color-neutral-400: #4a4459;
+  --color-neutral-500: #6f6880;
+  --color-neutral-600: #8b8399;
+  --color-neutral-700: #a9a2b8;
+  --color-neutral-800: #cdc7db;
+  --color-neutral-900: #e8e4f0;
 
-  --color-accent-100: #fff3e4;
-  --color-accent-200: #ffe3bf;
-  --color-accent-300: #facb8d;
-  --color-accent-400: #e1ad66;
-  --color-accent-500: #c28d41;
-  --color-accent-600: #a06f24;
-  --color-accent-700: #7d5411;
-  --color-accent-800: #5a3b0a;
-  --color-accent-900: #3a270d;
+  --color-accent-100: #efecf9;
+  --color-accent-200: #ded8f2;
+  --color-accent-300: #c7bde8;
+  --color-accent-400: #b3a6e0;
+  --color-accent-500: #a396d9;
+  --color-accent-600: #8d7ecb;
+  --color-accent-700: #7767b4;
+  --color-accent-800: #5f5195;
+  --color-accent-900: #463b6f;
 
-  --color-accent-2-100: #fff3e4;
-  --color-accent-2-200: #ffe3be;
-  --color-accent-2-300: #f5cd96;
-  --color-accent-2-400: #dbaf70;
-  --color-accent-2-500: #bc8f4e;
-  --color-accent-2-600: #9b7232;
-  --color-accent-2-700: #79561f;
-  --color-accent-2-800: #573d14;
-  --color-accent-2-900: #382810;
+  --color-accent-2-100: #fbf3e2;
+  --color-accent-2-200: #f4e2bd;
+  --color-accent-2-300: #e9cd92;
+  --color-accent-2-400: #dfb96e;
+  --color-accent-2-500: #d6a94f;
+  --color-accent-2-600: #bd8f38;
+  --color-accent-2-700: #9c7429;
+  --color-accent-2-800: #75571e;
+  --color-accent-2-900: #4e3a14;
 
   --font-heading: "Cormorant Garamond", system-ui, sans-serif;
   --font-heading-weight: 600; /* review round 3: bold retired — semibold is the
@@ -255,10 +255,10 @@ textarea.input { min-height: 90px; resize: vertical; }
 
 
 /* ─────────────────────────────────────────────────────────────
-   nonce0 landing. Deliberately NOT the centred-pill-nav +
-   centred-hero + logo-marquee skeleton that every AI-infra site
-   ships. Left-aligned editorial: rules, numbered sections,
-   asymmetric hero, no carousel.
+   chaff landing. Dark ink + lavender, matching the pitch deck.
+   Left-aligned editorial: rules, numbered sections, asymmetric
+   hero, no carousel — deliberately not the centred-pill-nav
+   skeleton every crypto-infra site ships.
    ───────────────────────────────────────────────────────────── */
 
 .wrap { max-width: 1180px; margin: 0 auto; padding: 0 var(--space-6); }
@@ -320,11 +320,17 @@ textarea.input { min-height: 90px; resize: vertical; }
    cream and gold. Every photo gets graded toward the page instead of
    sitting on top of it looking pasted in.                          */
 .photo { display: block; width: 100%; height: auto;
-         filter: sepia(.22) saturate(.85) contrast(1.04) brightness(.98); }
+         filter: saturate(.9) contrast(1.06) brightness(.92); }
 
 /* The chip render ships on a pure-white studio background. multiply
    drops that white straight into the page ground — no cut-out needed. */
-.photo-cut { mix-blend-mode: multiply; filter: sepia(.3) saturate(.8) contrast(1.06); }
+/* The chip render is a dark subject on a pure-white studio background.
+   multiply removes white, screen removes black — so on a DARK page neither
+   works alone: multiply swallows the subject, screen keeps the white box.
+   The fix is a light specimen plate to multiply against. */
+.plate { background: #e9e6f1; border-radius: var(--radius-md); padding: var(--space-4); }
+.plate img { mix-blend-mode: multiply; filter: saturate(.9) contrast(1.05); }
+.photo-cut { max-width: 100%; }
 
 .band { position: relative; margin: calc(var(--space-8) * 2) 0; overflow: hidden;
         border-top: 1px solid var(--color-divider); border-bottom: 1px solid var(--color-divider); }
@@ -351,3 +357,8 @@ textarea.input { min-height: 90px; resize: vertical; }
    which stretches the image into a tall smear and blows out the grid row. */
 .photo-cut { max-width: 380px; height: auto; }
 @media (max-width: 780px) { .photo-cut { max-width: 260px; } }
+
+.pill-tag { font-family: ui-monospace, Menlo, monospace; font-size: 12px; letter-spacing: .04em;
+            border: 1px solid var(--color-divider); border-radius: 999px;
+            padding: 6px 14px; color: var(--color-neutral-700); }
+.hero-photo { justify-self: end; width: min(100%, 380px); }
