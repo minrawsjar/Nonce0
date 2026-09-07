@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>nonce0 — quantum key exposure</title>
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<header>
+  <h1>nonce<span>0</span></h1>
+  <p class="tagline">Find out which of your keys a quantum computer would break, before it exists.</p>
+</header>
+
+<main>
+  <form id="scan-form">
+    <input id="target" name="target" placeholder="0xProtocol address, or a path like ." autocomplete="off" spellcheck="false" required>
+    <select id="tier" name="tier" aria-label="Scan tier">
+      <option value="free">free — severity counts</option>
+      <option value="depth1">depth1 — direct authority edges</option>
+      <option value="depth3">depth3 — full kill chain</option>
+    </select>
+    <button type="submit">Scan</button>
+  </form>
+
+  <p id="status" class="status" role="status" aria-live="polite"></p>
+
+  <section id="exposure" hidden>
+    <h2>Cross-chain exposure</h2>
+    <p class="note">
+      The same key controls the same address on every chain. One throwaway testnet
+      transaction publishes the public key permanently, everywhere at once.
+    </p>
+    <table>
+      <thead><tr><th>Chain</th><th>Nonce</th><th>Status</th><th>First exposing tx</th></tr></thead>
+      <tbody id="exposure-rows"></tbody>
+    </table>
+  </section>
+
+  <section id="findings" hidden>
+    <h2>Findings <span class="hint">ranked by what you can still do something about</span></h2>
+    <table>
+      <thead><tr><th>Rule</th><th>Severity</th><th>Fixability</th><th>Location</th><th>Next step</th></tr></thead>
+      <tbody id="finding-rows"></tbody>
+    </table>
+  </section>
+</main>
+
+<footer>
+  <span id="health" class="pill">checking…</span>
+  <span>nonce0 is the scanner · PQGuard is the contract suite it installs</span>
+</footer>
+
+<script type="module" src="/app.js"></script>
+</body>
+</html>

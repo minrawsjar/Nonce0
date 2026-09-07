@@ -1,0 +1,20 @@
+{
+  "name": "nonce0-api",
+  "version": "0.0.0",
+  "private": true,
+  "description": "x402-gated scan API. The only directory in this repo with a node_modules.",
+  "type": "module",
+  "engines": { "node": ">=18" },
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
+  "comment": [
+    "Deliberately empty until build step 10. x402 middleware and @hashgraph/sdk",
+    "install HERE and only here. This directory is a SIBLING of ../src, so Node's",
+    "upward module resolution can never reach backend/node_modules from a file",
+    "that ships inside the npm tarball. That is what makes the scanner's",
+    "zero-dependency claim structural instead of a promise."
+  ],
+  "dependencies": {}
+}

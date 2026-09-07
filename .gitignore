@@ -1,0 +1,20 @@
+node_modules/
+.env
+*.env
+!.env.example
+
+# foundry build output. lib/ is git submodules and stays TRACKED.
+contracts/out/
+contracts/cache/
+
+# rust / substreams
+indexer/target/
+*.spkg
+
+# scanner rpc cache (committed only for the demo fixture, see test/fixtures/cache/)
+.nonce0-cache/
+
+# npm pack artifacts
+nonce0-*.tgz
+
+.DS_Store

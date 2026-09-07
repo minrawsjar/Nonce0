@@ -1,0 +1,33 @@
+{
+  "name": "nonce0",
+  "version": "0.0.0",
+  "description": "Find out which of your keys a quantum computer would break, before it exists. Cross-chain public-key exposure scanner for EVM protocols.",
+  "keywords": [
+    "quantum",
+    "post-quantum",
+    "security",
+    "ethereum",
+    "evm",
+    "scanner",
+    "cbom",
+    "secp256k1"
+  ],
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "nonce0": "./bin/nonce0.js"
+  },
+  "files": [
+    "bin",
+    "src"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "smoke": "npm pack --silent && D=$(mktemp -d) && tar xzf nonce0-*.tgz -C $D && cp -r test/fixtures $D/fixtures && node $D/package/bin/nonce0.js scan $D/fixtures --json; rm -rf $D nonce0-*.tgz"
+  },
+  "dependencies": {},
+  "devDependencies": {}
+}
