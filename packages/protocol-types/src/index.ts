@@ -1,4 +1,4 @@
-// Project X V1 — shared protocol contract (§2).
+// Opaque V1 — shared protocol contract (§2).
 //
 // T2. This package is the contract every other module compiles against. It
 // holds immutable DTOs, semantic identifiers and finite error types — never
@@ -66,11 +66,11 @@ export const DENOMINATIONS: readonly Denomination[] = Object.freeze([
 // The nullifier binds ONLY the secret and the pool. Recipient and
 // paymentContext must never enter it: a nullifier that varies with the
 // recipient lets one note be spent once per recipient, without limit.
-export const NOTE_DOMAIN = 'projectx/v1/note' as const;
-export const NULLIFIER_DOMAIN = 'projectx/v1/nullifier' as const;
-export const PAYMENT_DOMAIN = 'projectx/v1/payment' as const;
-export const POOL_ID_DOMAIN = 'projectx/v1/pool-id' as const;
-export const SPEND_ENCODING_DOMAIN = 'projectx/v1/spend' as const;
+export const NOTE_DOMAIN = 'opaque/v1/note' as const;
+export const NULLIFIER_DOMAIN = 'opaque/v1/nullifier' as const;
+export const PAYMENT_DOMAIN = 'opaque/v1/payment' as const;
+export const POOL_ID_DOMAIN = 'opaque/v1/pool-id' as const;
+export const SPEND_ENCODING_DOMAIN = 'opaque/v1/spend' as const;
 
 export const PROTOCOL_VERSION = '1-review' as const;
 export type ProtocolVersion = typeof PROTOCOL_VERSION;

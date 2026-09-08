@@ -1,16 +1,16 @@
-# chaff docs
+# opaque docs
 
 ## Read in this order
 
 | Document | What it is |
 |---|---|
-| [project-x-context-doc_1.md](project-x-context-doc_1.md) | Full context handoff, including the decision log — *why* things were cut. Read §3 before reopening a settled debate. |
-| [project-x-spec-v2.md](project-x-spec-v2.md) | The technical spec. Supersedes every earlier Project X and PQGuard spec. |
-| `output/pdf/project-x-v1-team-handoff.pdf` | The V1 execution contract: ownership, frozen interfaces, per-owner build steps, G0–G5 gates. |
-| [project-x-interfaces.md](project-x-interfaces.md) | The frozen exports each module may depend on. |
-| [project-x-workspace.md](project-x-workspace.md) | Where each owner's code lives. |
+| [context-doc_1.md](context-doc_1.md) | Full context handoff, including the decision log — *why* things were cut. Read §3 before reopening a settled debate. |
+| [spec-v2.md](spec-v2.md) | The technical spec. Supersedes every earlier Opaque and PQGuard spec. |
+| `output/pdf/opaque-v1-team-handoff.pdf` | The V1 execution contract: ownership, frozen interfaces, per-owner build steps, G0–G5 gates. |
+| [interfaces.md](interfaces.md) | The frozen exports each module may depend on. |
+| [workspace.md](workspace.md) | Where each owner's code lives. |
 
-[project-x-spec.md](project-x-spec.md) is v1, kept only for the record. **Do not
+[spec.md](spec.md) is v1, kept only for the record. **Do not
 build from it.** It specifies the Ring-LWE (lattice) ring signature that v2
 replaced with FORS+C and an MPC-in-the-head proof, because no on-chain lattice
 verifier exists anywhere and it was the highest-risk task in the build.

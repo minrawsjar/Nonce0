@@ -29,15 +29,15 @@
 import { createCipheriv, createDecipheriv, hkdfSync, randomBytes, timingSafeEqual } from 'node:crypto';
 import { ml_kem768 } from '@noble/post-quantum/ml-kem.js';
 
-import { ProtocolFailure, type Hex, type RelayId } from '@chaff/protocol-types';
-import { encodeBigint, fromHex, toHex } from '@chaff/protocol-types/codecs.js';
+import { ProtocolFailure, type Hex, type RelayId } from '@opaque/protocol-types';
+import { encodeBigint, fromHex, toHex } from '@opaque/protocol-types/codecs.js';
 
 export const MESH_VERSION = '1-review' as const;
 
 const KEM_CIPHERTEXT_BYTES = 1088; // ML-KEM-768
 const NONCE_BYTES = 12;
 const GCM_TAG_BYTES = 16;
-const HKDF_INFO = 'projectx/v1/mesh/hop-key';
+const HKDF_INFO = 'opaque/v1/mesh/hop-key';
 
 /**
  * The INNERMOST plaintext is padded up to one of these. Because every layer is

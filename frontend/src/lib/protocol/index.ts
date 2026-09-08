@@ -32,8 +32,8 @@ import {
   type RingClient,
   type StatusHandle,
   type TxHash,
-} from '@chaff/protocol-types';
-import { asPrivateSpend, assertRelayPath, spendHash } from '@chaff/protocol-types/codecs.js';
+} from '@opaque/protocol-types';
+import { asPrivateSpend, assertRelayPath, spendHash } from '@opaque/protocol-types/codecs.js';
 
 export type { ProtocolCapabilities, IntentStatus, NoteSummary, PaymentRequest, PoolScope };
 

@@ -23,8 +23,8 @@ import {
   type PrivateSpend,
   type TxHash,
   type UnixSeconds,
-} from '@chaff/protocol-types';
-import { asPrivateSpend, derivePaymentContext, spendHash } from '@chaff/protocol-types/codecs.js';
+} from '@opaque/protocol-types';
+import { asPrivateSpend, derivePaymentContext, spendHash } from '@opaque/protocol-types/codecs.js';
 
 import { evaluateIntent, type EvaluationDeps, type ScoreReading } from '../evaluate-intent.ts';
 import { IntentStore } from '../intent-store.ts';

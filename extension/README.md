@@ -1,4 +1,4 @@
-# chaff — browser extension
+# opaque — browser extension
 
 The wallet as a Chrome/Edge/Brave extension. It is not a second codebase: the
 popup is `frontend/app.html`, the same page served at `/app.html`, built by the

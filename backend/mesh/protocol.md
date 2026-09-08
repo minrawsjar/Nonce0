@@ -13,7 +13,7 @@ passive observer, all-hop collusion, or a compromised browser.
 | Layer | Primitive |
 |---|---|
 | Per-hop key agreement | ML-KEM-768 (encapsulate to the hop's directory key) |
-| Key derivation | HKDF-SHA-256, salt = that hop's `hopLocalId`, info = `projectx/v1/mesh/hop-key` |
+| Key derivation | HKDF-SHA-256, salt = that hop's `hopLocalId`, info = `opaque/v1/mesh/hop-key` |
 | Layer encryption | AES-256-GCM, 12-byte nonce, header as AAD |
 
 No X25519, no ECDH, no elliptic curve anywhere in this path — a V1 hard

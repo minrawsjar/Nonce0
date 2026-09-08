@@ -1,4 +1,4 @@
-# Project X — Technical Specification
+# Opaque — Technical Specification
 
 **For:** ETHGlobal ETHOnline 2026 (Sept 4–16, async, 4-person team).
 **Status:** locked direction, spec v1. Anything under "Open decisions" is genuinely
@@ -19,7 +19,7 @@ Settlement in USDC via Arc.
 
 Railgun, Aztec and Privacy Pools solve (1) with elliptic-curve ZK-SNARKs —
 quantum-vulnerable — and none solve (2). Monero solves (1)+(2) with classical ring
-signatures on a non-programmable chain. Project X is (1)+(2)+(3), PQ, on Ethereum.
+signatures on a non-programmable chain. Opaque is (1)+(2)+(3), PQ, on Ethereum.
 
 ## 2. Goals / Non-goals
 
@@ -27,7 +27,7 @@ signatures on a non-programmable chain. Project X is (1)+(2)+(3), PQ, on Ethereu
 fixed member set (ring size 8 for demo); relay mesh of 3–5 nodes batching and delaying
 inside TEEs (simulated attestation acceptable if noted); one Chainlink CRE Confidential
 Workflow performing a real eligibility check; settlement leg on Arc in USDC; a "Network
-Observer" dashboard showing naive-vs-Project-X correlation.
+Observer" dashboard showing naive-vs-Opaque correlation.
 
 **Explicitly out of scope — do not attempt:**
 - Post-quantum wallet signatures (ECDSA stays at the wallet layer — a known
@@ -108,7 +108,7 @@ contract is the only thing deciding a payment is valid.
 ## 6. Open decisions — do not resolve unilaterally
 
 - **Third sponsor.** Leading candidate: The Graph, pairing a Substreams package with a
-  Subgraph over both Project X's mesh/batch events and Arc's settlement events (this
+  Subgraph over both Opaque's mesh/batch events and Arc's settlement events (this
   genuinely satisfies "compose two Graph products" + "query pattern spanning multiple
   protocols"; a subgraph indexing only your own contract would not clear that bar).
   Only build if the team confirms and the dashboard needs it anyway.
@@ -135,7 +135,7 @@ entirely on-chain. The mesh is trusted only for network-origin privacy.
 | 1–4 | **Highest-risk, start first:** on-chain verifier for ring signature + range proof (§4). Note commitments, linkability-tag double-spend, wallet flow for signing within a group of 8. If gas forces a smaller ring or the off-chain fallback, decide HERE, not Day 10. |
 | 5–7 | Relay mesh: 3 hops, batching, randomized delay. TEE hosting (simulated attestation acceptable if noted). |
 | 8–9 | Chainlink CRE Confidential Workflow + Arc/USDC settlement; 3rd sponsor if resolved. |
-| 10–11 | Network Observer dashboard: naive-vs-Project-X correlation, simulated traffic, labeled. |
+| 10–11 | Network Observer dashboard: naive-vs-Opaque correlation, simulated traffic, labeled. |
 | 12 | Demo script (90s), architecture diagram, README with §7 threat model, sponsor writeups. |
 
 ## 9. References

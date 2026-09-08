@@ -1,12 +1,12 @@
 {
   "manifest_version": 3,
-  "name": "chaff",
+  "name": "opaque",
   "version": "0.1.0",
   "description": "A private payment wallet whose spend key is post-quantum today.",
 
   "action": {
     "default_popup": "app.html",
-    "default_title": "chaff"
+    "default_title": "opaque"
   },
 
   "icons": {

@@ -1,9 +1,9 @@
 {
-  "name": "chaff-frontend",
+  "name": "opaque-frontend",
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "chaff's landing page and wallet. TypeScript, built with Vite.",
+  "description": "opaque's landing page and wallet. TypeScript, built with Vite.",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
@@ -33,6 +33,6 @@
     "vite": "^8.2.2"
   },
   "dependencies": {
-    "@chaff/protocol-types": "file:../packages/protocol-types"
+    "@opaque/protocol-types": "file:../packages/protocol-types"
   }
 }

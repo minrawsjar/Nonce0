@@ -1,6 +1,6 @@
 // The seam between the UI and the chain.
 //
-// Every type here mirrors a struct in docs/project-x-spec-v2.md so that wiring
+// Every type here mirrors a struct in docs/spec-v2.md so that wiring
 // this up is a swap of function bodies, not a rewrite. Each function that will
 // need a real call is marked WIRE: with the spec section that defines it.
 //

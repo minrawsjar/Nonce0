@@ -24,8 +24,8 @@ import {
   type ProtocolError,
   type TxHash,
   type UnixSeconds,
-} from '@chaff/protocol-types';
-import { spendHash } from '@chaff/protocol-types/codecs.js';
+} from '@opaque/protocol-types';
+import { spendHash } from '@opaque/protocol-types/codecs.js';
 
 export interface IntentRecord {
   readonly intentId: IntentId;

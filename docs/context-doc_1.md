@@ -1,8 +1,8 @@
-# Project X — Full Context Handoff
+# Opaque — Full Context Handoff
 
 ## 0. How to use this document
 
-Paste this whole document into a new chat to resume work on Project X with zero context loss. It contains three things a fresh chat wouldn't otherwise have: (1) the full technical spec, (2) the decision log — what was tried, rejected, and why, so settled debates don't get accidentally reopened, and (3) what the two existing architecture diagrams contain. Read the decision log before proposing changes to anything it covers; several ideas in there (STARK proofs, World ID, a 4th sponsor, non-USDC payments, ENS) were seriously considered and deliberately cut, not overlooked.
+Paste this whole document into a new chat to resume work on Opaque with zero context loss. It contains three things a fresh chat wouldn't otherwise have: (1) the full technical spec, (2) the decision log — what was tried, rejected, and why, so settled debates don't get accidentally reopened, and (3) what the two existing architecture diagrams contain. Read the decision log before proposing changes to anything it covers; several ideas in there (STARK proofs, World ID, a 4th sponsor, non-USDC payments, ENS) were seriously considered and deliberately cut, not overlooked.
 
 ---
 
@@ -10,13 +10,13 @@ Paste this whole document into a new chat to resume work on Project X with zero 
 
 - **Event:** ETHGlobal ETHOnline 2026, September 4–16, fully async
 - **Team:** 4 people
-- **Working title:** "Project X" — this is a placeholder, not a finalized name. ("Quorin" was proposed earlier as a name for a different candidate direction that was ultimately not pursued — it was never adopted for this project. Naming is still an open item if you want to revisit it.)
+- **Working title:** "Opaque" — this is a placeholder, not a finalized name. ("Quorin" was proposed earlier as a name for a different candidate direction that was ultimately not pursued — it was never adopted for this project. Naming is still an open item if you want to revisit it.)
 
 ---
 
 ## 2. One-paragraph pitch
 
-Project X is a private payment protocol where the key that authorizes a spend is post-quantum secure today, sender/amount privacy comes from a small on-chain ring signature verified with pure hashing (no lattice math, no ZK/SNARK/STARK proof system anywhere in the trust path), and network-origin privacy comes from a relay mesh — generalized to also anonymize the RPC/Graph queries that precede a payment, not just the payment itself. Payments can also be submitted as confidential *intents* that wait for the best available privacy conditions before executing.
+Opaque is a private payment protocol where the key that authorizes a spend is post-quantum secure today, sender/amount privacy comes from a small on-chain ring signature verified with pure hashing (no lattice math, no ZK/SNARK/STARK proof system anywhere in the trust path), and network-origin privacy comes from a relay mesh — generalized to also anonymize the RPC/Graph queries that precede a payment, not just the payment itself. Payments can also be submitted as confidential *intents* that wait for the best available privacy conditions before executing.
 
 **One-liner:** *A payment protocol where the key that authorizes your spend is already quantum-safe, sender/amount privacy comes from pure hashing instead of unbuilt cryptography, and your payment can wait to execute until the network's anonymity conditions are actually strong.*
 
@@ -26,7 +26,7 @@ Project X is a private payment protocol where the key that authorizes a spend is
 
 In chronological order. This is the part most likely to get lost without this doc — the spec below captures *what* was decided, this captures *why*, including the paths not taken.
 
-1. **PQGuard vs. Project X.** Two directions were on the table: PQGuard (broad, multi-chain post-quantum security scanning/migration tooling) and Project X (private PQ payments). Project X was chosen — it reads as a concrete, coherent product rather than a scanning utility, and gave a clearer story for judges.
+1. **PQGuard vs. Opaque.** Two directions were on the table: PQGuard (broad, multi-chain post-quantum security scanning/migration tooling) and Opaque (private PQ payments). Opaque was chosen — it reads as a concrete, coherent product rather than a scanning utility, and gave a clearer story for judges.
 
 2. **"Exposure oracle" opening feature — cut.** An early plan borrowed from PQGuard: scan a connected wallet and show it's already publicly exposed across chains, as a dramatic opening demo beat. Killed because it's not a real finding — any address that has ever sent a transaction already has an exposed public key via `ecrecover`. Technical judges would recognize this immediately; keeping it would have undercut credibility rather than building it.
 
@@ -56,10 +56,10 @@ In chronological order. This is the part most likely to get lost without this do
 
 *(This is the complete, current spec — everything below reflects the decisions in the log above.)*
 
-# Project X — Technical Specification v2
+# Opaque — Technical Specification v2
 
 **Event:** ETHGlobal ETHOnline 2026 (Sept 4–16, async, 4-person team)
-**Status:** Locked direction. This supersedes all earlier Project X and PQGuard specs. Everyone should build from this document.
+**Status:** Locked direction. This supersedes all earlier Opaque and PQGuard specs. Everyone should build from this document.
 
 **Open item — Arc scope:** the intent-based settlement feature (§9) is the only Arc-side piece that's locked. Everything beyond that is explicitly open — see §9.4 for the bar any new Arc idea has to clear before it gets added (it has to emerge from the wallet/ring/mesh/Graph stack already here, not be reverse-engineered from Arc's prize rubric). Don't start building a second Arc feature without checking it against that bar first.
 
@@ -67,7 +67,7 @@ In chronological order. This is the part most likely to get lost without this do
 
 ## 1. Overview
 
-Project X is a private payment protocol where the key that authorizes a spend is post-quantum secure today, sender/amount privacy comes from a small on-chain ring signature verified with pure hashing (no lattice math, no ZK/SNARK/STARK proof system anywhere in the trust path), and network-origin privacy comes from a relay mesh. Payments can also be submitted as confidential *intents* that wait for the best available privacy conditions before executing.
+Opaque is a private payment protocol where the key that authorizes a spend is post-quantum secure today, sender/amount privacy comes from a small on-chain ring signature verified with pure hashing (no lattice math, no ZK/SNARK/STARK proof system anywhere in the trust path), and network-origin privacy comes from a relay mesh. Payments can also be submitted as confidential *intents* that wait for the best available privacy conditions before executing.
 
 **One-line pitch:** *A payment protocol where the key that authorizes your spend is already quantum-safe, sender/amount privacy comes from pure hashing instead of unbuilt cryptography, and your payment can wait to execute until the network's anonymity conditions are actually strong.*
 
@@ -528,9 +528,9 @@ One Confidential Workflow, two jobs, both genuinely requiring confidentiality:
 
 Two native `.excalidraw` files exist for this project, styled to match the team's existing PQGuard diagrams (color coding: blue = wallet/host layer, purple = ring/core crypto, teal = mesh/transport, orange = Graph/data layer, green = sponsor/execution layer, red dashed = threat-model/out-of-scope callouts, gray = modularity/build-order/orientation). If picking this up in a new chat and these files aren't attached, they'd need to be regenerated from the spec above — the content is fully described here so nothing is lost even without the files themselves.
 
-**`project-x-architecture.excalidraw`** — the main pipeline-flow diagram: title/subtitle, a threat-model callout, a 6-box horizontal flow (PQ Wallet → Intent Submission → Chainlink CRE → Ring-Signed Payment → Relay Mesh → Settlement → Recipient) connected by arrows, two Graph-integration boxes (ring decoy selection, Markov-chain hop selection) feeding up into the Ring and Mesh boxes, three sponsor-coverage boxes (Arc/Chainlink/Graph) with detailed status text, an out-of-scope callout, and a build-order strip.
+**`opaque-architecture.excalidraw`** — the main pipeline-flow diagram: title/subtitle, a threat-model callout, a 6-box horizontal flow (PQ Wallet → Intent Submission → Chainlink CRE → Ring-Signed Payment → Relay Mesh → Settlement → Recipient) connected by arrows, two Graph-integration boxes (ring decoy selection, Markov-chain hop selection) feeding up into the Ring and Mesh boxes, three sponsor-coverage boxes (Arc/Chainlink/Graph) with detailed status text, an out-of-scope callout, and a build-order strip.
 
-**`project-x-modules.excalidraw`** — the modular-architecture breakdown diagram: a modularity-principle callout stating the contracts exactly, a condensed threat-model callout, three core module boxes side by side (PQ Wallet, Ring Signature, Network Mesh) each with their internal technical details and dependency boundaries, a dashed cross-arrow noting that wallet reads and Graph queries also ride the mesh, a data/detail row (the §7.5 RPC/Graph relaying box plus the two Graph modules, each wired to the module it feeds), an execution layer (Chainlink CRE and Arc/Settlement modules with their struct fields and trigger logic), and the out-of-scope callout.
+**`opaque-modules.excalidraw`** — the modular-architecture breakdown diagram: a modularity-principle callout stating the contracts exactly, a condensed threat-model callout, three core module boxes side by side (PQ Wallet, Ring Signature, Network Mesh) each with their internal technical details and dependency boundaries, a dashed cross-arrow noting that wallet reads and Graph queries also ride the mesh, a data/detail row (the §7.5 RPC/Graph relaying box plus the two Graph modules, each wired to the module it feeds), an execution layer (Chainlink CRE and Arc/Settlement modules with their struct fields and trigger logic), and the out-of-scope callout.
 
 A third diagram (a simpler linear component-flow view, mirroring a third PQGuard reference image) was offered but not yet built as of this doc's writing — worth asking about if picking this up fresh.
 
@@ -544,5 +544,5 @@ A third diagram (a simpler linear component-flow view, mirroring a third PQGuard
 - Gateway draw latency — not yet verified against Circle's docs
 - Response-routing for `QUERY` messages through the mesh (§7.5) — designed, not yet built or estimated for effort
 - Whether real hardware TEE attestation is feasible in the build window, or will be simulated (§7.4) — not yet decided
-- Project name — "Project X" is a working title, not final
+- Project name — "Opaque" is a working title, not final
 - Whether a third, simpler linear-flow diagram is wanted

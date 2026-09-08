@@ -6,7 +6,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { ProtocolFailure, type Hex, type RelayId } from '@chaff/protocol-types';
+import { ProtocolFailure, type Hex, type RelayId } from '@opaque/protocol-types';
 import {
   DEFAULT_SIZE_CLASS,
   MemoryReplayCache,

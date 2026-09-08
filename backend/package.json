@@ -1,9 +1,9 @@
 {
-  "name": "@chaff/backend",
+  "name": "@opaque/backend",
   "version": "1.0.0-review",
   "private": true,
   "type": "module",
-  "description": "Project X V1 — relay mesh (§5) and CRE confidential execution. Swarnim, S3/S4.",
+  "description": "Opaque V1 — relay mesh (§5) and CRE confidential execution. Swarnim, S3/S4.",
   "engines": { "node": ">=22.18" },
   "scripts": {
     "test": "node --test mesh/test/*.test.ts cre/test/*.test.ts",
@@ -20,7 +20,7 @@
     "That is why @noble/post-quantum is a dependency and not an accident."
   ],
   "dependencies": {
-    "@chaff/protocol-types": "file:../packages/protocol-types",
+    "@opaque/protocol-types": "file:../packages/protocol-types",
     "@noble/hashes": "^2.4.0",
     "@noble/post-quantum": "^0.7.1"
   },

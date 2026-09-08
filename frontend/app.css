@@ -1,4 +1,4 @@
-/* chaff wallet — app components.
+/* opaque wallet — app components.
  *
  * Loaded AFTER styles.css, which owns the tokens, the type stack and the base
  * reset. Nothing here redefines a token; if a colour looks wrong, fix the ramp

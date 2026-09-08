@@ -1,4 +1,4 @@
-// chaff wallet — the UI.
+// opaque wallet — the UI.
 //
 // Two rules kept strictly, because these exact bytes ship as the extension
 // popup as well as the hosted page:

@@ -4,8 +4,8 @@ import assert from 'node:assert/strict';
 import { buildPaymentSchedule } from '../packages/protocol-types/index.js';
 import { deriveNullifier } from '../packages/ring-client/notes.js';
 import { selectRelayPath } from '../graph/selection.js';
-import { evaluatePrivacyTrigger } from '../backend/project-x/cre/privacy-timed.js';
-import { validateMeshEnvelope } from '../backend/project-x/mesh/envelope.js';
+import { evaluatePrivacyTrigger } from '../backend/opaque/cre/privacy-timed.js';
+import { validateMeshEnvelope } from '../backend/opaque/mesh/envelope.js';
 import { createActionDigest } from '../packages/pq-wallet/digest.js';
 
 test('immediate mode is represented by a current deadline', () => {

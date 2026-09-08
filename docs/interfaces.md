@@ -1,6 +1,6 @@
-# Project X V1 interfaces
+# Opaque V1 interfaces
 
-This file is the repository-native implementation contract. The full owner plan is in `../output/pdf/project-x-v1-team-handoff.pdf`.
+This file is the repository-native implementation contract. The full owner plan is in `../output/pdf/opaque-v1-team-handoff.pdf`.
 
 ## Payment scheduling
 

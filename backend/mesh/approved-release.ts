@@ -17,7 +17,7 @@ import {
   type PrivateSpend,
   type TxHash,
   type UnixSeconds,
-} from '@chaff/protocol-types';
+} from '@opaque/protocol-types';
 
 import { verifyRelease, type ReleaseSeenSet } from '../cre/release.ts';
 

@@ -25,10 +25,10 @@ import {
   type IntentId,
   type PrivateSpend,
   type UnixSeconds,
-} from '@chaff/protocol-types';
-import { encodeBigint, spendHash, toHex } from '@chaff/protocol-types/codecs.js';
+} from '@opaque/protocol-types';
+import { encodeBigint, spendHash, toHex } from '@opaque/protocol-types/codecs.js';
 
-const RELEASE_MAC_DOMAIN = 'projectx/v1/cre/approved-release';
+const RELEASE_MAC_DOMAIN = 'opaque/v1/cre/approved-release';
 
 const utf8 = (s: string): Uint8Array => new TextEncoder().encode(s);
 

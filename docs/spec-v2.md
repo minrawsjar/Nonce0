@@ -1,7 +1,7 @@
-# Project X — Technical Specification v2
+# Opaque — Technical Specification v2
 
 **Event:** ETHGlobal ETHOnline 2026 (Sept 4–16, async, 4-person team)
-**Status:** Locked direction. This supersedes all earlier Project X and PQGuard specs. Everyone should build from this document.
+**Status:** Locked direction. This supersedes all earlier Opaque and PQGuard specs. Everyone should build from this document.
 
 **Open item — Arc scope:** the intent-based settlement feature (§9) is the only Arc-side piece that's locked. Everything beyond that is explicitly open — see §9.4 for the bar any new Arc idea has to clear before it gets added (it has to emerge from the wallet/ring/mesh/Graph stack already here, not be reverse-engineered from Arc's prize rubric). Don't start building a second Arc feature without checking it against that bar first.
 
@@ -9,7 +9,7 @@
 
 ## 1. Overview
 
-Project X is a private payment protocol where the key that authorizes a spend is post-quantum secure today, sender/amount privacy comes from a small on-chain ring signature verified with pure hashing (no lattice math, no ZK/SNARK/STARK proof system anywhere in the trust path), and network-origin privacy comes from a relay mesh. Payments can also be submitted as confidential *intents* that wait for the best available privacy conditions before executing.
+Opaque is a private payment protocol where the key that authorizes a spend is post-quantum secure today, sender/amount privacy comes from a small on-chain ring signature verified with pure hashing (no lattice math, no ZK/SNARK/STARK proof system anywhere in the trust path), and network-origin privacy comes from a relay mesh. Payments can also be submitted as confidential *intents* that wait for the best available privacy conditions before executing.
 
 **One-line pitch:** *A payment protocol where the key that authorizes your spend is already quantum-safe, sender/amount privacy comes from pure hashing instead of unbuilt cryptography, and your payment can wait to execute until the network's anonymity conditions are actually strong.*
 

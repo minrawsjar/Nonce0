@@ -1,9 +1,9 @@
 {
-  "name": "@chaff/protocol-types",
+  "name": "@opaque/protocol-types",
   "version": "1.0.0-review",
   "private": true,
   "type": "module",
-  "description": "Project X V1 shared protocol contract (§2): immutable DTOs, semantic IDs, codecs and finite error types.",
+  "description": "Opaque V1 shared protocol contract (§2): immutable DTOs, semantic IDs, codecs and finite error types.",
   "exports": {
     ".": "./src/index.ts",
     "./codecs.js": "./src/codecs.ts"
