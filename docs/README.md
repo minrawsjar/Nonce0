@@ -9,6 +9,8 @@
 | `output/pdf/opaque-v1-team-handoff.pdf` | The V1 execution contract: ownership, frozen interfaces, per-owner build steps, G0–G5 gates. |
 | [interfaces.md](interfaces.md) | The frozen exports each module may depend on. |
 | [workspace.md](workspace.md) | Where each owner's code lives. |
+| [handoff-manan.md](handoff-manan.md) | Manan: PQ wallet (§5) — what exists, what is missing, and the three rules that matter. |
+| [handoff-aditya.md](handoff-aditya.md) | Aditya: notes, selection, Graph and contracts — including the decision that blocks the pool. |
 
 [spec.md](spec.md) is v1, kept only for the record. **Do not
 build from it.** It specifies the Ring-LWE (lattice) ring signature that v2
