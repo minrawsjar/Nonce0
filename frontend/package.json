@@ -2,23 +2,35 @@
   "name": "chaff-frontend",
   "version": "0.0.0",
   "private": true,
-  "description": "Landing page for chaff. No framework, no build step, no dependencies.",
+  "type": "module",
+  "description": "chaff's landing page and wallet. TypeScript, built with Vite.",
   "scripts": {
-    "dev": "node --watch ../backend/server.js",
-    "start": "node ../backend/server.js"
+    "dev": "vite",
+    "build": "vite build",
+    "typecheck": "tsc --noEmit",
+    "preview": "vite preview",
+    "ext": "npm run build && node ../extension/build.mjs",
+    "api": "node --watch ../backend/server.js"
   },
   "comment": [
-    "There is no bundler and there never needs to be: index.html and app.html are",
-    "plain HTML, styles.css and app.css are plain CSS, app.js is a browser module.",
+    "`npm install && npm run dev` is the whole setup. Vite serves index.html",
+    "(landing) and app.html (wallet), transpiles TypeScript on the fly and",
+    "hot-reloads. /api is proxied to the backend on :8402, so run `npm run api`",
+    "in a second terminal when you need it — the UI runs fine without it.",
     "",
-    "`npm run dev` runs the API server, which serves this directory same-origin --",
-    "so /api/scan works from the dashboard with no CORS and no proxy config. Static",
-    "files are read from disk per request, so editing HTML/CSS/SVG needs only a",
-    "browser refresh; --watch is there for when you edit the server itself.",
+    "`npm run ext` builds and then assembles extension/dist, the unpacked",
+    "Chrome extension. The wallet is written to Manifest V3's rules (no inline",
+    "<script>, no onclick=) so one UI ships to both the web and the extension;",
+    "extension/build.mjs fails loudly if that ever stops being true.",
     "",
-    "No node_modules lives here. The scanner's zero-dependency claim is enforced by",
-    "backend/ being a SIBLING of src/, and this package keeps that shape."
+    "These dependencies do NOT reach the scanner. frontend/ is a SIBLING of",
+    "../src, never a parent, so Node's upward module resolution cannot see this",
+    "node_modules from shipped code. Do not introduce workspaces or a root",
+    "node_modules — that is exactly what would break it."
   ],
-  "dependencies": {},
-  "devDependencies": {}
+  "devDependencies": {
+    "typescript": "^7.0.2",
+    "vite": "^8.2.2"
+  },
+  "dependencies": {}
 }

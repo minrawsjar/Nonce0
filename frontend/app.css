@@ -1,0 +1,272 @@
+/* chaff wallet — app components.
+ *
+ * Loaded AFTER styles.css, which owns the tokens, the type stack and the base
+ * reset. Nothing here redefines a token; if a colour looks wrong, fix the ramp
+ * in styles.css and every surface follows.
+ *
+ * Two constraints shape this file, both from Manifest V3:
+ *   1. No inline <script> and no onclick= anywhere in app.html, so every
+ *      handler is attached in app.js. That is why ids outnumber classes here.
+ *   2. The popup is ~420px and sizes to content. The column below is built at
+ *      that width first and merely centres on a desktop viewport, so the
+ *      extension and the hosted page render from identical CSS.
+ */
+
+body { margin: 0; background: var(--color-bg); }
+
+.app {
+  width: 100%;
+  max-width: 420px;
+  margin: 0 auto;
+  padding: var(--space-4) var(--space-4) var(--space-8);
+  box-sizing: border-box;
+}
+
+/* ── top bar ───────────────────────────────────────────────────────────── */
+
+.app-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--color-divider);
+}
+
+.app-mark {
+  font-family: var(--font-heading);
+  font-size: 21px;
+  letter-spacing: .01em;
+  color: var(--color-text);
+}
+
+.app-net {
+  font-size: 11px;
+  letter-spacing: .09em;
+  text-transform: uppercase;
+  color: var(--color-neutral-600);
+}
+
+.app-net b { color: var(--color-accent-400); font-weight: 400; }
+
+/* ── the signature budget ──────────────────────────────────────────────────
+   A few-time signature scheme has a finite number of signatures per key. No
+   conventional wallet has to show this, so there is no convention to borrow:
+   it reads as a fuel gauge, because that is what it is. */
+
+.budget { padding: var(--space-4) 0 var(--space-3); }
+
+.budget-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: var(--space-2);
+}
+
+.budget-label {
+  font-size: 11px;
+  letter-spacing: .09em;
+  text-transform: uppercase;
+  color: var(--color-neutral-600);
+}
+
+.budget-count { font-family: var(--font-heading); font-size: 19px; }
+.budget-count span { color: var(--color-neutral-600); font-size: 14px; }
+
+.meter {
+  display: flex;
+  gap: 3px;
+  height: 6px;
+}
+
+/* One cell per remaining signature, not a percentage bar. The count is small
+   enough to be countable, and a countable thing should be counted. */
+.meter i {
+  flex: 1 1 0;
+  border-radius: 1px;
+  background: var(--color-neutral-300);
+}
+
+.meter i.on { background: var(--color-accent-500); }
+.meter.low i.on { background: var(--color-accent-2-500); }
+
+.budget-note {
+  margin: var(--space-2) 0 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--color-neutral-600);
+}
+
+.budget-note b { color: var(--color-accent-2-400); font-weight: 400; }
+
+/* ── tabs ──────────────────────────────────────────────────────────────── */
+
+.tabs {
+  display: flex;
+  gap: var(--space-4);
+  margin: var(--space-3) 0 var(--space-6);
+  border-bottom: 1px solid var(--color-divider);
+}
+
+.tab {
+  appearance: none;
+  background: none;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  padding: 0 0 var(--space-3);
+  font-family: var(--font-body);
+  font-size: 13.5px;
+  color: var(--color-neutral-600);
+  cursor: pointer;
+}
+
+.tab:hover { color: var(--color-neutral-800); }
+.tab[aria-selected="true"] { color: var(--color-text); border-bottom-color: var(--color-accent-500); }
+
+/* ── forms ─────────────────────────────────────────────────────────────── */
+
+.field { margin-bottom: var(--space-4); }
+
+.field label {
+  display: block;
+  margin-bottom: var(--space-2);
+  font-size: 11px;
+  letter-spacing: .09em;
+  text-transform: uppercase;
+  color: var(--color-neutral-600);
+}
+
+.field input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: var(--space-3);
+  background: var(--color-neutral-200);
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-md);
+  color: var(--color-text);
+  font-family: var(--font-body);
+  font-size: 14px;
+}
+
+.field input:focus {
+  outline: none;
+  border-color: var(--color-accent-600);
+}
+
+.field input.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; }
+
+.field-hint { margin: var(--space-2) 0 0; font-size: 12px; line-height: 1.6; color: var(--color-neutral-600); }
+
+.amount input { font-family: var(--font-heading); font-size: 30px; padding: var(--space-2) var(--space-3); }
+
+.row { display: flex; gap: var(--space-3); }
+.row .field { flex: 1; }
+
+.btn-wide { display: block; width: 100%; text-align: center; }
+.btn-wide[disabled] { opacity: .45; cursor: not-allowed; }
+
+/* ── the ring ──────────────────────────────────────────────────────────────
+   Every node is drawn identically and stays that way. Marking the user's own
+   commitment would be a real leak the moment anyone screen-shares, and a UI
+   that knows which member signed is a UI that can be made to say so. */
+
+.ring-wrap { text-align: center; padding: var(--space-3) 0 var(--space-4); }
+.ring-wrap svg { width: 190px; height: 190px; }
+.ring-node { fill: var(--color-accent-500); }
+.ring-orbit { fill: none; stroke: var(--color-neutral-400); stroke-width: 1; stroke-dasharray: 3 5; }
+.ring-q { fill: var(--color-neutral-600); font-family: var(--font-heading); font-size: 15px; text-anchor: middle; }
+
+/* ── stats ─────────────────────────────────────────────────────────────── */
+
+.stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1px;
+  background: var(--color-divider);
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  margin-bottom: var(--space-4);
+}
+
+.stat { background: var(--color-neutral-100); padding: var(--space-3); }
+.stat dt { font-size: 11px; letter-spacing: .09em; text-transform: uppercase; color: var(--color-neutral-600); margin-bottom: var(--space-1); }
+.stat dd { margin: 0; font-family: var(--font-heading); font-size: 21px; }
+.stat dd small { font-size: 12px; color: var(--color-neutral-600); font-family: var(--font-body); }
+
+/* ── the mesh path ─────────────────────────────────────────────────────── */
+
+.hops { display: flex; align-items: center; gap: var(--space-2); margin: var(--space-2) 0 var(--space-4); }
+
+.hop {
+  flex: 1;
+  padding: var(--space-2) 0;
+  text-align: center;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  color: var(--color-accent-300);
+  background: var(--color-neutral-200);
+  border-radius: var(--radius-sm);
+}
+
+.hop-arrow { color: var(--color-neutral-500); font-size: 12px; }
+
+/* ── intents ───────────────────────────────────────────────────────────── */
+
+.intent {
+  padding: var(--space-3) 0;
+  border-bottom: 1px solid var(--color-divider);
+}
+
+.intent:last-child { border-bottom: 0; }
+
+.intent-head { display: flex; justify-content: space-between; align-items: baseline; gap: var(--space-3); }
+.intent-amt { font-family: var(--font-heading); font-size: 17px; }
+
+.intent-state {
+  font-size: 10.5px;
+  letter-spacing: .09em;
+  text-transform: uppercase;
+  padding: 2px 7px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.intent-state.armed   { color: var(--color-accent-2-300); background: color-mix(in srgb, var(--color-accent-2-500) 16%, transparent); }
+.intent-state.settled { color: var(--color-accent-300);   background: color-mix(in srgb, var(--color-accent-500) 18%, transparent); }
+
+.intent-meta { margin: var(--space-1) 0 0; font-size: 12px; line-height: 1.65; color: var(--color-neutral-600); }
+.intent-meta code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11.5px; color: var(--color-neutral-700); }
+
+.empty { padding: var(--space-8) 0; text-align: center; font-size: 13px; color: var(--color-neutral-600); }
+
+/* ── notes ─────────────────────────────────────────────────────────────── */
+
+.note {
+  margin: 0 0 var(--space-4);
+  padding: var(--space-3);
+  border-left: 2px solid var(--color-accent-800);
+  background: var(--color-neutral-100);
+  font-size: 12.5px;
+  line-height: 1.65;
+  color: var(--color-neutral-700);
+}
+
+.note b { color: var(--color-neutral-800); font-weight: 400; }
+
+/* The unwired banner. It is gold, not grey, because a demo that quietly looks
+   live is how a hackathon judge is misled by accident. */
+.unwired {
+  margin-top: var(--space-6);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--color-divider);
+  font-size: 11.5px;
+  line-height: 1.7;
+  color: var(--color-neutral-600);
+}
+
+.unwired b { color: var(--color-accent-2-400); font-weight: 400; }
+.unwired a { color: var(--color-accent-400); }
+
+[hidden] { display: none !important; }

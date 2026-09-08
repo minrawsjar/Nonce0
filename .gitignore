@@ -18,3 +18,9 @@ indexer/target/
 nonce0-*.tgz
 
 .DS_Store
+
+# assembled unpacked extension — rebuild with `node extension/build.mjs`
+extension/dist/
+
+# vite build output
+frontend/dist/

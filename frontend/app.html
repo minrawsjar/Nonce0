@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>chaff — wallet</title>
+<link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+
+<!-- No inline <script> and no onclick= anywhere in this file. Manifest V3
+     forbids both, and keeping the rule here means these exact bytes load as
+     the extension popup and as the hosted page with no fork. -->
+
+<main class="app">
+
+  <header class="app-top">
+    <div class="app-mark">chaff</div>
+    <div class="app-net">Arc <b id="net">testnet</b></div>
+  </header>
+
+  <!-- The signature budget. FORS+C is a FEW-time scheme: the key has a finite
+       number of signatures and spending past maxUses is a break, not a warning.
+       That makes this the most load-bearing number in the wallet, so it sits
+       above the tabs and is visible in every view. -->
+  <section class="budget">
+    <div class="budget-row">
+      <span class="budget-label">Signatures remaining</span>
+      <span class="budget-count"><b id="sig-left">—</b> <span id="sig-max"></span></span>
+    </div>
+    <div class="meter" id="meter"></div>
+    <p class="budget-note" id="budget-note"></p>
+  </section>
+
+  <nav class="tabs" role="tablist">
+    <button class="tab" id="tab-send"     role="tab" aria-selected="true"  aria-controls="view-send">Send</button>
+    <button class="tab" id="tab-ring"     role="tab" aria-selected="false" aria-controls="view-ring">Ring</button>
+    <button class="tab" id="tab-activity" role="tab" aria-selected="false" aria-controls="view-activity">Activity</button>
+  </nav>
+
+  <!-- ── Send ─────────────────────────────────────────────────────────── -->
+  <section id="view-send" role="tabpanel" aria-labelledby="tab-send">
+
+    <form id="send-form">
+      <div class="field amount">
+        <label for="amount">Amount — USDC</label>
+        <input id="amount" type="text" inputmode="decimal" value="50.00" autocomplete="off">
+        <p class="field-hint">Balance <b id="balance">—</b> USDC. On Arc this same asset pays the gas, so nothing has to be funded separately.</p>
+      </div>
+
+      <div class="field">
+        <label for="recipient">Recipient</label>
+        <input id="recipient" class="mono" type="text" placeholder="0x…" autocomplete="off" spellcheck="false">
+      </div>
+
+      <p class="note">
+        <b>This payment can wait for better cover.</b> It executes when the ring pool
+        is fresh enough to hide it, or at the deadline — whichever comes first. Until
+        then the recipient and amount stay inside the enclave, not the mempool.
+      </p>
+
+      <div class="row">
+        <div class="field">
+          <label for="freshness">Fire at freshness ≥</label>
+          <input id="freshness" type="number" min="0" max="100" value="70">
+        </div>
+        <div class="field">
+          <label for="deadline">Or by</label>
+          <input id="deadline" type="number" min="1" max="72" value="12">
+          <p class="field-hint">hours</p>
+        </div>
+      </div>
+
+      <button class="btn btn-primary btn-wide" id="arm" type="submit">Arm intent</button>
+    </form>
+
+    <p class="unwired" id="fee-note"></p>
+  </section>
+
+  <!-- ── Ring ─────────────────────────────────────────────────────────── -->
+  <section id="view-ring" role="tabpanel" aria-labelledby="tab-ring" hidden>
+
+    <div class="ring-wrap" id="ring-wrap"></div>
+
+    <p class="note">
+      Eight members, drawn identically and kept that way. One of them is yours.
+      <b>chaff does not mark which, and neither should this screen</b> — a wallet that
+      knows which member signed is a wallet that can be made to say so.
+    </p>
+
+    <dl class="stats">
+      <div class="stat"><dt>Pool freshness</dt><dd id="freshness-now">—</dd></div>
+      <div class="stat"><dt>Eligible members</dt><dd id="pool-size">—</dd></div>
+    </dl>
+
+    <div class="budget-label">Relay path — 3 hops of 6</div>
+    <div class="hops" id="hops"></div>
+
+    <p class="note">
+      Hops are drawn from a Markov chain over the node pool, weighted by how much
+      other traffic each node is batching and against how often it has been picked.
+      Nothing here is trusted for the payment to be <em>valid</em> — only for it to be
+      <em>unlinkable</em>.
+    </p>
+  </section>
+
+  <!-- ── Activity ─────────────────────────────────────────────────────── -->
+  <section id="view-activity" role="tabpanel" aria-labelledby="tab-activity" hidden>
+    <div id="intent-list"></div>
+  </section>
+
+  <p class="unwired">
+    <b>Not wired to a chain.</b> State below this build is local: no contracts are
+    deployed, no FORS+C key exists yet, and the freshness score is simulated so the
+    waiting-intent behaviour is visible. Every seam that needs a real call is marked
+    <code>WIRE:</code> in <code>src/chain.ts</code>.
+    <a href="index.html">← back to chaff</a>
+  </p>
+
+</main>
+
+<script type="module" src="/src/app.ts"></script>
+</body>
+</html>
