@@ -39,7 +39,9 @@ This is what lets any one module change (a different signature scheme post-bench
 - Non-USDC payments — Arc is stablecoin-native and Gateway is USDC-specific; a swap leg would add its own privacy leak (visible swap size/timing) for little payoff
 - ENS — dropped. Not part of this build.
 - Retrofitting or scanning other protocols
-- A 4th/5th sponsor (World ID, 1inch/SwapVM, or otherwise) — holding at 3: Arc, Chainlink, Graph. World ID was seriously considered as a fix for the ring-enrollment Sybil vector (§3, §12) — a real, well-composed fix, not a bolt-on — but left out on scope-discipline grounds and because the World track wasn't assessed as a strong winning chance. Mitigated instead with Graph-side heuristics (§8.1), explicitly labeled as raising attacker cost, not eliminating the vector.
+- A 4th/5th sponsor (World ID, 1inch/SwapVM, or otherwise) — holding at 3: Arc, Chainlink, Graph. World ID was seriously considered as a fix for the ring-enrollment Sybil vector (§3, §12) — a real, well-composed fix, not a bolt-on — but left out on scope-discipline grounds and because the World track wasn't assessed as a strong winning chance. Mitigated instead with Graph-side heuristics (§8.1) plus a structural improvement from the note-based custody model (§6.6), explicitly labeled as raising attacker cost, not eliminating the vector.
+- Arbitrary-amount confidential transfers — fixed-denomination pools only (§6.6). Variable amounts need elliptic-curve-based value commitments/range proofs (RingCT-style), which would crack the "no EC anywhere" posture at the amount-hiding layer.
+- Note recovery via seed phrase or pool scanning — notes are tracked in local client storage only (§6.6). Losing local storage means losing access to unspent notes; there is no recovery mechanism in this PoC.
 
 ---
 
@@ -48,8 +50,8 @@ This is what lets any one module change (a different signature scheme post-bench
 | | Detail |
 |---|---|
 | Hides | Which ring member signed; the amount; sender's network origin (IP) for both payment submission and the RPC/Graph reads that precede it (§7.5); intent parameters (recipient, amount, timing) before execution; the compliance-check input |
-| Does not claim to prevent | A global passive network adversary; simultaneous compromise of all 3 relay hops; weak OPSEC; a well-resourced, patient adversary Sybil-enrolling ring members to erode the anonymity set — the §8.1 heuristics raise the cost of this attack, they do not eliminate it; latency cost of routing queries through the mesh (a real UX tradeoff, not hidden — see §7.5) |
-| Trust assumption for fund safety | None — spend authorization is a hash-based signature checked directly on-chain; no relay, enclave, or operator sits in that path |
+| Does not claim to prevent | A global passive network adversary; simultaneous compromise of all 3 relay hops; weak OPSEC; a well-resourced, patient adversary Sybil-enrolling ring members to erode the anonymity set — the §8.1 heuristics and the deposit-cost structure of §6.6 raise the cost of this attack, they do not eliminate it; latency cost of routing queries through the mesh (a real UX tradeoff, not hidden — see §7.5); loss of unspent funds if the local device holding note secrets is lost — there is no seed-based recovery for notes in this PoC (§6.6) |
+| Trust assumption for fund safety | None against forgery — spend authorization is a hash-based signature checked directly on-chain; no relay, enclave, or operator sits in that path. This does not cover loss of the local device holding note secrets (§6.6) |
 | Trust assumption for anonymity | The ring's OR-proof mechanism (§6) and the relay mesh's hop diversity (§7) |
 | Trust assumption for intent execution | The Chainlink CRE TEE holds intent parameters confidentially until the trigger condition fires |
 | Quantum-specific claim | The key an attacker needs to forge a spend is hash-based — no elliptic curve or lattice assumption anywhere in that path |
@@ -180,6 +182,18 @@ The contract maintains a `mapping(bytes32 => bool) spentNullifiers`. A ring-sign
 
 MPC-in-the-head proofs are historically larger than SNARKs (tens of KB, not hundreds of bytes) though smaller than raw STARKs for small circuits. Do not put a number in the pitch deck until §6.3's spike produces one.
 
+### 6.6 Note-based value custody (the pool)
+
+**Why this exists:** a ring signature only hides which of 8 keys signed — it says nothing about fund custody. If each PQ wallet directly holds and transfers its own on-chain tokens, the token transfer's `from` address is unavoidably that specific wallet, and the ring does nothing. Privacy requires pooled custody: a single contract holds all deposited funds, so the only address ever publicly visible moving tokens is the pool, never an individual depositor.
+
+**Notes, not balances.** There is no `mapping(address => uint256)` anywhere in this design. A deposit creates a note — an opaque commitment, not a balance entry — and a user's "balance" is simply the set of notes they hold secrets for. Spending consumes a note entirely and proves ring membership over 8 **note commitments** (not wallet `pkCommitment`s) using the same OR-proof machinery as §6.1–6.3; the existing nullifier (§6.4) marks that specific note spent. This also means ring membership requires an actual pool deposit, not just a `pkCommitment` registration — see the Sybil-cost note in §8.1.
+
+**Fixed denominations, not arbitrary amounts.** With public, varying per-note amounts, decoys only provide anonymity if they match the real note's size — otherwise an observer just matches amounts and the ring is trivially broken. Arbitrary confidential amounts (the Monero/Zcash RingCT approach) need homomorphic value commitments and range proofs, which are elliptic-curve constructions — a real crack in the "fully PQ" story if adopted, even though it would sit at the amount-hiding layer rather than the spend-authorization layer. **Decision:** pool(s) of fixed denominations (Tornado Cash's approach) — no commitment arithmetic, no change outputs needed. Arbitrary-amount transfers are explicit future work, not attempted here. This changes §9.1's `PaymentIntent.amount` to mean "which denomination," not a free integer — see §9.1.
+
+**Note storage — local only, no recovery.** Deposits are self-initiated: a wallet creates its own notes and already knows every one it holds from the moment of deposit, so there's no need to scan the pool to discover incoming payments (that would only be true for a different, Monero-style model where someone else creates a hidden note *for* you that you must go discover — this design doesn't use that; settlement to a recipient is a plain named transfer via Arc/Gateway, §9.3, not a hidden note the recipient must find). For this build: each note (secret, commitment, denomination, a locally-cached spent flag) is tracked in the client's local browser storage only — never transmitted, never indexed anywhere, including Graph (an earlier idea to store per-user deposit/withdraw history on Graph, even encrypted, was rejected: it reopens exactly the identity-to-activity linkage §8's hard constraint exists to prevent, provides no functional benefit over local storage if only the user can decrypt it, and is the same "durable ciphertext that must stay secret forever" risk shape this entire project exists to move away from). The locally-cached spent flag is a convenience only — always re-check the on-chain `spentNullifiers` set before attempting a spend.
+
+**The real cost of this call, stated plainly:** there is no seed-phrase-style recovery for notes in this PoC. Losing local storage (cleared browser data, a lost device) means permanently losing access to any unspent notes — a genuine fund-safety gap, not a cosmetic one. State this in the README exactly as plainly as the other labeled gaps (simulated TEE attestation, classical hop encryption). A real production version would need wallet-recovery scanning (Monero/Zcash-style trial decryption, with a hash-based "view tag" analog to keep it cheap rather than Monero's elliptic-curve-based one) or notes deterministically derived from a wallet seed — both explicitly out of scope here.
+
 ---
 
 ## 7. Network Mesh (generalized anonymizing transport)
@@ -238,15 +252,15 @@ If real hardware TEE attestation (Intel TDX/SGX or equivalent) isn't practical i
 
 **Why it matters:** poor decoy selection is a documented, real way ring-signature systems get deanonymized — Monero's early history includes exactly this failure mode via weak mixin selection and output-age analysis.
 
-**Known gap, addressed below:** enrollment is a bare `pkCommitment` hash — free and unlimited. An adversary can flood the pool with Sybil commitments; the original "weight toward diversity in `enrolledAt`" rule actually favors a freshly-enrolled Sybil batch on volume, since it's rewarding spread across a population the attacker just filled. World ID and a bonding/staking mechanism were both considered as hard fixes and deliberately left out of scope (§2) — mitigated instead with the two heuristics below. These raise the cost of the attack; they do not eliminate it (§3).
+**Known gap, addressed below:** ring membership is keyed on a note commitment (§6.6), which requires an actual pool deposit — this already raises Sybil cost from "free hash" to "real, locked capital per fake decoy," compared to the originally-considered model of a bare, freely-registerable `pkCommitment`. It does not eliminate the attack: a well-resourced adversary can still flood the pool with real deposits, and the original "weight toward diversity in `enrolledAt`" rule still actively favors a freshly-deposited Sybil batch on volume once an attacker is willing to pay for it. World ID and a further bonding/staking mechanism on top of the deposit requirement were both considered as harder fixes and deliberately left out of scope (§2) — mitigated instead with the two heuristics below, plus the deposit-cost floor from §6.6. These raise the cost of the attack; they do not eliminate it (§3).
 
-**Substreams module** — input: raw chain events; output: enrollment events (new `pkCommitment` joining the ring-eligible pool), per-member usage counts (aggregate, not per-payment linkage), funding provenance (traced a few hops back from the enrolling address), and other on-chain activity by that address.
+**Substreams module** — input: raw chain events; output: enrollment events (new note commitment joining the ring-eligible pool via a deposit, §6.6), per-member usage counts (aggregate, not per-payment linkage), funding provenance (traced a few hops back from the depositing address), and other on-chain activity by that address.
 
 **Subgraph schema:**
 
 ```graphql
 type RingMember @entity {
-  id: ID!                     # pkCommitment
+  id: ID!                     # note commitment (§6.6) — requires a real pool deposit, not a free registration
   enrolledAt: BigInt!
   timesUsedInRing: Int!       # aggregate count only, never which ring/payment
   lastUsedAt: BigInt
@@ -334,6 +348,8 @@ struct PaymentIntent {
 }
 ```
 
+**`amount` must match one of the pool's fixed denominations (§6.6), not a free integer** — arbitrary-amount transfers are out of scope for this build (would need elliptic-curve value commitments/range proofs, cracking the no-EC posture at the amount-hiding layer).
+
 Submitted encrypted to the Chainlink CRE enclave — recipient, amount, and deadline are not visible in the public mempool before execution, preventing front-running or snooping on an intent before it fires.
 
 ### 9.2 Trigger condition (evaluated inside the CRE enclave)
@@ -395,6 +411,8 @@ One Confidential Workflow, two jobs, both genuinely requiring confidentiality:
 | Ring enrollment is Sybil-able (free, unlimited `pkCommitment` registration) | High | Funding-clustering + organic-activity heuristics in §8.1. World ID and bonding both considered, deliberately left out of scope (§2). Have the one-line judge answer ready: identified, mitigated what's cheap, made an informed scoping call — not unaddressed. |
 | Mesh generalization to carry queries (§7.5) needs a response-routing path the mesh never had before | Medium | Scope response-routing as its own build item (§13), not an assumed side effect of the existing payment-forwarding logic |
 | Routing RPC/Graph reads through the mesh adds real latency to nonce/balance-style lookups | Medium | Only route wallet-specific and ring/mesh-construction reads (§7.5); test perceived latency early, don't discover it during demo prep |
+| No recovery mechanism for lost/cleared local note storage (§6.6) | High for real funds, low for a demo | Explicitly out of scope, stated plainly in README. Real version would need Monero/Zcash-style scanning (hash-based view-tag analog) or notes deterministically derived from a wallet seed |
+| Fixed-denomination pools mean no arbitrary-amount payments (§6.6) | Medium | Deliberate scope decision to avoid EC-based value commitments; document as a stated PoC constraint, not a missing feature |
 
 ---
 
