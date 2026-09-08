@@ -1,20 +1,122 @@
+# Opaque V1 subgraph schema (§8).
+#
+# HARD CONSTRAINT (§8, applies to every entity below): index the ELIGIBLE POOL
+# and AGGREGATE statistics only. Nothing here may record which ring member or
+# which relay hop was used for a given payment — publishing that would defeat
+# the exact thing the ring signature and the relay mesh exist to hide.
+#
+# The previous revision violated it. See README.md, "The fundingSourceCluster
+# leak", for what changed and why.
+
 type RingMember @entity {
+  "The note commitment (§6.6). Ring eligibility requires a real pool deposit."
   id: ID!
+
+  "Pool this note was deposited into — `${poolId(scope)}-${denomination}`."
+  pool: RingPool!
   denomination: BigInt!
+
   enrolledAt: BigInt!
+
+  "Aggregate count across all rings. Never which ring, never which payment."
   timesUsedInRing: Int!
-  fundingSourceCluster: String!
+
+  "Null until first use. Feeds the §8.1 step-1 reuse-frequency threshold."
+  lastUsedAt: BigInt
+
+  """
+  How large a share of the pool this member's funding cluster holds, coarsely
+  bucketed: 0 = smallest share .. 3 = dominant share. This is the ONLY funding
+  signal published.
+
+  It is deliberately NOT the cluster identity. A cluster id per member is an
+  equivalence class over note commitments — it lets anyone group notes by their
+  common funder, which is the linkage the ring exists to destroy.
+
+  Emitted as null unless at least FUNDING_BUCKET_K (5) members of the pool
+  share the bucket, so a bucket can never single a member out. Null means
+  UNKNOWN and must never be read as zero (see RingCandidate in
+  @opaque/protocol-types).
+  """
+  fundingConcentrationBucket: Int
+
+  "Any on-chain activity besides enrollment/ring use. §8.1 step 3."
   hasOtherActivity: Boolean!
 }
 
-type RingPool @entity { id: ID!, poolSize: Int!, freshnessScore: BigInt! }
+type RingPool @entity {
+  "`${poolId(scope)}-${denomination}` — per (chain, pool, denomination)."
+  id: ID!
+
+  poolSize: Int!
+  avgMemberAge: BigInt!
+
+  "Derived metric feeding §9.2's trigger condition."
+  freshnessScore: BigInt!
+
+  "Aggregate Sybil tell: how many distinct funding clusters back this pool."
+  distinctFundingClusters: Int!
+
+  "Share of the pool held by the single largest funding cluster, in bps."
+  topFundingClusterShareBps: Int!
+
+  "Version of the heuristics that produced the derived fields above."
+  heuristicsVersion: String!
+
+  observedAt: BigInt!
+}
+
+# ── mesh (§8.2) ────────────────────────────────────────────────────────────
 
 type RelayNode @entity {
+  "nodeId, one of 6."
   id: ID!
+
   endpoint: String!
+
+  """
+  Advisory copy of the hop-encryption key. §7.3: a Graph response can NEVER
+  replace a relay key. Clients pin keys out of band and drop any node this
+  subgraph reports that they have not pinned; a value here that disagrees with
+  the pinned one is treated as an attempted substitution (UNTRUSTED_DIRECTORY),
+  not as a rotation.
+  """
   kemPublicKey: Bytes!
+  keyEpoch: BigInt!
+
+  "Path diversity is per operator, not per node — three nodes run by one
+  operator are one hop's worth of protection."
+  operatorId: String!
+
+  "% of recent batch windows successfully served, in bps (0..10000)."
   reliabilityScore: BigInt!
+
+  "Avg # of other messages batched alongside this node's traffic recently."
   batchOccupancy: BigInt!
+
+  "How often this node has been picked recently. Aggregate only — never which
+  path, never which message."
   recentSelectionCount: Int!
+
   lastSeenAt: BigInt!
+}
+
+type RelayDirectory @entity {
+  "Singleton."
+  id: ID!
+  version: String!
+  nodeCount: Int!
+  observedAt: BigInt!
+}
+
+# ── privacy conditions (§9.2) ──────────────────────────────────────────────
+
+type PrivacyObservation @entity {
+  "`${poolId(scope)}-${denomination}` — same key as RingPool."
+  id: ID!
+  privacyScore: BigInt!
+  ringFreshnessScore: BigInt!
+  meshHealthScore: BigInt!
+  formulaVersion: String!
+  observedAt: BigInt!
 }
