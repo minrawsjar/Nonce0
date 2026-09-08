@@ -130,10 +130,142 @@ library ForsVerifier {
         );
     }
 
+    /// Scratch buffers and the constant words read back out of them. Held in
+    /// memory rather than on the stack: the hot loop needs more live values
+    /// than the stack can hold once assembly blocks pin them down.
+    struct Scratch {
+        uint256 ip;
+        uint256 iTail;
+        uint256 iLen;
+        uint256 lp;
+        uint256 lMid;
+        uint256 lLen;
+        uint256 np;
+        uint256 nMid;
+        uint256 nLen;
+        uint256 rp;
+        uint256 rHeader;
+        uint256 rLen;
+    }
+
+    /// @dev Every buffer is laid out by abi.encodePacked ONCE, with the varying
+    ///      fields zeroed, and the constant words are then read back out of it.
+    ///      Nothing hardcodes an offset table that could drift from the
+    ///      encoding the TypeScript agrees to.
+    function _scratch(Params memory p, bytes32 digest) private pure returns (Scratch memory s) {
+        bytes memory ib = abi.encodePacked(
+            uint32(bytes(INDEX_DOMAIN).length), INDEX_DOMAIN,
+            uint32(4), uint32(p.k), uint32(4), uint32(p.a),
+            uint32(32), digest, uint32(4), uint32(0)
+        );
+        bytes memory lb = abi.encodePacked(
+            uint32(bytes(LEAF_DOMAIN).length), LEAF_DOMAIN,
+            uint32(4), uint32(0), uint32(4), uint32(0), uint32(32), bytes32(0)
+        );
+        bytes memory nb = abi.encodePacked(
+            uint32(bytes(NODE_DOMAIN).length), NODE_DOMAIN,
+            uint32(4), uint32(0), uint32(4), uint32(0),
+            uint32(32), bytes32(0), uint32(32), bytes32(0)
+        );
+        bytes memory rb = abi.encodePacked(
+            uint32(bytes(ROOTS_DOMAIN).length), ROOTS_DOMAIN,
+            uint32(4), uint32(p.k), uint32(4), uint32(p.a),
+            new bytes(uint256(p.k) * 36)
+        );
+        s.iLen = ib.length;
+        s.lLen = lb.length;
+        s.nLen = nb.length;
+        s.rLen = rb.length;
+        s.rHeader = s.rLen - uint256(p.k) * 36;
+        assembly {
+            let q := add(ib, 32)
+            mstore(s, q)
+            mstore(add(s, 32), mload(add(q, 52)))
+            q := add(lb, 32)
+            mstore(add(s, 96), q)
+            mstore(add(s, 128), mload(add(q, 7)))
+            q := add(nb, 32)
+            mstore(add(s, 192), q)
+            mstore(add(s, 224), mload(add(q, 7)))
+            mstore(add(s, 288), add(rb, 32))
+        }
+    }
+
     /// @notice Verifies a FORS+C signature and returns the pkCommitment it
     ///         proves knowledge under. The caller compares that to the
     ///         registered commitment — this library never trusts a claimed key.
+    ///
+    /// @dev Preimages are poked into fixed scratch buffers rather than built
+    ///      with abi.encodePacked. Measured on this circuit: 322 keccak calls
+    ///      cost 41k gas of actual hashing and 457k when each preimage is a
+    ///      fresh nested allocation. The hashing was never the expensive part.
     function recoverCommitment(bytes calldata signature, bytes32 digest)
+        internal
+        pure
+        returns (bytes32 commitment, Params memory p)
+    {
+        p = parseParams(signature);
+        Scratch memory s = _scratch(p, digest);
+        uint256 mask = (uint256(1) << p.a) - 1;
+        uint256 stride = 32 * (1 + uint256(p.a));
+
+        for (uint256 i = 0; i < p.k; i++) {
+            uint256 index;
+            assembly {
+                mstore(add(mload(s), 52), or(mload(add(s, 32)), i))
+                index := and(shr(192, keccak256(mload(s), mload(add(s, 64)))), mask)
+            }
+
+            uint256 at = HEADER_BYTES + 32 + i * stride;
+            bytes32 node = bytes32(signature[at:at + 32]);
+            assembly {
+                let lp := mload(add(s, 96))
+                mstore(add(lp, 7), or(mload(add(s, 128)), or(shl(64, i), index)))
+                mstore(add(lp, 43), node)
+                node := keccak256(lp, mload(add(s, 160)))
+            }
+
+            for (uint256 l = 0; l < p.a; l++) {
+                bytes32 sibling = bytes32(signature[at + 32 + l * 32:at + 64 + l * 32]);
+                // Sibling order is the index bit at this level. Getting it
+                // backwards still hashes, and is still wrong.
+                (bytes32 left, bytes32 right) =
+                    ((index >> l) & 1) == 0 ? (node, sibling) : (sibling, node);
+                assembly {
+                    let np := mload(add(s, 192))
+                    mstore(add(np, 7), or(mload(add(s, 224)), or(shl(64, i), l)))
+                    mstore(add(np, 43), left)
+                    mstore(add(np, 79), right)
+                    node := keccak256(np, mload(add(s, 256)))
+                }
+            }
+
+            assembly {
+                let slot := add(add(mload(add(s, 288)), mload(add(s, 320))), mul(i, 36))
+                mstore(slot, shl(224, 32))
+                mstore(add(slot, 4), node)
+            }
+        }
+
+        bytes32 recomputed;
+        assembly {
+            recomputed := keccak256(mload(add(s, 288)), mload(add(s, 352)))
+        }
+
+        // The recomputed roots must reproduce the public key value the
+        // signature carries; only then is that value worth committing to.
+        if (recomputed != publicKeyValue(signature)) return (bytes32(0), p);
+        commitment = pkCommitment(p, publicKeyValue(signature));
+    }
+
+    /// @notice The readable implementation of exactly the same function, built
+    ///         out of the plain abi.encodePacked helpers above.
+    /// @dev Not used in verification. It exists so the assembly can never
+    ///      quietly drift from the encoding it claims to implement: the test
+    ///      suite asserts the two agree on real signatures, and on tampered
+    ///      ones. It is also the honest baseline for the gas comparison —
+    ///      measured the same way, in the same place, on the same input.
+    function recoverCommitmentReference(bytes calldata signature, bytes32 digest)
         internal
         pure
         returns (bytes32 commitment, Params memory p)
@@ -164,8 +296,6 @@ library ForsVerifier {
             roots = abi.encodePacked(roots, Canonical.field(node));
         }
 
-        // The recomputed roots must reproduce the public key value the
-        // signature carries; only then is that value worth committing to.
         if (keccak256(roots) != claimedValue) return (bytes32(0), p);
         commitment = pkCommitment(p, claimedValue);
     }

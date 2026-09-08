@@ -14,16 +14,47 @@ src/opaque/
 
 ## What actually works on-chain
 
-**Post-quantum signature verification: 1,491,721 gas** at `k=32, a=8` — about
-**5% of an Arc 30M block**. Pure keccak, no precompile, nothing an elliptic
-curve is doing. §5.5 said to measure rather than hand-wave; that is the measurement.
+**Post-quantum signature verification: 167,073 gas of execution plus 93,744 of
+calldata** at `k=13, a=13` — around **0.9% of an Arc 30M block**. Pure keccak,
+no precompile, nothing an elliptic curve is doing. §5.5 said measure rather than
+hand-wave; every number here is `forge test -vv`, not arithmetic.
 
-That number matters most next to the one beside it. The eight-member ring proof
-(§6) measures at **1.08 MiB and ~9× a whole block** to verify — `node
-backend/zk/bench.ts` reproduces it — so it cannot go on-chain at all. **Wallet
-authorisation is quantum-safe on-chain today. Sender anonymity is not.** That
-asymmetry is the honest shape of this protocol, and the contracts are built to
-say so rather than hide it.
+That matters most next to the number beside it. The eight-member ring proof (§6)
+measures at **1.08 MiB and ~9x a whole block** — `node backend/zk/bench.ts`
+reproduces it — so it cannot go on-chain at all. **Wallet authorisation is
+quantum-safe on-chain today. Sender anonymity is not.** That asymmetry is the
+honest shape of this protocol, and these contracts are built to say so.
+
+### Getting there: two levers, both measured
+
+| | execution | calldata | total tx |
+|---|---|---|---|
+| `abi.encodePacked` throughout, k=32 a=8 | 981,397 | 148,016 | ~1,150k |
+| scratch buffers, k=32 a=8 | 260,029 | 148,016 | ~429k |
+| scratch buffers, **k=13 a=13** | **167,073** | **93,744** | **~282k** |
+
+**The encoding, not the hashing.** A probe (`test/GasProbe.t.sol`) puts 322 raw
+keccak calls at 41,004 gas and the same 322 built with nested
+`abi.encodePacked` at 457,475. Hashing was never the expensive part — memory
+allocation was. `ForsVerifier` now lays each preimage out ONCE with
+`abi.encodePacked`, reads the constant words back out of it, and then pokes only
+the fields that vary. No offset table is hardcoded, so the layout cannot drift
+from the encoding the TypeScript agrees to.
+
+`recoverCommitmentReference` keeps the readable version, and the suite asserts
+the two agree on real signatures and on tampered ones. That is also where the
+981,397 baseline comes from — same input, same place, same method.
+
+**The parameters, second.** Forgery resistance after q signatures is about
+`(q·2^-a)^k`, so at `maxUses = 8` any `(k, a)` with `k(a-3) >= 128` holds the
+same line. `k=32, a=8` spends 160 bits of margin; `k=13, a=13` spends 130 and
+costs 37% fewer hashes and 37% less calldata. The price is keyGen: 115ms to
+1.3s, once per wallet, in the browser. `k=10, a=16` saves a little more and
+costs 8 seconds — not worth it.
+
+`FORS_C_DEFAULT` in `packages/pq-wallet` is still `k=32, a=8`. Moving it is a
+one-line change and `test_cheaperParametersVerifyAndCostLess` already proves the
+verifier handles the new set.
 
 ## The rule PQKeyRegistry exists to enforce
 

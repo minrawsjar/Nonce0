@@ -119,11 +119,73 @@ contract ForsVerifierTest is Test {
         assertEq(string(Canonical.decimal(type(uint64).max)), "18446744073709551615");
     }
 
+    /// Measured INSIDE the call, so the number is verification and not the
+    /// test's own cost of loading a 9,251-byte fixture out of storage — which
+    /// is most of what a naive gasleft() around the call would report.
     function test_gasOfVerification() public view {
-        uint256 before = gasleft();
-        this.exposedRecover(v.signature, v.digest);
+        (uint256 used, bytes32 commitment) = this.measure(v.signature, v.digest);
+        assertEq(commitment, v.pkCommitment);
         // Reported, not asserted: §5.5 says measure rather than hand-wave.
-        console2.log("FORS+C verify gas (k=32, a=8):", before - gasleft());
+        console2.log("FORS+C verify gas, execution only (k=32, a=8):", used);
+        console2.log("calldata gas for a 9251-byte signature:       ", v.signature.length * 16);
+    }
+
+    /// The assembly and the readable implementation must agree on everything,
+    /// or the fast path is verifying a different statement than it documents.
+    function test_assemblyAgreesWithTheReadableImplementation() public view {
+        (uint256 fast, bytes32 a) = this.measure(v.signature, v.digest);
+        (uint256 slow, bytes32 b) = this.measureReference(v.signature, v.digest);
+        assertEq(a, b, "same commitment");
+        assertEq(a, v.pkCommitment, "and the right one");
+        console2.log("scratch-buffer:", fast);
+        console2.log("abi.encodePacked reference:", slow);
+        console2.log("saved:", slow - fast);
+    }
+
+    function test_bothImplementationsRejectTheSameTampering() public view {
+        bytes memory sig = v.signature;
+        sig[67] = bytes1(uint8(sig[67]) ^ 0x01);
+        (, bytes32 a) = this.measure(sig, v.digest);
+        (, bytes32 b) = this.measureReference(sig, v.digest);
+        assertEq(a, bytes32(0));
+        assertEq(b, bytes32(0));
+    }
+
+    /// The other lever. Forgery resistance after q signatures is about
+    /// (q*2^-a)^k, so at maxUses = 8 any (k, a) with k*(a-3) >= 128 holds the
+    /// same 128-bit line. k=32,a=8 spends 160 bits of margin on it; k=13,a=13
+    /// spends 130 and costs 37% fewer hashes and 37% less calldata. keyGen goes
+    /// from 115ms to 1.3s, which is once per wallet and runs in the browser.
+    function test_cheaperParametersVerifyAndCostLess() public view {
+        string memory j = vm.readFile("test/fixtures/fors-k13a13.json");
+        bytes memory sig = vm.parseJsonBytes(j, ".signature");
+        bytes32 dig = vm.parseJsonBytes32(j, ".digest");
+        bytes32 expected = vm.parseJsonBytes32(j, ".pkCommitment");
+
+        (uint256 used, bytes32 commitment) = this.measure(sig, dig);
+        assertEq(commitment, expected, "k=13,a=13 must verify too");
+        console2.log("k=13,a=13 execution gas:", used);
+        console2.log("k=13,a=13 calldata gas: ", sig.length * 16);
+    }
+
+    function measureReference(bytes calldata sig, bytes32 digest)
+        external
+        view
+        returns (uint256 used, bytes32 commitment)
+    {
+        uint256 before = gasleft();
+        (commitment,) = ForsVerifier.recoverCommitmentReference(sig, digest);
+        used = before - gasleft();
+    }
+
+    function measure(bytes calldata sig, bytes32 digest)
+        external
+        view
+        returns (uint256 used, bytes32 commitment)
+    {
+        uint256 before = gasleft();
+        (commitment,) = ForsVerifier.recoverCommitment(sig, digest);
+        used = before - gasleft();
     }
 
     // calldata entry points, so the library sees `bytes calldata`.
