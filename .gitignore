@@ -24,3 +24,7 @@ extension/dist/
 
 # vite build output
 frontend/dist/
+
+# workspace installs (file: deps symlink across packages)
+packages/*/node_modules/
+backend/node_modules/

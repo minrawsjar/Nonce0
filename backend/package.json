@@ -1,20 +1,31 @@
 {
-  "name": "nonce0-api",
-  "version": "0.0.0",
+  "name": "@chaff/backend",
+  "version": "1.0.0-review",
   "private": true,
-  "description": "x402-gated scan API. The only directory in this repo with a node_modules.",
   "type": "module",
-  "engines": { "node": ">=18" },
+  "description": "Project X V1 — relay mesh (§5) and CRE confidential execution. Swarnim, S3/S4.",
+  "engines": { "node": ">=22.18" },
   "scripts": {
-    "start": "node server.js",
-    "dev": "node --watch server.js"
+    "test": "node --test mesh/test/*.test.ts cre/test/*.test.ts",
+    "typecheck": "tsc --noEmit"
   },
   "comment": [
-    "Deliberately empty until build step 10. x402 middleware and @hashgraph/sdk",
-    "install HERE and only here. This directory is a SIBLING of ../src, so Node's",
-    "upward module resolution can never reach backend/node_modules from a file",
-    "that ships inside the npm tarball. That is what makes the scanner's",
-    "zero-dependency claim structural instead of a promise."
+    "Runs .ts directly: Node >=22.18 strips types natively, so there is no build",
+    "step and no bundler here. The engines floor is that, not a preference.",
+    "",
+    "ML-KEM is NOT in Node 22's crypto (checked: generateKeyPairSync('ml-kem768')",
+    "throws ERR_INVALID_ARG_VALUE even on OpenSSL 3.6.3), and browsers have no",
+    "ML-KEM at all. The client builds its own onion layers, so the KEM must be a",
+    "library used identically on both sides or the two ends disagree on bytes.",
+    "That is why @noble/post-quantum is a dependency and not an accident."
   ],
-  "dependencies": {}
+  "dependencies": {
+    "@chaff/protocol-types": "file:../packages/protocol-types",
+    "@noble/hashes": "^2.4.0",
+    "@noble/post-quantum": "^0.7.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.0",
+    "typescript": "^7.0.2"
+  }
 }

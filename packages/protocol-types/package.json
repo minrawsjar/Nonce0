@@ -1,0 +1,22 @@
+{
+  "name": "@chaff/protocol-types",
+  "version": "1.0.0-review",
+  "private": true,
+  "type": "module",
+  "description": "Project X V1 shared protocol contract (§2): immutable DTOs, semantic IDs, codecs and finite error types.",
+  "exports": {
+    ".": "./src/index.ts",
+    "./codecs.js": "./src/codecs.ts"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@noble/hashes": "^2.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.0",
+    "typescript": "^7.0.2"
+  }
+}
