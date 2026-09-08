@@ -1,3 +1,61 @@
+# Project X — Full Context Handoff
+
+## 0. How to use this document
+
+Paste this whole document into a new chat to resume work on Project X with zero context loss. It contains three things a fresh chat wouldn't otherwise have: (1) the full technical spec, (2) the decision log — what was tried, rejected, and why, so settled debates don't get accidentally reopened, and (3) what the two existing architecture diagrams contain. Read the decision log before proposing changes to anything it covers; several ideas in there (STARK proofs, World ID, a 4th sponsor, non-USDC payments, ENS) were seriously considered and deliberately cut, not overlooked.
+
+---
+
+## 1. Event & team logistics
+
+- **Event:** ETHGlobal ETHOnline 2026, September 4–16, fully async
+- **Team:** 4 people
+- **Working title:** "Project X" — this is a placeholder, not a finalized name. ("Quorin" was proposed earlier as a name for a different candidate direction that was ultimately not pursued — it was never adopted for this project. Naming is still an open item if you want to revisit it.)
+
+---
+
+## 2. One-paragraph pitch
+
+Project X is a private payment protocol where the key that authorizes a spend is post-quantum secure today, sender/amount privacy comes from a small on-chain ring signature verified with pure hashing (no lattice math, no ZK/SNARK/STARK proof system anywhere in the trust path), and network-origin privacy comes from a relay mesh — generalized to also anonymize the RPC/Graph queries that precede a payment, not just the payment itself. Payments can also be submitted as confidential *intents* that wait for the best available privacy conditions before executing.
+
+**One-liner:** *A payment protocol where the key that authorizes your spend is already quantum-safe, sender/amount privacy comes from pure hashing instead of unbuilt cryptography, and your payment can wait to execute until the network's anonymity conditions are actually strong.*
+
+---
+
+## 3. Decision log — what got tried, rejected, and why
+
+In chronological order. This is the part most likely to get lost without this doc — the spec below captures *what* was decided, this captures *why*, including the paths not taken.
+
+1. **PQGuard vs. Project X.** Two directions were on the table: PQGuard (broad, multi-chain post-quantum security scanning/migration tooling) and Project X (private PQ payments). Project X was chosen — it reads as a concrete, coherent product rather than a scanning utility, and gave a clearer story for judges.
+
+2. **"Exposure oracle" opening feature — cut.** An early plan borrowed from PQGuard: scan a connected wallet and show it's already publicly exposed across chains, as a dramatic opening demo beat. Killed because it's not a real finding — any address that has ever sent a transaction already has an exposed public key via `ecrecover`. Technical judges would recognize this immediately; keeping it would have undercut credibility rather than building it.
+
+3. **Lattice-based (Ring-LWE) signatures — rejected in favor of hash-based (FORS+C).** The original wallet/ring design needed a custom Ring-LWE signature verifier on the EVM. No such verifier exists anywhere — it was independently flagged as the single highest-risk task in a 12-day build. Replaced with FORS+C, a hash-based, few-time signature scheme (same family as SPHINCS+/FORS, part of FIPS 205), which needs only Keccak256 — no elliptic-curve or lattice arithmetic, dramatically lower implementation risk.
+
+4. **STARK/zkVM ring-anonymity proof — proposed, then fully retracted.** A zkVM approach (RISC Zero/SP1) was floated for proving ring membership on-chain, on the assumption that STARKs are inherently post-quantum-safe end to end. Retracted after verification: raw STARK verification is gas/calldata-prohibitive on Ethereum — even StarkWare's own production system (SHARP) has to split proofs into pieces just to fit gas limits, and a trivial toy proof is already ~166KB. The standard fix (RISC Zero's/SP1's cheap EVM verifiers) wraps the STARK in a Groth16 SNARK for final on-chain verification — and RISC Zero's own security-model docs confirm that final step is **not quantum-safe** (elliptic curve pairing over BN254), which would silently reintroduce the exact vulnerability this project exists to eliminate, at the one point that authorizes spending. Replaced with **MPC-in-the-head** (Picnic/KKW/Banquet family) — a real, published, NIST-round-reviewed OR-proof construction using only symmetric primitives. This remains the one genuine open R&D risk in the design, gated by a mandatory Day 1–2 feasibility spike with a hard go/no-go and a documented non-anonymous single-signer fallback.
+
+5. **Generic "conditional payments" for Arc — rejected as reverse-engineered from the rubric.** The first pass at an Arc feature was built directly from Arc's prize-criteria language ("conditional payments," "onchain automation") rather than emerging from the product itself. Replaced with **"intents that wait for the best privacy moment"** — an intent that fires when a Graph-indexed ring/mesh privacy signal crosses a threshold (or a deadline hits), which only makes sense because this specific stack has a ring, a mesh, and a Graph-indexed anonymity signal to evaluate. Explicitly contrasted against generic DeFi intent systems (UniswapX, CoW Swap) that optimize for price/MEV instead of privacy quality. Any future Arc idea has to clear the same bar: emerge from the wallet/ring/mesh/Graph stack already here, not from the rubric.
+
+6. **Standalone Chainlink CRE "ring-health risk gate" — cut.** An earlier design had ring-pool health/freshness as its own confidential workflow job. Removed because that data (pool size, freshness) is necessarily public — ring-signature verifiability requires it — so there was no genuinely sensitive input to justify a TEE on its own. Correctly re-absorbed into the intent-execution job instead, where the intent's own parameters (recipient, amount, deadline) are the actual sensitive thing justifying confidentiality.
+
+7. **Non-USDC support via SwapVM/1inch — considered, left out.** Would have let payments work in other tokens. Rejected to avoid a 4th sponsor dependency, and because a swap leg would add its own visible-size/timing privacy leak — a real cost, not just scope discipline for its own sake.
+
+8. **ENS — dropped entirely.** Not part of this build in any form.
+
+9. **Relay hop selection: random vs. Graph-driven.** An early simplification ("6 independent nodes, no groups, random 3 selected") was flagged as making the Graph integration pointless — no reason to query indexed data for a purely random pick. Resolved by formalizing hop selection as a **Markov chain** over the 6-node pool: state space `S = {N1..N6}`, transition probabilities driven by real per-node metrics (`batchOccupancy`, `recentSelectionCount`, a reliability floor), deliberately not deterministic top-3 (which would just create a new static, fingerprintable pattern). Grounded in real academic precedent — the Crowds anonymity protocol (Reiter & Rubin), formally analyzed the same way in the literature (including a PRISM model-checker study).
+
+10. **Ring-enrollment Sybil vulnerability — identified, World ID considered and rejected.** External feedback correctly identified a real flaw: ring enrollment is a free, unlimited `pkCommitment` hash, and the original "weight toward diversity in `enrolledAt`" rule actively favors a Sybil-flooding attacker on volume. World ID (proof-of-unique-human via Incognito Actions/nullifiers) was seriously evaluated as a well-composed hard fix — genuinely compatible with the pool's necessary publicness, not a bolt-on. **Deliberately left out**: it would mean a 4th sponsor, and the World track wasn't assessed as a strong winning chance. Mitigated instead with two heuristics that raise attacker cost without eliminating the vector: funding-source clustering (the same technique used in airdrop-farming Sybil detection) and an organic-activity signal, applied *before* the diversity-weighting step (applying diversity-weighting first is exactly what made the original algorithm favor a flood). This is treated as acceptable for a hackathon PoC specifically because it's disclosed plainly in the threat model and risk table, not silently ignored — the reasoning: identified a real, well-known attack class in this space, mitigated what's cheap, made an informed scoping call.
+
+11. **RPC/Graph-level IP anonymity — identified as a real gap, then actually solved (not just documented).** The relay mesh only ever protected the ring-signed payment's path to L1. Three things bypassed it entirely and leaked real IP-to-wallet linkage: the wallet's own RPC reads of `PQKeyRegistry` state, the Graph queries used for decoy/hop selection, and the connection to the mesh's first hop itself. The first proposal was the industry-standard punt (document it as a known gap, recommend Tor/VPN, following Tornado Cash's/Wasabi's precedent). Instead, the mesh was **generalized from a payment-only transport into a reusable anonymizing transport** carrying two message types (`PAYMENT`, `QUERY`), with response-routing added for the query case (a genuinely new piece of engineering the mesh never needed before). Only wallet-specific and ring/mesh-construction reads route through it — generic non-identifying reads (e.g. a public gas oracle) go direct, since routing everything would add latency for no privacy gain. A real secondary benefit: since queries happen far more often than payments, mixing both traffic types on the same hops means frequent query traffic functions as cover traffic that strengthens payment-side anonymity too. Real costs stated plainly: added latency on nonce/balance-style lookups (a genuine UX tradeoff to test, not hidden), and the underlying hop-collusion trust assumption is unchanged.
+
+12. **Modularity as an explicit architecture principle.** Following on from #11, the Wallet, Ring, and Mesh components were formalized as independent modules that only ever talk through explicit contracts, never shared internal state: Wallet → Ring exposes only a signature-scheme interface (keygen/sign/verify/commitment) plus a list of `pkCommitment`s — the ring module never touches live `PQKeyRegistry` state. Any module → Mesh passes only an opaque encrypted payload plus a message type — the mesh never inspects what it's carrying. This is what lets any one piece (the signature scheme's parameters, the OR-proof construction if the spike fails, the mesh's hop-encryption crypto) change without the others needing to.
+
+---
+
+## 4. Full technical specification
+
+*(This is the complete, current spec — everything below reflects the decisions in the log above.)*
+
 # Project X — Technical Specification v2
 
 **Event:** ETHGlobal ETHOnline 2026 (Sept 4–16, async, 4-person team)
@@ -39,9 +97,7 @@ This is what lets any one module change (a different signature scheme post-bench
 - Non-USDC payments — Arc is stablecoin-native and Gateway is USDC-specific; a swap leg would add its own privacy leak (visible swap size/timing) for little payoff
 - ENS — dropped. Not part of this build.
 - Retrofitting or scanning other protocols
-- A 4th/5th sponsor (World ID, 1inch/SwapVM, or otherwise) — holding at 3: Arc, Chainlink, Graph. World ID was seriously considered as a fix for the ring-enrollment Sybil vector (§3, §12) — a real, well-composed fix, not a bolt-on — but left out on scope-discipline grounds and because the World track wasn't assessed as a strong winning chance. Mitigated instead with Graph-side heuristics (§8.1) plus a structural improvement from the note-based custody model (§6.6), explicitly labeled as raising attacker cost, not eliminating the vector.
-- Arbitrary-amount confidential transfers — fixed-denomination pools only (§6.6). Variable amounts need elliptic-curve-based value commitments/range proofs (RingCT-style), which would crack the "no EC anywhere" posture at the amount-hiding layer.
-- Note recovery via seed phrase or pool scanning — notes are tracked in local client storage only (§6.6). Losing local storage means losing access to unspent notes; there is no recovery mechanism in this PoC.
+- A 4th/5th sponsor (World ID, 1inch/SwapVM, or otherwise) — holding at 3: Arc, Chainlink, Graph. World ID was seriously considered as a fix for the ring-enrollment Sybil vector (§3, §12) — a real, well-composed fix, not a bolt-on — but left out on scope-discipline grounds and because the World track wasn't assessed as a strong winning chance. Mitigated instead with Graph-side heuristics (§8.1), explicitly labeled as raising attacker cost, not eliminating the vector.
 
 ---
 
@@ -50,11 +106,13 @@ This is what lets any one module change (a different signature scheme post-bench
 | | Detail |
 |---|---|
 | Hides | Which ring member signed; the amount; sender's network origin (IP) for both payment submission and the RPC/Graph reads that precede it (§7.5); intent parameters (recipient, amount, timing) before execution; the compliance-check input |
-| Does not claim to prevent | A global passive network adversary; simultaneous compromise of all 3 relay hops; weak OPSEC; a well-resourced, patient adversary Sybil-enrolling ring members to erode the anonymity set — the §8.1 heuristics and the deposit-cost structure of §6.6 raise the cost of this attack, they do not eliminate it; latency cost of routing queries through the mesh (a real UX tradeoff, not hidden — see §7.5); loss of unspent funds if the local device holding note secrets is lost — there is no seed-based recovery for notes in this PoC (§6.6) |
-| Trust assumption for fund safety | None against forgery — spend authorization is a hash-based signature checked directly on-chain; no relay, enclave, or operator sits in that path. This does not cover loss of the local device holding note secrets (§6.6) |
+| Does not claim to prevent | A global passive network adversary; simultaneous compromise of all 3 relay hops; weak OPSEC; a well-resourced, patient adversary Sybil-enrolling ring members to erode the anonymity set — the §8.1 heuristics raise the cost of this attack, they do not eliminate it; latency cost of routing queries through the mesh (a real UX tradeoff, not hidden — see §7.5) |
+| Trust assumption for fund safety | None — spend authorization is a hash-based signature checked directly on-chain; no relay, enclave, or operator sits in that path |
 | Trust assumption for anonymity | The ring's OR-proof mechanism (§6) and the relay mesh's hop diversity (§7) |
 | Trust assumption for intent execution | The Chainlink CRE TEE holds intent parameters confidentially until the trigger condition fires |
 | Quantum-specific claim | The key an attacker needs to forge a spend is hash-based — no elliptic curve or lattice assumption anywhere in that path |
+
+**Plain-language note — "a global passive network adversary":** the standard anonymity-network threat-modeling term (same disclaimer Tor uses). It means an adversary who can observe *all* traffic on *all* links at once (global) but who only watches — doesn't inject, modify, or drop anything (passive). No batching/delay scheme, including this one, can defeat someone with that much simultaneous visibility; that's why it's explicitly excluded from what the mesh claims to defend against, not an oversight.
 
 ---
 
@@ -70,9 +128,7 @@ Intent submission (§9) ── confidential (recipient, amount, deadline) held i
 Chainlink CRE Confidential Workflow (§10) ── compliance check AND
      │        privacy-timing check (reads Graph-indexed ring/mesh health)
      ▼
-Ring-signed note-spend (§6) ── ring ~8 note commitments (§6.6), hash-only
-     │        OR-proof over "I know a secret opening one of these notes" —
-     │        not a FORS+C signature (§6.1). Nullifier authorizes pool release.
+Ring-signed payment (§6) ── ring ~8, hash-based, verified directly on-chain
      │        Ring membership drawn via Graph-powered decoy selection (§8.1)
      ▼
 Relay mesh (§7) ── 3 hops, batched + randomly delayed, TEE-hosted
@@ -80,14 +136,11 @@ Relay mesh (§7) ── 3 hops, batched + randomly delayed, TEE-hosted
      │        Graph queries (§7.5), not just payment submission
      │        Hops chosen via Graph-powered hop selection (§8.2)
      ▼
-Settlement (Arc/USDC, §9.3) ── the pool releases the note's fixed denomination
-     │        directly. No sender is named at this step — Gateway only touched
-     │        an identity earlier, at deposit time, which is fine (§9.3).
+Settlement (Arc/USDC) ── Gateway draw #1 sources USDC from sender's unified
+     │                    cross-chain balance at the exact moment of execution
      ▼
-Recipient ── Gateway draw (optional) redistributes to recipient's chain
+Recipient ── Gateway draw #2 (optional) redistributes to recipient's chain
 ```
-
-**Where deposit happens (attributable, and separate from the anonymous spend above):** PQ Wallet (§5, FORS+C-authenticated) → Gateway sources USDC into the pool → a note commitment is created (§6.6). This is a disclosed event by design; only the later spend, shown above, is anonymous.
 
 ---
 
@@ -152,19 +205,16 @@ Hash-based verification is pure Keccak evaluation — no elliptic-curve or latti
 
 ### 6.1 What's being proven
 
-**Corrected statement (this changed once §6.6 introduced notes — see below):** *"I know a secret `S` whose hash matches one of the 8 note commitments in this ring, and I have correctly derived this payment's nullifier from `S` and the payment context (recipient, denomination, anti-replay data), without revealing which commitment `S` opens."*
+Statement: *"I possess a valid FORS+C signature under one of the 8 public key commitments in this ring, over this specific payment digest, without revealing which commitment."*
 
-**Why this changed:** this section originally stated the proof as "I possess a valid FORS+C signature under one of the 8 public key commitments in this ring" — written before §6.6 moved spending authority to note secrets. That version was wrong once notes existed: it would require embedding FORS+C's *entire* signature-verification logic (many hash evaluations across a Merkle-style authentication structure) inside the MPC-in-the-head circuit, when a note-spend never needed a wallet signature in the first place — the note secret itself is the spending authority, the same way it is in Tornado Cash. Proving "I know a preimage matching one of 8 commitments" is a tiny circuit; proving "I hold a valid FORS+C signature" is a dramatically larger one. Keeping them separate matters for feasibility, not just cleanliness: FORS+C authenticates wallet-level actions only — deposits, intent submission, key rotation (§5) — and has no role in this statement at all.
-
-This is still not a Sigma-protocol OR-proof in the Schnorr/EdDSA sense — it's a hash relation, not an algebraic one — but it's now a far smaller hash relation than the original version, which materially improves the odds of §6.3's spike actually succeeding.
+This is fundamentally different from a Sigma-protocol OR-proof (used for Schnorr/EdDSA ring signatures) because FORS+C verification isn't algebraic — it's "reveal the correct hash preimages according to a public challenge." Standard OR-composition techniques (Cramer–Damgård–Schoenmakers) assume Sigma-protocol structure and don't directly transfer.
 
 ### 6.2 Recommended construction: MPC-in-the-head
 
 - The Picnic/KKW/Banquet family: real, published, NIST-round-reviewed constructions proving statements about hash/symmetric-key relations in zero knowledge, using only symmetric primitives — consistent with the rest of the stack's "no lattice, no elliptic curve" posture.
-- Statement to encode in the MPC-in-the-head circuit: "I know a secret `S` such that `H(S)` equals the note commitment at ring slot `i`, for some `i` in `[0,7]`, and the nullifier `H(S, paymentContext)` is correctly derived." Binding the nullifier derivation into the same circuit (not computing it separately) is what stops a relay or mesh node from intercepting a valid proof and redirecting it to a different payment context.
-- Witness: the note secret `S` and the index `i` (kept hidden).
-- Public inputs: the 8 note commitments, the payment context (recipient, denomination), the nullifier, the proof itself.
-- FORS+C plays no role in this circuit — see §6.1.
+- Statement to encode in the MPC-in-the-head circuit: "I know a FORS+C secret key whose public commitment matches ring slot `i`, for some `i` in `[0,7]`, and a valid signature over `digest` under that key."
+- Witness: the actual FORS+C secret key material and the index `i` (kept hidden).
+- Public inputs: the 8 commitments, the digest, the proof itself.
 
 ### 6.3 Mandatory day 1–2 spike
 
@@ -178,29 +228,17 @@ Before any other component depends on this:
 
 ### 6.4 Double-spend prevention
 
-Each spend derives a **linkability tag** (nullifier) deterministically from the note secret and the payment context, without revealing which ring member produced it:
+Each spend derives a **linkability tag** (nullifier) deterministically from the signer's secret key and the payment context, without revealing which ring member produced it:
 
 ```
-nullifier = H(noteSecret, paymentContext)
+nullifier = H(secretKeyMaterial, paymentContext)
 ```
 
-The contract maintains a `mapping(bytes32 => bool) spentNullifiers`. A ring-signed payment is rejected if its nullifier has been seen before. The nullifier computation is part of the same MPC-in-the-head circuit as the note-opening statement (§6.2), so its correctness is proven alongside ring membership, not checked separately.
+The contract maintains a `mapping(bytes32 => bool) spentNullifiers`. A ring-signed payment is rejected if its nullifier has been seen before. This is standard for linkable ring signatures — verify this specific derivation is compatible with whatever MPC-in-the-head construction is chosen in §6.2; the nullifier computation likely needs to be part of the same circuit so its correctness is proven alongside ring membership.
 
 ### 6.5 Cost and size — explicitly unknown
 
 MPC-in-the-head proofs are historically larger than SNARKs (tens of KB, not hundreds of bytes) though smaller than raw STARKs for small circuits. Do not put a number in the pitch deck until §6.3's spike produces one.
-
-### 6.6 Note-based value custody (the pool)
-
-**Why this exists:** a ring signature only hides which of 8 keys signed — it says nothing about fund custody. If each PQ wallet directly holds and transfers its own on-chain tokens, the token transfer's `from` address is unavoidably that specific wallet, and the ring does nothing. Privacy requires pooled custody: a single contract holds all deposited funds, so the only address ever publicly visible moving tokens is the pool, never an individual depositor.
-
-**Notes, not balances.** There is no `mapping(address => uint256)` anywhere in this design. A deposit creates a note — an opaque commitment, not a balance entry — and a user's "balance" is simply the set of notes they hold secrets for. Spending consumes a note entirely and proves ring membership over 8 **note commitments** (not wallet `pkCommitment`s) using the note-opening OR-proof in §6.1–6.2 — a hash-preimage statement, not a FORS+C signature statement; the existing nullifier (§6.4) marks that specific note spent. This also means ring membership requires an actual pool deposit, not just a `pkCommitment` registration — see the Sybil-cost note in §8.1.
-
-**Fixed denominations, not arbitrary amounts.** With public, varying per-note amounts, decoys only provide anonymity if they match the real note's size — otherwise an observer just matches amounts and the ring is trivially broken. Arbitrary confidential amounts (the Monero/Zcash RingCT approach) need homomorphic value commitments and range proofs, which are elliptic-curve constructions — a real crack in the "fully PQ" story if adopted, even though it would sit at the amount-hiding layer rather than the spend-authorization layer. **Decision:** pool(s) of fixed denominations (Tornado Cash's approach) — no commitment arithmetic, no change outputs needed. Arbitrary-amount transfers are explicit future work, not attempted here. This changes §9.1's `PaymentIntent.amount` to mean "which denomination," not a free integer — see §9.1.
-
-**Note storage — local only, no recovery.** Deposits are self-initiated: a wallet creates its own notes and already knows every one it holds from the moment of deposit, so there's no need to scan the pool to discover incoming payments (that would only be true for a different, Monero-style model where someone else creates a hidden note *for* you that you must go discover — this design doesn't use that; settlement to a recipient is a plain named transfer via Arc/Gateway, §9.3, not a hidden note the recipient must find). For this build: each note (secret, commitment, denomination, a locally-cached spent flag) is tracked in the client's local browser storage only — never transmitted, never indexed anywhere, including Graph (an earlier idea to store per-user deposit/withdraw history on Graph, even encrypted, was rejected: it reopens exactly the identity-to-activity linkage §8's hard constraint exists to prevent, provides no functional benefit over local storage if only the user can decrypt it, and is the same "durable ciphertext that must stay secret forever" risk shape this entire project exists to move away from). The locally-cached spent flag is a convenience only — always re-check the on-chain `spentNullifiers` set before attempting a spend.
-
-**The real cost of this call, stated plainly:** there is no seed-phrase-style recovery for notes in this PoC. Losing local storage (cleared browser data, a lost device) means permanently losing access to any unspent notes — a genuine fund-safety gap, not a cosmetic one. State this in the README exactly as plainly as the other labeled gaps (simulated TEE attestation, classical hop encryption). A real production version would need wallet-recovery scanning (Monero/Zcash-style trial decryption, with a hash-based "view tag" analog to keep it cheap rather than Monero's elliptic-curve-based one) or notes deterministically derived from a wallet seed — both explicitly out of scope here.
 
 ---
 
@@ -260,15 +298,15 @@ If real hardware TEE attestation (Intel TDX/SGX or equivalent) isn't practical i
 
 **Why it matters:** poor decoy selection is a documented, real way ring-signature systems get deanonymized — Monero's early history includes exactly this failure mode via weak mixin selection and output-age analysis.
 
-**Known gap, addressed below:** ring membership is keyed on a note commitment (§6.6), which requires an actual pool deposit — this already raises Sybil cost from "free hash" to "real, locked capital per fake decoy," compared to the originally-considered model of a bare, freely-registerable `pkCommitment`. It does not eliminate the attack: a well-resourced adversary can still flood the pool with real deposits, and the original "weight toward diversity in `enrolledAt`" rule still actively favors a freshly-deposited Sybil batch on volume once an attacker is willing to pay for it. World ID and a further bonding/staking mechanism on top of the deposit requirement were both considered as harder fixes and deliberately left out of scope (§2) — mitigated instead with the two heuristics below, plus the deposit-cost floor from §6.6. These raise the cost of the attack; they do not eliminate it (§3).
+**Known gap, addressed below:** enrollment is a bare `pkCommitment` hash — free and unlimited. An adversary can flood the pool with Sybil commitments; the original "weight toward diversity in `enrolledAt`" rule actually favors a freshly-enrolled Sybil batch on volume, since it's rewarding spread across a population the attacker just filled. World ID and a bonding/staking mechanism were both considered as hard fixes and deliberately left out of scope (§2) — mitigated instead with the two heuristics below. These raise the cost of the attack; they do not eliminate it (§3).
 
-**Substreams module** — input: raw chain events; output: enrollment events (new note commitment joining the ring-eligible pool via a deposit, §6.6), per-member usage counts (aggregate, not per-payment linkage), funding provenance (traced a few hops back from the depositing address), and other on-chain activity by that address.
+**Substreams module** — input: raw chain events; output: enrollment events (new `pkCommitment` joining the ring-eligible pool), per-member usage counts (aggregate, not per-payment linkage), funding provenance (traced a few hops back from the enrolling address), and other on-chain activity by that address.
 
 **Subgraph schema:**
 
 ```graphql
 type RingMember @entity {
-  id: ID!                     # note commitment (§6.6) — requires a real pool deposit, not a free registration
+  id: ID!                     # pkCommitment
   enrolledAt: BigInt!
   timesUsedInRing: Int!       # aggregate count only, never which ring/payment
   lastUsedAt: BigInt
@@ -356,8 +394,6 @@ struct PaymentIntent {
 }
 ```
 
-**`amount` must match one of the pool's fixed denominations (§6.6), not a free integer** — arbitrary-amount transfers are out of scope for this build (would need elliptic-curve value commitments/range proofs, cracking the no-EC posture at the amount-hiding layer).
-
 Submitted encrypted to the Chainlink CRE enclave — recipient, amount, and deadline are not visible in the public mempool before execution, preventing front-running or snooping on an intent before it fires.
 
 ### 9.2 Trigger condition (evaluated inside the CRE enclave)
@@ -371,15 +407,12 @@ fire = complianceCheck(recipient) AND (
 
 Both the recipient's compliance status and the intent's parameters are the sensitive inputs justifying the TEE. `freshnessScore` itself is public data (§8.1) — it's read *inside* the enclave as part of evaluating a confidential decision, which is different from an earlier, since-cut design where ring-health lived in the CRE workflow as its own gate (public data doesn't need a TEE on its own).
 
-### 9.3 Settlement — corrected to match pool custody (§6.6)
-
-**This section originally had Gateway pull funds from "the sender's" unified balance at the exact moment of spend. That directly re-attaches a named payer to what's supposed to be an anonymous ring-signed spend, and flatly contradicts §6.6's whole premise — that the pool, not an individual depositor, is the only thing ever visibly moving funds. Corrected below; this was a real internal inconsistency, not a nitpick.**
+### 9.3 Gateway multi-step settlement
 
 - **Gateway** gives a USDC holder a single, unified balance across multiple chains — no need to pre-fund Arc specifically.
-- **Funding the pool (attributable, and that's fine):** a depositor uses Gateway to source USDC *into the pool at deposit time*, from their own unified cross-chain balance. This is a named, correlatable action — but that was already true before Gateway entered the picture (§6.6: deposit is the disclosed event; anonymity applies to spending a note later, not to depositing). Using Gateway here spends no privacy budget that wasn't already spent.
-- **Spending (anonymous — no draw tied to a sender):** when `fire` evaluates true, the ring-signed note-spend proof (§6.1–6.2) plus nullifier check authorizes the *pool* to release the note's fixed denomination. Nothing is drawn from an individual's identity at this step — the pool already holds the funds from some earlier, unlinked deposit. This is the step that must never name a sender, and now doesn't.
-- **Draw (recipient side, optional):** if the recipient's home chain isn't Arc, a Gateway draw redistributes the released funds there after settlement — this only reveals the recipient, which was never hidden (`PaymentIntent.recipient` is already a plain field, §9.1).
-- **Verify before building:** Gateway's exact attestation/draw latency isn't confirmed against Circle's docs, for either the deposit-time draw or the recipient-side one. Check this in week 1, not week 2.
+- **Draw #1 (sender side, privacy-critical):** when `fire` evaluates true, Gateway pulls the exact amount from the sender's unified balance and settles on Arc *in the same moment the payment executes*, never pre-staged. A separate earlier "bridge to Arc" transaction would itself be a correlatable event linking sender identity to payment timing, undermining the point of the timing-based intent.
+- **Draw #2 (recipient side, optional):** if the recipient's home chain isn't Arc, a second Gateway draw redistributes settled USDC there after settlement — lower stakes, it's the recipient's own funds post-settlement.
+- **Verify before building:** Gateway's exact attestation/draw latency isn't confirmed against Circle's docs. If it isn't fast enough to feel simultaneous with settlement, draw #1 becomes its own visible step again, undercutting the timing-privacy argument. Check this in week 1, not week 2.
 - **App Kits:** use for the intent-submission/payment frontend — satisfies "workflows using App Kits where relevant" directly, low risk.
 - **StableFX:** gated behind institutional KYB/AML approval, not usable in this build. One roadmap line in the pitch only; no working integration claimed.
 
@@ -414,8 +447,7 @@ One Confidential Workflow, two jobs, both genuinely requiring confidentiality:
 
 | Risk | Severity | Mitigation |
 |---|---|---|
-| Ring OR-proof (§6) has no off-the-shelf reference | High (was existential when the statement wrongly embedded FORS+C verification — corrected in §6.1–6.2 to a much smaller note-opening statement) | Day 1–2 spike on the note-opening statement specifically, hard go/no-go, single-signer fallback |
-| Settlement previously named a sender via Gateway draw #1 at spend time, contradicting §6.6's pool-custody premise | Was existential for the privacy claim | Corrected in §9.3: Gateway only touches identity at deposit time (already attributable); spend-time release comes from the pool, never a named sender |
+| Ring OR-proof (§6) has no off-the-shelf reference | High | Day 1–2 spike, hard go/no-go, single-signer fallback |
 | FORS+C parameters unbenchmarked (§5.1, §6.5) | Medium-High | Benchmark gas/size before committing to a parameter set |
 | Gateway draw latency unverified (§9.3) | Medium | Check Circle docs before treating "simultaneous" as a design assumption |
 | PQXDH hop-encryption upgrade adds scope | Low-Medium | Ship with classical hop encryption for MVP if time is short, label as known gap |
@@ -423,8 +455,6 @@ One Confidential Workflow, two jobs, both genuinely requiring confidentiality:
 | Ring enrollment is Sybil-able (free, unlimited `pkCommitment` registration) | High | Funding-clustering + organic-activity heuristics in §8.1. World ID and bonding both considered, deliberately left out of scope (§2). Have the one-line judge answer ready: identified, mitigated what's cheap, made an informed scoping call — not unaddressed. |
 | Mesh generalization to carry queries (§7.5) needs a response-routing path the mesh never had before | Medium | Scope response-routing as its own build item (§13), not an assumed side effect of the existing payment-forwarding logic |
 | Routing RPC/Graph reads through the mesh adds real latency to nonce/balance-style lookups | Medium | Only route wallet-specific and ring/mesh-construction reads (§7.5); test perceived latency early, don't discover it during demo prep |
-| No recovery mechanism for lost/cleared local note storage (§6.6) | High for real funds, low for a demo | Explicitly out of scope, stated plainly in README. Real version would need Monero/Zcash-style scanning (hash-based view-tag analog) or notes deterministically derived from a wallet seed |
-| Fixed-denomination pools mean no arbitrary-amount payments (§6.6) | Medium | Deliberate scope decision to avoid EC-based value commitments; document as a stated PoC constraint, not a missing feature |
 
 ---
 
@@ -454,15 +484,15 @@ One Confidential Workflow, two jobs, both genuinely requiring confidentiality:
 **Network layer**
 - [ ] Relay mesh nodes (3-hop, batch+delay, TEE-hosted) (§7.1)
 - [ ] PQXDH hop encryption (stretch, §7.3)
+- [ ] `messageType` generalization + response-routing for query traffic (§7.5)
 
 **Confidential workflows**
 - [ ] Chainlink CRE workflow: compliance check (§10.1)
 - [ ] Chainlink CRE workflow: confidential intent execution (§9.2, §10.2)
 
 **Settlement**
-- [ ] Pool contract: note commitments, nullifier check, fixed-denomination release (§6.6)
 - [ ] Arc/USDC settlement contract
-- [ ] Gateway integration: deposit-time draw (funds the pool) and recipient-side draw (§9.3) — never a sender-identified draw at spend time
+- [ ] Gateway integration: draw #1 (sender-side) and draw #2 (recipient-side) (§9.3)
 
 **Data layer**
 - [ ] Substreams: ring-member enrollment (§8.1)
@@ -488,6 +518,31 @@ One Confidential Workflow, two jobs, both genuinely requiring confidentiality:
 1. Set up a PQ wallet
 2. Submit a payment as an intent — confidential, held in the CRE enclave
 3. Show it wait, then fire once the Graph-indexed privacy signal crosses threshold (or hit the deadline live if time allows)
-4. Ring-signed note-spend, relay-meshed execution — show the decoy and hop selection happening, and be explicit that no wallet signature or named sender appears at this step (§6.1, §9.3)
-5. Settle in USDC on Arc — pool releases the note's denomination, Gateway disperses to the recipient's chain if needed. Contrast with the earlier deposit step, which was attributable on purpose
+4. Ring-signed, relay-meshed execution — show the decoy and hop selection happening
+5. Settle in USDC on Arc via Gateway — show the unified-balance draw happening at the exact moment of execution
 6. Close on the threat model: what's hidden, what's not claimed, and why the spend key itself can't be forged even by a quantum computer
+
+---
+
+## 5. Architecture diagrams (Excalidraw files, delivered separately)
+
+Two native `.excalidraw` files exist for this project, styled to match the team's existing PQGuard diagrams (color coding: blue = wallet/host layer, purple = ring/core crypto, teal = mesh/transport, orange = Graph/data layer, green = sponsor/execution layer, red dashed = threat-model/out-of-scope callouts, gray = modularity/build-order/orientation). If picking this up in a new chat and these files aren't attached, they'd need to be regenerated from the spec above — the content is fully described here so nothing is lost even without the files themselves.
+
+**`project-x-architecture.excalidraw`** — the main pipeline-flow diagram: title/subtitle, a threat-model callout, a 6-box horizontal flow (PQ Wallet → Intent Submission → Chainlink CRE → Ring-Signed Payment → Relay Mesh → Settlement → Recipient) connected by arrows, two Graph-integration boxes (ring decoy selection, Markov-chain hop selection) feeding up into the Ring and Mesh boxes, three sponsor-coverage boxes (Arc/Chainlink/Graph) with detailed status text, an out-of-scope callout, and a build-order strip.
+
+**`project-x-modules.excalidraw`** — the modular-architecture breakdown diagram: a modularity-principle callout stating the contracts exactly, a condensed threat-model callout, three core module boxes side by side (PQ Wallet, Ring Signature, Network Mesh) each with their internal technical details and dependency boundaries, a dashed cross-arrow noting that wallet reads and Graph queries also ride the mesh, a data/detail row (the §7.5 RPC/Graph relaying box plus the two Graph modules, each wired to the module it feeds), an execution layer (Chainlink CRE and Arc/Settlement modules with their struct fields and trigger logic), and the out-of-scope callout.
+
+A third diagram (a simpler linear component-flow view, mirroring a third PQGuard reference image) was offered but not yet built as of this doc's writing — worth asking about if picking this up fresh.
+
+---
+
+## 6. Open items / not yet resolved
+
+- Arc scope beyond the locked intent feature (§9.4) — genuinely open, needs to pass the stated bar
+- Ring OR-proof feasibility (§6.3) — the Day 1–2 spike hasn't been run yet; this is the single highest-uncertainty item in the whole build
+- FORS+C `(k, a)` parameters — not yet benchmarked
+- Gateway draw latency — not yet verified against Circle's docs
+- Response-routing for `QUERY` messages through the mesh (§7.5) — designed, not yet built or estimated for effort
+- Whether real hardware TEE attestation is feasible in the build window, or will be simulated (§7.4) — not yet decided
+- Project name — "Project X" is a working title, not final
+- Whether a third, simpler linear-flow diagram is wanted
