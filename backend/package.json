@@ -6,7 +6,7 @@
   "description": "Opaque V1 — relay mesh (§5) and CRE confidential execution. Swarnim, S3/S4.",
   "engines": { "node": ">=22.18" },
   "scripts": {
-    "test": "node --test mesh/test/*.test.ts cre/test/*.test.ts",
+    "test": "node --test mesh/test/*.test.ts cre/test/*.test.ts zk/test/*.test.ts",
     "typecheck": "tsc --noEmit"
   },
   "comment": [
