@@ -33,6 +33,7 @@
     "vite": "^8.2.2"
   },
   "dependencies": {
-    "@opaque/protocol-types": "file:../packages/protocol-types"
+    "@opaque/protocol-types": "file:../packages/protocol-types",
+    "@opaque/zk": "file:../backend/zk"
   }
 }

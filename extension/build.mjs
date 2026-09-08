@@ -70,7 +70,7 @@ html = html.replace(/\s+crossorigin(?=[\s>])/g, '');
 //    there is no landing page, so the link would dead-end on a blank tab.
 html = html.replace(
   /<a href="index\.html">[^<]*<\/a>/,
-  '<a href="https://github.com/minrawsjar/opaque">opaque on GitHub</a>',
+  '<a href="https://github.com/minrawsjar/Opaque">opaque on GitHub</a>',
 );
 
 writeFileSync(join(DIST, 'app.html'), html);

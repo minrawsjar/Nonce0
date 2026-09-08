@@ -1,0 +1,16 @@
+{
+  "name": "@opaque/zk",
+  "version": "1.0.0-review",
+  "private": true,
+  "type": "module",
+  "description": "Opaque V1 — MPC-in-the-head ring proof (§6). Runs in Node and the browser: the prover is client-side by design.",
+  "exports": {
+    ".": "./index.ts",
+    "./statement.js": "./statement.ts",
+    "./zkboo.js": "./zkboo.ts"
+  },
+  "dependencies": {
+    "@noble/hashes": "^2.4.0",
+    "@opaque/protocol-types": "file:../../packages/protocol-types"
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "name": "@opaque/ring-client",
+  "version": "1.0.0-review",
+  "private": true,
+  "type": "module",
+  "description": "Opaque V1 — NoteVault, ring decoy selection (§8.1) and spend construction (§6). Aditya, S2.",
+  "engines": { "node": ">=22.18" },
+  "exports": { ".": "./src/index.ts" },
+  "scripts": {
+    "test": "node --test test/*.test.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@noble/hashes": "^2.4.0",
+    "@opaque/protocol-types": "file:../protocol-types",
+    "@opaque/zk": "file:../../backend/zk"
+  },
+  "devDependencies": { "@types/node": "^22.15.0", "typescript": "^7.0.2" }
+}

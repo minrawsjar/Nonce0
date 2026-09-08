@@ -1,99 +1,105 @@
-# nonce0
+# Opaque
 
-**Find out which of your keys a quantum computer would break, before it exists.**
+**A payment protocol where the key that authorises your spend is already
+quantum-safe, sender privacy comes from pure hashing instead of unbuilt
+cryptography, and your payment can wait until the network's anonymity
+conditions are actually strong.**
 
-Your address is not your public key — it is a hash of one, and a quantum computer
-cannot attack a fingerprint. It needs the real key. The key becomes visible the
-first time your account sends a transaction, because the signature on it reveals
-the public key to anyone who looks.
+Private USDC payments on Arc. Three properties, each from a different mechanism:
 
-In Ethereum the *nonce* counts how many transactions an account has sent. Nonce 0
-means nothing has leaked. Anything above zero means the key is out there.
-
-**The part nobody checks:** the same key controls the same address on every chain.
-Your admin key can show nonce 0 on Ethereum, look completely safe, and be fully
-exposed because a developer used it once on Sepolia two years ago.
-
-```
-npx nonce0 scan .              # your source code, before you deploy
-npx nonce0 scan 0xProtocol     # a live protocol, after you deployed
-```
-
-No installation, no account, no configuration, and **zero runtime dependencies** —
-a security tool that pulls four hundred transitive packages is asking you to trust
-a supply chain in order to check your supply chain.
-
-## Two names
-
-| Name | What it is |
-|---|---|
-| **nonce0** | the scanner — this npm package, `npx nonce0` |
-| **PQGuard** | the contract suite it installs — [`contracts/`](contracts/) |
-
-The scanner finds the keys. The guard protects them.
-
-## What it reports
-
-A ranked list of findings, each with a file and line or a contract address, and a
-specific next step. Ranking is by **what you can still do something about**:
-
-```
-risk = exposure x value_at_risk x (1 - fixability)
-```
-
-That inversion is the point. A critical finding you can close in three
-transactions ranks *below* a medium one that is permanent. Every other
-quantum-risk report is a wall of red that tells a team to panic without telling
-them what to do first.
-
-- **Fixable** — a key authorises an action. Add a hash-based second lock. It only
-  ever adds a requirement, so it can never approve something on its own.
-- **Not fixable, only containable** — an immutable verifier. Cap the outflow rate
-  and delay large withdrawals; turn an instant drain into hours of warning.
-- **Not fixable at all** — anything encrypted and already published on chain. An
-  attacker copies it today and decrypts it later. No tool changes that, and
-  anyone claiming otherwise is selling something.
-
-## What repo mode cannot know
-
-Source scanning has no value at risk, no knowledge of which contracts are actually
-deployed, and no way to tell a live admin path from a test fixture. Chain mode is
-what supplies those. This is stated here rather than left for you to discover.
-
-## Exit codes
-
-| Code | Meaning |
-|---|---|
-| `0` | clean |
-| `1` | findings at or above `--fail-on` (default `critical`) |
-| `2` | tool error |
-
-Distinguishing 1 from 2 is what makes this safe in CI: **a network failure must
-never read as a clean scan.** The same rule governs the exposure oracle, which
-reports `unknown` rather than `not exposed` when an RPC call fails.
-
-## Development
-
-```bash
-git clone --recurse-submodules <repo>   # contracts/lib/* are submodules
-npm test                                # node --test, no framework, no install
-npm run smoke                           # pack, extract with no node_modules, run
-
-npm run dev --prefix frontend           # http://localhost:8402, landing + dashboard + API
-```
-
-| Directory | What runs there | Install needed |
+| Property | Mechanism | Section |
 |---|---|---|
-| `src/`, `bin/` | the published scanner | never |
-| `contracts/` | PQGuard, via `forge test` | `forge install` |
-| `indexer/` | the Substreams module, via `cargo` | `cargo build` |
-| `backend/` | the x402 scan API | `npm --prefix backend ci` |
-| `frontend/` | landing + dashboard, `npm run dev` | none — no build step |
+| The spend key survives a quantum adversary | FORS+C hash-based few-time signatures | §5 |
+| Sender and amount are hidden | An 8-member ring over note commitments, proved with MPC-in-the-head — hashes only, no elliptic curve, no lattice | §6 |
+| Network origin is hidden | A 3-hop onion relay mesh, ML-KEM-768 per hop | §7 |
+| The payment waits for a good privacy moment | A Chainlink CRE confidential workflow | §9, §10 |
 
-There is no `npm install` step for the scanner and there never will be. `api/` is
-the only directory with a `node_modules`, and it is a sibling of `src/` so Node's
-module resolution structurally cannot reach it from shipped code.
+Decoy selection and relay hop selection both read a Graph subgraph — real
+functional dependencies, not a dashboard.
 
----
+## Read this before the pitch
 
-MIT licensed.
+Three things are load-bearing and all three are stated plainly, because a
+protocol that hides its gaps is the failure mode this project exists to move
+away from.
+
+**1. On-chain ring verification does not work, and we measured it.** §6.3
+required a spike before anything depended on the ring. It is built, and
+`node backend/zk/bench.ts` runs it. At 219 repetitions (2⁻¹²⁸ soundness) the
+proof is **1.08 MiB**: calldata alone is 18M gas against Arc's 30M block limit,
+and verification is ~9× a whole block at a charitable 3 gas per boolean gate.
+Off-chain verification works, at 2.0 s, and stays publicly verifiable. The
+three ways forward — and the fact that choosing between them changes the trust
+model — are in [backend/zk/README.md](backend/zk/README.md). **§2's "verified
+fully on-chain" does not survive this measurement.**
+
+**2. There is no recovery for notes.** A note is a secret in local browser
+storage and nothing else. Clear your browser data and any unspent notes are
+gone permanently. That is a genuine fund-safety gap, not a cosmetic one. A real
+version needs seed-derived notes or trial-decryption scanning; both are out of
+scope here.
+
+**3. TEE attestation is simulated.** Relay nodes and the CRE enclave are not
+running attested hardware in this build. Where the design says "the enclave
+holds this confidentially", read "the enclave would hold this confidentially".
+
+The threat model is in [docs/spec-v2.md §3](docs/spec-v2.md). It does not claim
+to stop a global passive observer, collusion across all three relay hops, or a
+well-resourced adversary Sybil-enrolling ring members — the §8.1 heuristics and
+the deposit cost of §6.6 raise that attack's price, they do not eliminate it.
+
+## How a payment works
+
+```
+PQ wallet (§5)            FORS+C key, ERC-4337. Authorises deposits and
+    │                     rotation — never the anonymous spend.
+    ▼
+Deposit                   Creates a note: an opaque commitment in a pooled
+    │                     contract. Attributable by design, and separate.
+    ▼
+Encrypted intent (§9)     (recipient, amount, deadline) sealed to the CRE
+    │                     enclave, never the public mempool.
+    ▼
+CRE workflow (§10)        Fires when compliance passes AND
+    │                     (privacyScore >= minimum OR now >= deadline).
+    ▼
+Ring spend (§6)           Proves "I know a secret opening one of these 8 note
+    │                     commitments" without saying which. Hashes only.
+    ▼
+Relay mesh (§7)           3 hops, onion-encrypted, batched, randomly delayed.
+    │                     Carries queries too, so query traffic covers payments.
+    ▼
+Settlement               The pool releases a fixed denomination. No sender is
+                          named at this step.
+```
+
+Fixed denominations only — 1, 5 and 10 USDC. Variable amounts need
+elliptic-curve value commitments and range proofs, which would crack the "no EC
+anywhere" posture at the amount-hiding layer.
+
+## Layout
+
+Ownership, boundaries and commands: **[docs/workspace.md](docs/workspace.md)**.
+Start with [docs/spec-v2.md](docs/spec-v2.md); [docs/README.md](docs/README.md)
+indexes everything and records the open contradictions between documents.
+
+```sh
+npm run typecheck:all      # every package, strict
+npm run test:all           # every suite
+cd contracts && forge test
+node backend/zk/bench.ts    # the §6.3 spike
+```
+
+Node ≥22.18 required — it strips TypeScript natively, so there is no build step
+anywhere except Vite for the frontend.
+
+## Not the scanner
+
+This repository began as **nonce0**, a cross-chain public-key exposure scanner,
+and that tool still lives in [`src/`](src/) and [`bin/`](bin/) with its own
+tests and its zero-runtime-dependency guarantee intact. It is unrelated to the
+payment stack above. `npx nonce0 scan .` still works.
+
+## Licence
+
+MIT.

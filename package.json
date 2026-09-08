@@ -26,8 +26,9 @@
   },
   "scripts": {
     "test": "node --test test/*.test.js",
-    "test:opaque": "node --test test/opaque-protocol.test.js",
-    "smoke": "npm pack --silent && D=$(mktemp -d) && tar xzf nonce0-*.tgz -C $D && cp -r test/fixtures $D/fixtures && node $D/package/bin/nonce0.js scan $D/fixtures --json; rm -rf $D nonce0-*.tgz"
+    "smoke": "npm pack --silent && D=$(mktemp -d) && tar xzf nonce0-*.tgz -C $D && cp -r test/fixtures $D/fixtures && node $D/package/bin/nonce0.js scan $D/fixtures --json; rm -rf $D nonce0-*.tgz",
+    "test:all": "npm test && npm --prefix packages/protocol-types test && npm --prefix packages/pq-wallet test && npm --prefix packages/ring-client test && npm --prefix graph test && npm --prefix backend test",
+    "typecheck:all": "npm --prefix packages/protocol-types run typecheck && npm --prefix packages/pq-wallet run typecheck && npm --prefix packages/ring-client run typecheck && npm --prefix graph run typecheck && npm --prefix backend run typecheck && npm --prefix frontend run typecheck"
   },
   "dependencies": {},
   "devDependencies": {}
