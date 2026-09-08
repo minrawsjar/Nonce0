@@ -1,0 +1,2 @@
+:root { color-scheme: dark; font-family: Inter, ui-sans-serif, system-ui; background: #07111f; color: #e8f0ff; }
+body { margin: 0; min-height: 100vh; display: grid; place-items: center; } main { width: min(760px, calc(100% - 3rem)); } .eyebrow { color: #51e0c1; font-weight: 700; letter-spacing: .12em; } h1 { font-size: clamp(2.7rem, 8vw, 5.5rem); line-height: .95; } section { border: 1px solid #21446d; padding: 1.25rem; border-radius: .75rem; background: #0b1c30; }

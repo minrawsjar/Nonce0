@@ -1,0 +1,20 @@
+type RingMember @entity {
+  id: ID!
+  denomination: BigInt!
+  enrolledAt: BigInt!
+  timesUsedInRing: Int!
+  fundingSourceCluster: String!
+  hasOtherActivity: Boolean!
+}
+
+type RingPool @entity { id: ID!, poolSize: Int!, freshnessScore: BigInt! }
+
+type RelayNode @entity {
+  id: ID!
+  endpoint: String!
+  kemPublicKey: Bytes!
+  reliabilityScore: BigInt!
+  batchOccupancy: BigInt!
+  recentSelectionCount: Int!
+  lastSeenAt: BigInt!
+}
