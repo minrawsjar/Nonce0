@@ -22,10 +22,15 @@ Project X is a private payment protocol where the key that authorizes a spend is
 **In scope:**
 - PQ wallet (ERC-4337) using a hash-based signature as the sole signer
 - Small anonymity ring (~8 members) for sender/amount privacy, verified fully on-chain, no proof system
-- 3-hop relay mesh for network-origin privacy
+- 3-hop relay mesh, generalized into a reusable anonymizing transport for both payment submission and RPC/Graph query relaying (§7)
 - Graph-powered decoy selection (ring) and hop selection (mesh) — genuine functional dependencies, not dashboards
 - One Chainlink CRE Confidential Workflow doing two jobs: compliance/eligibility gating, and confidential intent execution
 - "Intents that wait for the best privacy moment" — Arc/USDC settlement, with Gateway handling cross-chain sourcing/dispersal
+
+**Architecture principle — modularity:** the wallet, ring, and mesh modules communicate only through explicit data contracts, never shared internal state:
+- Wallet → Ring: a signature-scheme interface (keygen/sign/verify/commitment) plus a list of `pkCommitment`s. The ring module never touches live `PQKeyRegistry` state (useCount, rotation deadlines) — ring membership is a snapshot of committed public keys, nothing more.
+- Wallet/Ring/Client → Mesh: an opaque encrypted payload plus a message type (`PAYMENT` or `QUERY`) and, for queries, a response route. The mesh never needs to know what it's carrying.
+This is what lets any one module change (a different signature scheme post-benchmarking, a different OR-proof construction if the §6.3 spike fails, a different transport crypto) without the others noticing.
 
 **Explicitly out of scope:**
 - Any SNARK/STARK proof system in the spend-authorization path (the standard way to make such proofs cheap on EVM — e.g. RISC Zero's Groth16 wrapping — reintroduces an elliptic-curve dependency at the exact point meant to be quantum-proof; RISC Zero's own docs confirm that wrapping step is not quantum-safe)
@@ -42,8 +47,8 @@ Project X is a private payment protocol where the key that authorizes a spend is
 
 | | Detail |
 |---|---|
-| Hides | Which ring member signed; the amount; sender's network origin (IP); intent parameters (recipient, amount, timing) before execution; the compliance-check input |
-| Does not claim to prevent | A global passive network adversary; simultaneous compromise of all 3 relay hops; weak OPSEC; a well-resourced, patient adversary Sybil-enrolling ring members to erode the anonymity set — the §8.1 heuristics raise the cost of this attack, they do not eliminate it |
+| Hides | Which ring member signed; the amount; sender's network origin (IP) for both payment submission and the RPC/Graph reads that precede it (§7.5); intent parameters (recipient, amount, timing) before execution; the compliance-check input |
+| Does not claim to prevent | A global passive network adversary; simultaneous compromise of all 3 relay hops; weak OPSEC; a well-resourced, patient adversary Sybil-enrolling ring members to erode the anonymity set — the §8.1 heuristics raise the cost of this attack, they do not eliminate it; latency cost of routing queries through the mesh (a real UX tradeoff, not hidden — see §7.5) |
 | Trust assumption for fund safety | None — spend authorization is a hash-based signature checked directly on-chain; no relay, enclave, or operator sits in that path |
 | Trust assumption for anonymity | The ring's OR-proof mechanism (§6) and the relay mesh's hop diversity (§7) |
 | Trust assumption for intent execution | The Chainlink CRE TEE holds intent parameters confidentially until the trigger condition fires |
@@ -67,6 +72,8 @@ Ring-signed payment (§6) ── ring ~8, hash-based, verified directly on-chain
      │        Ring membership drawn via Graph-powered decoy selection (§8.1)
      ▼
 Relay mesh (§7) ── 3 hops, batched + randomly delayed, TEE-hosted
+     │        Generalized transport: also carries wallet RPC reads and
+     │        Graph queries (§7.5), not just payment submission
      │        Hops chosen via Graph-powered hop selection (§8.2)
      ▼
 Settlement (Arc/USDC) ── Gateway draw #1 sources USDC from sender's unified
@@ -78,6 +85,8 @@ Recipient ── Gateway draw #2 (optional) redistributes to recipient's chain
 ---
 
 ## 5. PQ Wallet
+
+**Module boundary:** everything outside this section (the ring module, §6) talks to the wallet only through a signature-scheme interface — `keyGen()`, `sign(sk, digest)`, `verify(pk, digest, sig)`, `pkCommitment(pk)` — plus the digest construction in §5.3. Nothing outside this section should reference FORS+C internals (tree height, `k`/`a` parameters, hash-chain structure) directly. That's what lets the team change the scheme or its parameters after the §6.3 spike without touching the ring module or `PQKeyRegistry` callers.
 
 ### 5.1 Signature scheme
 
@@ -132,6 +141,8 @@ Hash-based verification is pure Keccak evaluation — no elliptic-curve or latti
 
 ## 6. PQ Ring Signatures
 
+**Module boundary:** this module depends on the wallet (§5) only through the signature-scheme interface and a list of `pkCommitment`s — never on live `PQKeyRegistry` state (useCount, rotation deadlines, `disableAfter`). Ring membership is a snapshot of committed public keys; the ring has no legitimate reason to know an account's rotation schedule. Keeping this boundary honest means a change to the OR-proof construction (if §6.3's spike forces a fallback) never touches wallet or registry code, and vice versa.
+
 ### 6.1 What's being proven
 
 Statement: *"I possess a valid FORS+C signature under one of the 8 public key commitments in this ring, over this specific payment digest, without revealing which commitment."*
@@ -171,22 +182,27 @@ MPC-in-the-head proofs are historically larger than SNARKs (tens of KB, not hund
 
 ---
 
-## 7. Relay Mesh
+## 7. Network Mesh (generalized anonymizing transport)
+
+The mesh is not "the payment-submission feature" — it's a generic anonymizing transport that any sensitive request can ride on. Payment submission is one consumer of it; RPC reads and Graph queries (§7.5) are two more. This generalization is what closes the RPC/Graph IP-leak gap without standing up a second system.
 
 ### 7.1 Topology
 
-- 6 independent relay nodes, no operator grouping. Every payment uses a fixed-length 3-hop path drawn from this pool via the Markov chain described in §8.2 — not random, not deterministic top-3.
-- Each hop: receives an encrypted, ring-signed payment; holds it for a fixed batch window (not adaptive); forwards with a randomized per-item delay within that window; the final hop submits to L1 where the ring signature is verified on-chain (§6).
-- Relay nodes run inside TEEs. Their job is purely batching + delay + multi-hop forwarding — they never touch signature verification, so a compromised relay cannot forge or approve a spend, only potentially deanonymize network origin if enough hops collude (see threat model, §3).
-- Path *length* stays fixed at 3 hops (2 transitions) — this is a deliberate non-goal, not a missed feature. The classic Crowds protocol (§8.2) uses a variable-length forward-or-stop chain; adopting that here would reopen a scoping decision already settled to keep the build tractable.
+- 6 independent relay nodes, no operator grouping. Every message (payment or query) uses a fixed-length 3-hop path drawn from this pool via the Markov chain described in §8.2 — not random, not deterministic top-3.
+- Each hop: receives an encrypted message; holds it for a fixed batch window (not adaptive); forwards with a randomized per-item delay within that window; the final hop either submits to L1 (payment messages) or forwards to the actual RPC/Graph gateway and routes the reply back (query messages — §7.5).
+- Relay nodes run inside TEEs. Their job is purely batching + delay + multi-hop forwarding — they never touch signature verification or see plaintext query contents, so a compromised relay cannot forge or approve a spend, only potentially deanonymize network origin if enough hops collude (see threat model, §3).
+- Path *length* stays fixed at 3 hops (2 transitions) for both message types — this is a deliberate non-goal, not a missed feature. The classic Crowds protocol (§8.2) uses a variable-length forward-or-stop chain; adopting that here would reopen a scoping decision already settled to keep the build tractable.
+- Bootstrapping is not a hard problem here the way it is for Tor: the 6 relay endpoints are a small, publicly known set (not secret guard nodes), so there's no discovery/enumeration attack to defend against — the goal is hiding sender-IP-to-payload linkage, not hiding who runs relays.
 
 ### 7.2 Message format (draft)
 
 ```
 RelayMessage {
-    encryptedPayload: bytes      // the ring-signed payment, encrypted hop-to-hop
-    hopIndex: uint8              // which hop this message currently is at
-    batchId: bytes32             // groups messages released together
+    messageType: PAYMENT | QUERY   // what kind of payload this is (§7.5)
+    encryptedPayload: bytes        // payment: the ring-signed tx. query: the RPC/Graph request
+    hopIndex: uint8                // which hop this message currently is at
+    batchId: bytes32               // groups messages released together
+    responseRoute: bytes?          // QUERY only — one-time key + return path for the reply
 }
 ```
 
@@ -197,6 +213,20 @@ Use a PQ-hybrid handshake between consecutive hops — the same shape as Signal'
 ### 7.4 TEE attestation
 
 If real hardware TEE attestation (Intel TDX/SGX or equivalent) isn't practical in the build window, simulate attestation and say so explicitly in the README — do not imply real attestation if it isn't there.
+
+### 7.5 RPC/Graph query relaying (closes the IP-leak gap)
+
+**The gap:** before any ring/mesh privacy applies, the client makes direct calls that leak real IP-to-identity: reading `PQKeyRegistry` state (nonce, useCount, rotation status) from an RPC provider, and querying `RingMember`/`RelayNode` data from the Graph gateway for decoy/hop selection (§8). Both directly link a real IP to a specific wallet, and the Graph queries in particular correlate in time with an imminent ring-formation event landing on-chain moments later.
+
+**Fix:** route these specific reads — not all reads — through the same mesh transport as §7.1–7.4, using `messageType: QUERY`. The final hop forwards the request to the real RPC/Graph gateway, gets the response, and encrypts it back through `responseRoute` to the origin instead of forwarding to L1.
+
+**What to route vs. not:** only reads tied to a specific wallet or an imminent ring/mesh construction — `PQKeyRegistry` state for the acting wallet, `RingMember` and `RelayNode` subgraph queries. Generic, non-identifying chain data (e.g. a public gas price oracle) can go direct — it doesn't leak anything wallet-specific, and routing it would only add latency for no privacy gain.
+
+**Real cost, stated plainly:** query latency gets worse by design — that's what batching + delay costs. Nonce/balance-style lookups that users expect to feel instant will feel slower. This is a genuine UX tradeoff to test, not a free upgrade, and it's why the threat model (§3) lists it under "does not claim to prevent" rather than pretending it's free.
+
+**A genuine second-order benefit:** queries happen far more often than payments. Once both ride the same mesh, traffic into hop 1 looks like a constant stream of generic mesh activity rather than a sparse, easy-to-flag "payment submission" signal — the frequent query traffic functions as cover traffic that strengthens payment-side anonymity too, not just a fix bolted on for its own sake.
+
+**What this still doesn't solve:** the underlying trust assumption is unchanged — if all 3 hops on a path collude, network origin is still exposed, same as §3 already states for payment traffic. This closes "reads bypass the mesh entirely," not the mesh's own collusion assumption.
 
 ---
 
@@ -363,6 +393,8 @@ One Confidential Workflow, two jobs, both genuinely requiring confidentiality:
 | PQXDH hop-encryption upgrade adds scope | Low-Medium | Ship with classical hop encryption for MVP if time is short, label as known gap |
 | Arc's "open scope" invites scope creep | Medium | Any new Arc idea must pass the §9.4 bar before it's approved |
 | Ring enrollment is Sybil-able (free, unlimited `pkCommitment` registration) | High | Funding-clustering + organic-activity heuristics in §8.1. World ID and bonding both considered, deliberately left out of scope (§2). Have the one-line judge answer ready: identified, mitigated what's cheap, made an informed scoping call — not unaddressed. |
+| Mesh generalization to carry queries (§7.5) needs a response-routing path the mesh never had before | Medium | Scope response-routing as its own build item (§13), not an assumed side effect of the existing payment-forwarding logic |
+| Routing RPC/Graph reads through the mesh adds real latency to nonce/balance-style lookups | Medium | Only route wallet-specific and ring/mesh-construction reads (§7.5); test perceived latency early, don't discover it during demo prep |
 
 ---
 
@@ -372,7 +404,7 @@ One Confidential Workflow, two jobs, both genuinely requiring confidentiality:
 |---|---|
 | 1–2 | Ring OR-proof spike (§6.3): MPC-in-the-head feasibility, 1-of-8. Go/no-go decision. Also: pick and benchmark FORS+C `(k, a)` parameters (§5.1). |
 | 2–5 | `PQKeyRegistry` + `PQValidator` wallet, FORS+C verifier, ring verification per spike outcome, nullifier/double-spend logic (§6.4) |
-| 5–7 | Relay mesh (3-hop, batch+delay, TEE-hosted, PQXDH hop encryption if time allows) |
+| 5–7 | Relay mesh (3-hop, batch+delay, TEE-hosted, PQXDH hop encryption if time allows); generalize to `messageType: PAYMENT/QUERY` and build response-routing for query traffic (§7.5) |
 | 7–9 | Chainlink CRE merged workflow (compliance + intent execution); Arc/USDC settlement + Gateway draws |
 | 9–10 | Graph: Substreams + subgraphs for ring decoys and relay hops (§8); wire client-side selection logic |
 | 10–11 | Frontend: wallet setup, intent submission, payment flow, App Kits integration |
