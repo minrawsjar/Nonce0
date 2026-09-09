@@ -79,3 +79,36 @@ test('the chain definition matches what the RPC reports', async () => {
   // Native USDC is 18 decimals and pays gas; the pool's ERC-20 interface is 6.
   assert.equal(ARC_TESTNET.nativeCurrency.decimals, 18);
 });
+
+// ── the signer path ───────────────────────────────────────────────────────
+
+test('a local account is passed to viem WHOLE, not narrowed to an address', async () => {
+  // The bug this pins: narrowing a local Account to its address made viem
+  // choose eth_sendTransaction, which means "the node holds this key". Public
+  // RPCs do not, so every write failed with "method does not exist" while
+  // every read passed. Reads are all the rest of this file exercises, which is
+  // exactly why it survived to a live settlement attempt.
+  const { privateKeyToAccount } = await import('viem/accounts');
+  // A published, worthless key: Foundry's own anvil account 0.
+  const account = privateKeyToAccount(
+    '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80',
+  );
+  const client = createPoolClient({ account, offChain });
+
+  // simulateContract must receive the Account object. If it is ever narrowed
+  // again, viem reports the wrong send path and this fails on the message.
+  await assert.rejects(
+    client.deposit({ scope, commitment: `0x${'11'.repeat(32)}` as never }),
+    (error: unknown) => {
+      const message = (error as Error).message;
+      assert.equal(
+        message.includes('eth_sendTransaction'),
+        false,
+        'signer was narrowed to an address: viem picked the node-holds-the-key path',
+      );
+      // It still fails, because that account has no USDC and no approval —
+      // which is a revert from the chain, not a transport mistake.
+      return true;
+    },
+  );
+});

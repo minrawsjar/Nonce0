@@ -155,10 +155,22 @@ export function createPoolClient(options: PoolClientOptions): OpaquePoolClient {
     throw new ProtocolFailure('INVALID_INPUT', 'this pool client has no signer');
   };
 
-  const sender = async (client: WalletClient): Promise<Address> => {
-    const account = client.account ?? (await client.getAddresses())[0];
-    if (account === undefined) throw new ProtocolFailure('INVALID_INPUT', 'no account available');
-    return (typeof account === 'string' ? account : account.address) as Address;
+  /**
+   * The signer, in the form viem needs to pick the right send path.
+   *
+   * A local Account object is returned WHOLE, not narrowed to its address.
+   * viem decides how to send from what it is given: an Account signs locally
+   * and calls eth_sendRawTransaction, while a bare address means "the node
+   * holds this key" and calls eth_sendTransaction. Public RPCs do not hold
+   * keys, so narrowing to an address here produced
+   * `eth_sendTransaction does not exist` on every write — and reads, which is
+   * all the unit tests covered, never touched it.
+   */
+  const signerFor = async (client: WalletClient): Promise<Account | Address> => {
+    if (client.account !== undefined) return client.account;
+    const [first] = await client.getAddresses();
+    if (first === undefined) throw new ProtocolFailure('INVALID_INPUT', 'no account available');
+    return first as Address;
   };
 
   const waitForBlocks =
@@ -180,13 +192,12 @@ export function createPoolClient(options: PoolClientOptions): OpaquePoolClient {
     args: readonly unknown[],
     abi: typeof POOL_ABI | typeof ERC20_ABI = POOL_ABI,
   ): Promise<TxHash> {
-    const account = await sender(client);
     const { request } = await publicClient.simulateContract({
       address: getAddress(address),
       abi,
       functionName,
       args,
-      account: getAddress(account),
+      account: await signerFor(client),
     } as never);
     // Simulated first, so a revert surfaces as a decoded custom error here
     // rather than as a spent transaction that failed on chain.
