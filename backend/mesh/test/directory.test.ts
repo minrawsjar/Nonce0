@@ -73,12 +73,12 @@ const message = (fn: () => unknown): string => {
   return '';
 };
 
-const ids = (): readonly [RelayId, RelayId, RelayId] => [relays[0].id, relays[1].id, relays[2].id];
+const ids = (): readonly [RelayId, RelayId, RelayId] => [relays[0]!.id, relays[1]!.id, relays[2]!.id];
 
 // ── canonical encoding ────────────────────────────────────────────────────
 
 test('one directory has exactly one encoding, whatever order the entries arrive in', () => {
-  const shuffled: RelayDirectory = { ...V1, entries: [V1.entries[2]!, V1.entries[0]!, V1.entries[1]!] };
+  const shuffled: RelayDirectory = { ...V1, entries: [...V1.entries].reverse() };
   assert.deepEqual(canonicalBytes(shuffled), canonicalBytes(V1));
 
   // ...and it is not order-blind: a changed field is a changed encoding.
@@ -313,13 +313,13 @@ test('toPath returns the hops in the order requested', () => {
   const forwards = toPath(V1, ids(), NOW);
   assert.deepEqual(
     forwards.map((hop) => hop.id),
-    [relays[0].id, relays[1].id, relays[2].id],
+    [relays[0]!.id, relays[1]!.id, relays[2]!.id],
   );
 
-  const backwards = directoryModule.toPath(V1, [relays[2].id, relays[1].id, relays[0].id], NOW);
+  const backwards = directoryModule.toPath(V1, [relays[2]!.id, relays[1]!.id, relays[0]!.id], NOW);
   assert.deepEqual(
     backwards.map((hop) => hop.id),
-    [relays[2].id, relays[1].id, relays[0].id],
+    [relays[2]!.id, relays[1]!.id, relays[0]!.id],
   );
 
   assert.equal(forwards[0].kemPublicKey, V1.entries[0]!.kemPublicKey);
@@ -330,7 +330,7 @@ test('an unknown relay is refused rather than quietly substituted', () => {
   // Silently swapping in a live relay would hand path selection to whoever
   // wrote the directory, which is the choice the client is making itself.
   assert.equal(
-    code(() => toPath(V1, [relays[0].id, 'GHOST' as RelayId, relays[2].id], NOW)),
+    code(() => toPath(V1, [relays[0]!.id, 'GHOST' as RelayId, relays[2]!.id], NOW)),
     'INSUFFICIENT_RELAYS',
   );
 });
@@ -348,7 +348,7 @@ test('an entry outside its validity window cannot be used', () => {
 
 test('a path that repeats a relay is refused', () => {
   assert.equal(
-    code(() => toPath(V1, [relays[0].id, relays[1].id, relays[0].id], NOW)),
+    code(() => toPath(V1, [relays[0]!.id, relays[1]!.id, relays[0]!.id], NOW)),
     'INSUFFICIENT_RELAYS',
   );
 });
@@ -416,7 +416,7 @@ test('deterministicDirectory is reproducible, and different seeds are different 
 
   const other = deterministicDirectory('a-different-mesh');
   assert.notEqual(other.directory.entries[0]!.kemPublicKey, V1.entries[0]!.kemPublicKey);
-  assert.notEqual(other.relays[0].secretKey, relays[0].secretKey);
+  assert.notEqual(other.relays[0]!.secretKey, relays[0]!.secretKey);
 
   // And it is a directory the real verifier accepts, so tests built on it are
   // testing the code rather than a shape the code happens to tolerate.

@@ -14,7 +14,10 @@ import type { FinalPayload, MeshMessageKind } from '../transport.ts';
 const { directory, relays } = deterministicDirectory('server');
 const NOW_MS = 1_760_003_600_000n; // inside the directory's window, in ms
 const NOW_S = (NOW_MS / 1000n) as unknown as bigint;
-const ids = relays.map((r) => r.id) as unknown as readonly [RelayId, RelayId, RelayId];
+// Three of the six, the way a client draws them. Casting the whole pool to a
+// three-tuple used to typecheck and was always a lie; assertRelayPath catches
+// it now that the pool is bigger than a path.
+const ids = relays.slice(0, 3).map((r) => r.id) as unknown as readonly [RelayId, RelayId, RelayId];
 const utf8 = (s: string): Uint8Array => new TextEncoder().encode(s);
 const text = (b: Uint8Array): string => new TextDecoder().decode(b);
 

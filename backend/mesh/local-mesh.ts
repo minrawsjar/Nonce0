@@ -1,26 +1,31 @@
 #!/usr/bin/env node
-// Generates a real three-relay mesh and, optionally, runs it.
+// Generates a real six-relay mesh and, optionally, runs it.
 //
 //   node mesh/local-mesh.ts --out ./.mesh          # write keys + directory
-//   node mesh/local-mesh.ts --out ./.mesh --serve  # and start all three
+//   node mesh/local-mesh.ts --out ./.mesh --serve  # and start all six
+//
+// Six relays, three hops. The pool is what a payment draws FROM; the path is
+// how far it travels. See MIN_POOL_RELAYS in contracts.ts for why they differ.
 //
 // The keys here come from the OS, not from a seed, so this is NOT
 // deterministicDirectory — that one derives every relay secret from a string
 // and exists only so tests reproduce. These are real keys written to real
 // files, and the file permissions are the only thing protecting them.
 //
-// WHAT THIS IS NOT: three processes on one laptop are one operator, one
-// machine, one network and one log. They collude by construction. The code
-// cannot tell the difference, which is exactly why the difference has to be
-// stated: this is for development and for a demo, and a mesh that means
-// anything needs the three entries below run by three different people on
-// three different networks.
+// WHAT THIS IS NOT: six processes on one laptop are one operator, one machine,
+// one network and one log. They collude by construction, and a bigger pool of
+// them does not dilute that even slightly — six colluding relays learn exactly
+// what three would. The code cannot tell the difference, which is exactly why
+// the difference has to be stated: this is for development and for a demo, and
+// a mesh that means anything needs the six entries below run by six different
+// people on six different networks.
 
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import type { Hex, RelayId, UnixSeconds } from '@opaque/protocol-types';
 
+import { MIN_POOL_RELAYS } from './contracts.ts';
 import type { DirectoryEntry, DirectoryTrustRoot, RelayDirectory, SignedDirectory } from './contracts.ts';
 import { deterministicSigner, signDirectory, signerCommitment } from './directory.ts';
 import { createRelay, type Relay } from './server.ts';
@@ -69,7 +74,7 @@ export function buildLocalMesh(
   const secretKeys = new Map<RelayId, Hex>();
   const ports = new Map<RelayId, number>();
 
-  for (let i = 1; i <= 3; i++) {
+  for (let i = 1; i <= MIN_POOL_RELAYS; i++) {
     const id = `R${i}` as RelayId;
     const port = basePort + i - 1;
     const keypair = generateRelayKeypair(1n);
@@ -77,8 +82,8 @@ export function buildLocalMesh(
     ports.set(id, port);
     entries.push({
       id,
-      // Distinct on paper. On one laptop it is one operator wearing three
-      // hats, and toPath's no-repeated-operator rule cannot see that.
+      // Distinct on paper. On one laptop it is one operator wearing six hats,
+      // and toPath's no-repeated-operator rule cannot see that.
       operatorId: `local-operator-${i}`,
       endpoint: endpointFor(id, i - 1, port),
       kemPublicKey: keypair.publicKey,
@@ -144,7 +149,7 @@ if (import.meta.filename === process.argv[1]) {
   const out = argv[argv.indexOf('--out') + 1] ?? './.mesh';
   const mesh = buildLocalMesh();
   writeLocalMesh(out, mesh);
-  process.stdout.write(`wrote a 3-relay mesh to ${out}\n`);
+  process.stdout.write(`wrote a ${MIN_POOL_RELAYS}-relay mesh to ${out}\n`);
 
   if (argv.includes('--serve')) {
     const egress = new Map<MeshMessageKind, string>([

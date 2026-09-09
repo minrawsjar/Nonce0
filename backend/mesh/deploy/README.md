@@ -1,9 +1,14 @@
 # Running a relay
 
-Three relays, three operators, three networks. That last part is the whole
-point and it is the one thing this directory cannot do for you: three
-containers on one host share a machine, a network and a log, so they collude
-by construction no matter what the directory says about their operator ids.
+Six relays, six operators, six networks — and three hops per payment. The pool
+and the path are different numbers on purpose: a payment travels three hops,
+but it draws those three fresh from six, so no two payments share a route. Pick
+three out of three and the graph feed's ranking decides nothing.
+
+Six operators is the part this directory cannot do for you. Six containers on
+one host share a machine, a network and a log, so they collude by construction
+no matter what the directory says about their operator ids — and six colluding
+relays learn exactly what three would.
 
 ## What an operator needs
 

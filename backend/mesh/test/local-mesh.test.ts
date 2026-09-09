@@ -9,6 +9,7 @@ import test from 'node:test';
 import type { Hex, RelayId, UnixSeconds } from '@opaque/protocol-types';
 
 import { toPath, verify } from '../directory.ts';
+import { MIN_POOL_RELAYS } from '../contracts.ts';
 import { buildLocalMesh, serveLocalMesh, writeLocalMesh } from '../local-mesh.ts';
 import { createChannel } from '../return-path.ts';
 import { buildOnion, encodeFrame, type MeshMessageKind } from '../transport.ts';
@@ -44,7 +45,7 @@ test('three relays start, and a payment really crosses all three', async () => {
   try {
     const directory = mesh.signed.directory;
     const now = (directory.issuedAt + 60n) as UnixSeconds;
-    const ids = directory.entries.map((e) => e.id) as unknown as readonly [RelayId, RelayId, RelayId];
+    const ids = directory.entries.slice(0, 3).map((e) => e.id) as unknown as readonly [RelayId, RelayId, RelayId];
     const frame = encodeFrame(
       buildOnion({
         path: toPath(directory, ids, now),
@@ -82,7 +83,7 @@ test('a query crosses three relays and the answer comes back through a drop', as
   try {
     const directory = mesh.signed.directory;
     const now = (directory.issuedAt + 60n) as UnixSeconds;
-    const ids = directory.entries.map((e) => e.id) as unknown as readonly [RelayId, RelayId, RelayId];
+    const ids = directory.entries.slice(0, 3).map((e) => e.id) as unknown as readonly [RelayId, RelayId, RelayId];
     const channel = createChannel(ids[2]!);
 
     await fetch(directory.entries[0]!.endpoint, {
@@ -124,7 +125,7 @@ test('a query crosses three relays and the answer comes back through a drop', as
 test('the generated directory verifies against the trust root it writes', () => {
   const mesh = buildLocalMesh();
   const directory = verify(mesh.signed, mesh.root, mesh.signed.directory.issuedAt);
-  assert.equal(directory.entries.length, 3);
+  assert.equal(directory.entries.length, MIN_POOL_RELAYS, 'six running, three per payment');
   // Real keys, not derived from a seed: two runs must never coincide.
   assert.notEqual(
     buildLocalMesh().signed.directory.entries[0]!.kemPublicKey,

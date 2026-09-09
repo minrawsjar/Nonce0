@@ -14,6 +14,27 @@ import type { MeshEnvelope, PathHop } from './transport.ts';
 
 // ── the directory (§7, bootstrap) ─────────────────────────────────────────
 
+/**
+ * Hops in one onion. Three is the protocol: entry knows the sender, exit knows
+ * the destination, and the middle exists so no single relay knows both.
+ */
+export const PATH_HOPS = 3;
+
+/**
+ * Live relays the mesh must be able to draw those three FROM.
+ *
+ * These are two different numbers and the difference is the whole point. Run
+ * exactly three and "select the best three" selects all of them — the graph
+ * feed is computing a ranking that changes nothing, every payment walks the
+ * same route, and a standing circuit is precisely what three hops exist to
+ * avoid. Six gives twenty possible paths, and the path a message takes stops
+ * being a property of the deployment and starts being a per-payment draw.
+ *
+ * Six is a floor on the POOL, never on the path length: a message still makes
+ * three hops. Raising this costs operators, not latency.
+ */
+export const MIN_POOL_RELAYS = 6;
+
 export interface DirectoryEntry {
   readonly id: RelayId;
   /** Who runs it. A path must never use one operator twice. */

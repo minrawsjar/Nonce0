@@ -34,9 +34,13 @@ limit. The PDF states the rule correctly and says why. Until §6.4 is corrected,
 **the PDF wins on this one point**, and it is the only place the two disagree
 where the spec is not authoritative.
 
-Four smaller discrepancies are open at the same time: the PDF says three relays
-while §7.1/§8.2 say six (with three, every path visits every node and the Markov
-hop selection does nothing); `MeshMessage.type` is plaintext, so PAYMENT and
+Three smaller discrepancies are open at the same time. A fourth is now closed:
+the PDF said three relays while §7.1/§8.2 said six, and **§7.1 wins** — the mesh
+runs six and draws three per payment. With three, every path visits every node
+and the Markov hop selection decides nothing, which is the argument §7.1 was
+making. `MIN_POOL_RELAYS` in `backend/mesh/contracts.ts` is the number, and
+`bootstrap.ts` refuses a thinner pool rather than quietly narrowing it.
+`MeshMessage.type` is plaintext, so PAYMENT and
 QUERY are trivially separable and the cover-traffic argument in the context doc
 does not hold as designed; `graph/schema.graphql` indexes `fundingSourceCluster`
 per note commitment, which is a public per-member link the ring exists to
@@ -62,11 +66,17 @@ the EVM has no SHAKE and no raw keccak-f opcode either, so the random tapes
 alone would have to be built in Solidity and run 438 times per spend.
 Off-chain verification is GO at 2.0 s and stays publicly verifiable.
 
-That leaves a decision the ring module cannot make alone, because it changes §3:
-ship `SINGLE_NOTE_PQ` (§6.3's own fallback — PQ, on-chain, not anonymous), or
-verify in the CRE (anonymous, but puts a trusted party in a fund-safety path §3
-currently promises is empty, and needs the `spend()` authorization gap closed
-first), or ship both and label which half provides which property.
+**The routing is decided: verify off-chain, enforce through the contract.**
+`AttestedRingVerifier` is that decision in code. The ring proof is checked off
+the chain; the contract enforces ring membership, single-use nullifiers, the
+denomination and recipient, and a live attester key inside its few-time bound.
+
+It changes §3 and the change is not hidden: a dishonest attester can approve a
+spend no proof supports. It cannot learn who paid, because the proof it checks
+is zero-knowledge, and it cannot forge undetectably, because the proofs are
+publishable and re-verifiable. The rejected alternative was `SINGLE_NOTE_PQ`
+(§6.3's own fallback — post-quantum, on-chain, and no anonymity at all), which
+is still what the currently deployed Arc pool runs.
 `backend/zk/README.md` has the full argument and the spec deviations it forced —
 including that the in-circuit one-way function is AES-128, not keccak, and that
 commitments and nullifiers are therefore 128-bit values right-padded into

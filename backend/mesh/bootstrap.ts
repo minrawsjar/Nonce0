@@ -20,6 +20,11 @@
 // therefore share no route, and a relay that happens to sit on both sees two
 // unrelated messages instead of one client's session. A cached path is a
 // standing circuit, which is the thing three hops exist to avoid.
+//
+// Which is why the pool floor (MIN_POOL_RELAYS) is twice the hop count. Drawing
+// three hops from exactly three relays is not a draw, and the graph feed's
+// ranking would decide nothing — every payment would take the one route that
+// exists. Six running relays make the route a per-payment property.
 
 import {
   ProtocolFailure,
@@ -34,6 +39,7 @@ import {
 import { assertRelayPath } from '@opaque/protocol-types/codecs.js';
 
 import { createMeshTransport, type MeshClientOptions } from './client.ts';
+import { MIN_POOL_RELAYS, PATH_HOPS } from './contracts.ts';
 import type { DirectoryTrustRoot, RelayDirectory, SignedDirectory } from './contracts.ts';
 import { accept } from './directory.ts';
 
@@ -42,6 +48,16 @@ export interface MeshBootstrapOptions {
   readonly root: DirectoryTrustRoot;
   readonly signed: SignedDirectory;
   readonly pathPolicy: PathSelectionPolicy;
+  /**
+   * The §8.2 health feed. Called per relay, per snapshot — so a relay that
+   * fills up between two payments is seen as full on the second.
+   *
+   * It observes; it never adds or removes. A feed that could introduce a relay
+   * would be a feed that could put its own relay on every path, and the whole
+   * bootstrap order exists to stop exactly that: keys come from the pinned
+   * directory and nothing reached over the network can replace one.
+   */
+  readonly health?: (entry: RelayDirectory['entries'][number]) => RelayHealth;
   readonly now?: () => UnixSeconds;
   readonly client?: MeshClientOptions;
 }
@@ -58,23 +74,53 @@ export interface MeshBootstrap {
 }
 
 /**
- * A directory entry, as the path policy wants to see it.
- *
- * The three scores below are NOT measurements. A directory says who a relay is
- * and which key it holds; it says nothing about how reliable or how busy that
- * relay is. Reporting a made-up number as an observation would let the policy
- * weight on noise while looking informed, so they are flat and the policy
- * chooses on structure alone until a real observer supplies better.
+ * What a health feed reports about one relay. Supplied by the Graph observer
+ * (§8.2); absent until one is wired, which is what UNIFORM_PRIOR is for.
  */
-const toNode = (entry: RelayDirectory['entries'][number], observedAt: UnixSeconds): RelayNode => ({
+export interface RelayHealth {
+  readonly reliabilityScore: PrivacyScore;
+  readonly batchOccupancy: number;
+  readonly recentSelectionCount: number;
+}
+
+/**
+ * NOT a measurement, and the naming says so. A directory says who a relay is
+ * and which key it holds; it says nothing about how busy or how reliable that
+ * relay is, and inventing a number per relay would let the policy weight on
+ * noise while looking informed.
+ *
+ * So every relay gets the SAME number, which is a uniform prior rather than an
+ * observation: the §8.2 chain degrades to drawing uniformly at random from the
+ * pool, under the distinct-operator rule. That is a defensible selection and,
+ * more to the point, an honest one.
+ *
+ * `batchOccupancy` is 1 rather than 0 for a reason worth stating, because 0 is
+ * what it used to be. MarkovPathPolicy weights on `occupancy / (1 + recent)`
+ * and drops every node at weight 0, so a pool reported as uniformly idle is a
+ * pool it refuses entirely — six live relays and `need 3 distinct operators
+ * above the reliability floor, have 0`. Flat-zero was not a neutral default; it
+ * was an unusable one.
+ */
+const UNIFORM_PRIOR: RelayHealth = {
+  reliabilityScore: 5_000 as PrivacyScore,
+  batchOccupancy: 1,
+  recentSelectionCount: 0,
+};
+
+/** A directory entry, as the path policy wants to see it. */
+const toNode = (
+  entry: RelayDirectory['entries'][number],
+  observedAt: UnixSeconds,
+  health: RelayHealth,
+): RelayNode => ({
   id: entry.id,
   endpoint: entry.endpoint,
   kemPublicKey: entry.kemPublicKey,
   keyEpoch: entry.keyEpoch,
   operatorId: entry.operatorId,
-  reliabilityScore: 5_000 as PrivacyScore,
-  batchOccupancy: 0,
-  recentSelectionCount: 0,
+  reliabilityScore: health.reliabilityScore,
+  batchOccupancy: health.batchOccupancy,
+  recentSelectionCount: health.recentSelectionCount,
   lastSeenAt: observedAt,
 });
 
@@ -100,16 +146,21 @@ export function createMeshBootstrap(options: MeshBootstrapOptions): MeshBootstra
       // Live only. An expired entry cannot carry a message, and offering it to
       // the policy would let a dead relay dilute the selection it weights over.
       .filter((entry) => at >= entry.validFrom && at < entry.validUntil)
-      .map((entry) => toNode(entry, at));
+      .map((entry) => toNode(entry, at, options.health?.(entry) ?? UNIFORM_PRIOR));
     return { nodes, directoryVersion: directory.version.toString(10), observedAt: at };
   }
 
   async function pathFor(): Promise<RelayPath> {
     const live = snapshot();
-    if (live.nodes.length < 3) {
+    // Checked against the POOL floor, not the hop count. Three live relays
+    // would build a path — the same path, every time, because there is nothing
+    // else to draw. That is a standing circuit with extra steps, so it is
+    // refused here rather than served as a working mesh.
+    if (live.nodes.length < MIN_POOL_RELAYS) {
       throw new ProtocolFailure(
         'INSUFFICIENT_RELAYS',
-        `the directory has ${live.nodes.length} live relays and a path needs 3`,
+        `the directory has ${live.nodes.length} live relays; ` +
+          `a ${PATH_HOPS}-hop path must be drawn from at least ${MIN_POOL_RELAYS}`,
       );
     }
     const { nodes } = options.pathPolicy.selectPath(live);

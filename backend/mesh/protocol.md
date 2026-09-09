@@ -133,8 +133,8 @@ contribute to deanonymising a network origin if enough hops collude.
 
 # The service layer
 
-`transport.ts` is the cryptography. These are the pieces that turn it into
-three relays anyone can run.
+`transport.ts` is the cryptography. These are the pieces that turn it into six
+relays anyone can run, three of which carry any given payment.
 
 | File | What it owns |
 |---|---|
@@ -209,7 +209,8 @@ Named here so they are decisions rather than oversights.
 | **Layer sizes differ between depths**, so an observer at one relay can tell a first hop from a third. | Removing it needs a constant-size construction; a packet cannot nest inside itself at constant size. | Sphinx-style header shifting with hop-side re-padding. |
 | **Drops are in memory.** A restart loses undelivered replies. | The client re-queries over a fresh path. Persisting them would create a durable on-disk record of who asked something. | Redis with a TTL, if a relay must survive a restart mid-flight. |
 | **`deterministicDirectory` derives every relay secret from a string.** | It is test-only and says so loudly; `local-mesh.ts` uses OS randomness. | Nothing. Never point a deployment at it. |
-| **Three relays on one host are one operator** — one machine, one network, one log. | `npm run mesh:local` and `mesh/deploy/compose.yaml` both say so. The code cannot tell the difference. | Three people, three networks, running `mesh/deploy/Dockerfile`. This is a coordination problem, not a build problem. |
+| **Six relays on one host are one operator** — one machine, one network, one log. | `npm run mesh:local` and `mesh/deploy/compose.yaml` both say so. The code cannot tell the difference, and six colluding relays learn exactly what three would. | Six people, six networks, running `mesh/deploy/Dockerfile`. This is a coordination problem, not a build problem. |
+| **The pool floor is hard.** One of six relays rotating out stops payments until it returns or the directory is re-signed. | Deliberate: five live relays can still build a path, and drawing from a narrowed set while returning a healthy-looking path is the failure mode being refused. | Re-sign the directory without the missing relay, or run spares. A soft floor would have to make the degraded anonymity visible to the caller, not hide it. |
 
 ## Deploying a relay
 

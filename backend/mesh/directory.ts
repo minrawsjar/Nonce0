@@ -44,6 +44,7 @@ import {
 } from '@opaque/pq-wallet';
 
 import { MESH_VERSION, safeEqualHex } from './transport.ts';
+import { MIN_POOL_RELAYS } from './contracts.ts';
 import type {
   DirectoryEntry,
   DirectoryModule,
@@ -63,8 +64,11 @@ const KEM_PUBLIC_KEY_BYTES = 1184;
 const MAX_RELAY_ID_BYTES = 32;
 /** keyEpoch, validFrom, validUntil and expiresAt all become u64 on the wire. */
 const MAX_U64 = 1n << 64n;
-/** Three hops is the protocol. A directory that cannot supply three is not usable. */
-const MIN_ENTRIES = 3;
+/**
+ * A directory that cannot offer a pool to choose from is not usable. See
+ * MIN_POOL_RELAYS: a path is three hops, but three relays is not a mesh.
+ */
+const MIN_ENTRIES = MIN_POOL_RELAYS;
 
 // Function declarations, not arrow consts: TypeScript only treats a call as
 // never-returning (and narrows after it) when the callee is declared this way.
@@ -398,13 +402,14 @@ export function deterministicDirectory(
   issuedAt: UnixSeconds = 1_760_000_000n as UnixSeconds,
 ): {
   readonly directory: RelayDirectory;
-  readonly relays: readonly [DeterministicRelay, DeterministicRelay, DeterministicRelay];
+  /** MIN_POOL_RELAYS of them. A caller that wants a path takes any three. */
+  readonly relays: readonly DeterministicRelay[];
 } {
   const keyEpoch = 7n;
   const relays: DeterministicRelay[] = [];
   const entries: DirectoryEntry[] = [];
 
-  for (let i = 1; i <= 3; i++) {
+  for (let i = 1; i <= MIN_POOL_RELAYS; i++) {
     // ml_kem768 wants 64 bytes of seed; two domain-separated keccaks supply it.
     const material = new Uint8Array(64);
     material.set(keccak_256(canonical([utf8(`${DIRECTORY_DOMAIN}/relay/a`), utf8(seed), utf8(String(i))])), 0);
@@ -433,6 +438,6 @@ export function deterministicDirectory(
       entries,
       nextSignerCommitment: signerCommitment(deterministicSigner(`${seed}/next`).publicKey),
     },
-    relays: relays as unknown as readonly [DeterministicRelay, DeterministicRelay, DeterministicRelay],
+    relays,
   };
 }

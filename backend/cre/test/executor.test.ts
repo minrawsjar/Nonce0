@@ -49,11 +49,21 @@ test('a submitted intent gets an id and a handle, and starts waiting', async () 
 test('the handle is not the intent id, and is not derived from the payment', async () => {
   // If the handle were the id, anyone who read an id from a log or a queue
   // could watch that payment settle.
-  const ex = createExecutor({ now: () => NOW });
-  const ref = await ex.submit(intentFor('bb'));
+  const ref = await createExecutor({ now: () => NOW }).submit(intentFor('bb'));
   assert.notEqual(ref.statusHandle as string, ref.intentId as string);
   assert.equal((ref.statusHandle as string).length, 64, '32 bytes of hex');
-  assert.equal((ref.statusHandle as string).includes('bb'), false);
+
+  // The property is UNPREDICTABILITY GIVEN THE PAYMENT, so the test has to be
+  // the same payment twice: byte-identical intents, two executors, and the
+  // handles still differ. Any derivation from the payment — a hash, a prefix,
+  // an encoding of it — makes these two equal.
+  //
+  // Searching the handle for a substring of the payload is what this used to
+  // do, and it was a coin flip rather than a test: 64 hex characters contain a
+  // given two-character pair about one run in five, so it failed at random and
+  // would have passed a handle that WAS the payment hash.
+  const twin = await createExecutor({ now: () => NOW }).submit(intentFor('bb'));
+  assert.notEqual(ref.statusHandle, twin.statusHandle, 'the handle tracks the payment');
 });
 
 test('two submissions share no handle and no id', async () => {

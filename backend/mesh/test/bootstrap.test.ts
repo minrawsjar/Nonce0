@@ -4,12 +4,14 @@ import test from 'node:test';
 import {
   ProtocolFailure,
   type PathSelectionPolicy,
+  type PrivacyScore,
   type RelayPath,
   type RelaySnapshot,
   type UnixSeconds,
 } from '@opaque/protocol-types';
 
 import { createMeshBootstrap } from '../bootstrap.ts';
+import { MIN_POOL_RELAYS } from '../contracts.ts';
 import { deterministicDirectory, deterministicSigner, signDirectory, signerCommitment } from '../directory.ts';
 
 const signer = deterministicSigner('bootstrap-root');
@@ -62,7 +64,7 @@ test('bootstrap walks the hash chain, so this version cannot be replayed', () =>
 
 test('the snapshot carries the verified keys, and the directory version', () => {
   const snapshot = boot().snapshot();
-  assert.equal(snapshot.nodes.length, 3);
+  assert.equal(snapshot.nodes.length, MIN_POOL_RELAYS, 'the policy sees the whole live pool');
   assert.equal(snapshot.directoryVersion, '1');
   for (const node of snapshot.nodes) {
     const entry = directory.entries.find((e) => e.id === node.id)!;
@@ -93,14 +95,91 @@ const bootShortLived = (now = () => afterRotation) =>
 test('an entry that has rotated out never reaches the policy', () => {
   // Live at the start, gone later, with the same directory throughout.
   const beforeRotation = (directory.issuedAt + 1800n) as UnixSeconds;
-  assert.equal(bootShortLived(() => beforeRotation).snapshot().nodes.length, 3);
-  assert.equal(bootShortLived().snapshot().nodes.length, 2);
+  assert.equal(bootShortLived(() => beforeRotation).snapshot().nodes.length, MIN_POOL_RELAYS);
+  assert.equal(bootShortLived().snapshot().nodes.length, MIN_POOL_RELAYS - 1);
 });
 
-test('a directory that cannot supply three live relays refuses rather than short-pathing', async () => {
-  // Two hops that still look like a success is the failure mode worth
-  // preventing: the caller would believe it had three.
+test('a pool below the floor refuses, even though five relays could still make three hops', async () => {
+  // The distinction this pins: refusing is NOT about being unable to build a
+  // path. Five live relays build one fine. It is about refusing to draw from a
+  // pool the deployment never promised — silently narrowing the set a payment
+  // could have come from, while still returning a path that looks healthy, is
+  // the failure mode. One operator restarting stops payments; that is the cost
+  // of the floor and it is deliberate, not an oversight.
+  assert.equal(bootShortLived().snapshot().nodes.length, 5, 'five is enough for a path');
   await assert.rejects(bootShortLived().pathFor(), failure('INSUFFICIENT_RELAYS'));
+});
+
+test('a thin pool is refused before the policy is ever consulted', async () => {
+  // Ordering, not just outcome. A policy asked to choose from five relays has
+  // already been handed a narrowed set, and a policy that logs or scores what
+  // it sees would record a selection the mesh then refuses to make.
+  let asked = 0;
+  const counting: PathSelectionPolicy = {
+    selectPath: (snapshot) => {
+      asked += 1;
+      return firstThree.selectPath(snapshot);
+    },
+  };
+  await assert.rejects(
+    createMeshBootstrap({
+      root,
+      signed: signDirectory(shortLived, signer),
+      pathPolicy: counting,
+      now: () => afterRotation,
+    }).pathFor(),
+    failure('INSUFFICIENT_RELAYS'),
+  );
+  assert.equal(asked, 0, 'the policy must not see a pool the mesh will not draw from');
+});
+
+// ── what the snapshot has to be USABLE for ────────────────────────────────
+
+test('every node arrives with capacity a weight-based policy can actually draw on', async () => {
+  // §8.2 weights on batchOccupancy / (1 + recentSelectionCount) and drops
+  // anything at weight zero. This mirrors that filter without importing across
+  // the package boundary.
+  //
+  // Regression: toNode used to report batchOccupancy 0 for every relay as a
+  // deliberately-flat non-measurement. Flat is right; zero is not — it means
+  // "no capacity", so the real policy discarded all six live relays and failed
+  // with `have 0 operators`. The mesh and the policy were each correct alone
+  // and could not build a single path together.
+  const weighted: PathSelectionPolicy = {
+    selectPath: (snapshot) => {
+      const usable = snapshot.nodes.filter((n) => n.batchOccupancy / (1 + n.recentSelectionCount) > 0);
+      assert.equal(usable.length, MIN_POOL_RELAYS, 'a weight-based policy must see the whole pool');
+      return { nodes: usable.slice(0, 3) as unknown as RelayPath, probabilities: [1, 1, 1] };
+    },
+  };
+  const path = await boot(weighted).pathFor();
+  assert.equal(path.length, 3);
+});
+
+test('a health feed can re-weight a relay but never introduce one', async () => {
+  // The feed is reached over the network. If it could add an entry it could
+  // put its own relay on every path, encrypted to its own key — which is the
+  // exact substitution the pinned directory exists to prevent.
+  const seen: string[] = [];
+  const boots = createMeshBootstrap({
+    root,
+    signed,
+    pathPolicy: firstThree,
+    now: () => NOW,
+    health: (entry) => {
+      seen.push(entry.id as string);
+      return { reliabilityScore: 9_000 as PrivacyScore, batchOccupancy: 4, recentSelectionCount: 1 };
+    },
+  });
+  const nodes = boots.snapshot().nodes;
+  assert.equal(nodes.length, MIN_POOL_RELAYS, 'the feed cannot change the size of the pool');
+  assert.equal(seen.length, MIN_POOL_RELAYS, 'and it is asked about every live relay');
+  assert.equal(nodes[0]!.batchOccupancy, 4);
+  assert.equal(nodes[0]!.recentSelectionCount, 1);
+  // The keys still come from the verified directory, never from the feed.
+  for (const node of nodes) {
+    assert.equal(node.kemPublicKey, directory.entries.find((e) => e.id === node.id)!.kemPublicKey);
+  }
 });
 
 // ── paths ─────────────────────────────────────────────────────────────────
