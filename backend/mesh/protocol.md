@@ -208,6 +208,14 @@ Named here so they are decisions rather than oversights.
 | **Collection is not itself onion-routed.** | Same as above; the collection carries no content. | Route the collection as a QUERY, which needs the row above first. |
 | **Layer sizes differ between depths**, so an observer at one relay can tell a first hop from a third. | Removing it needs a constant-size construction; a packet cannot nest inside itself at constant size. | Sphinx-style header shifting with hop-side re-padding. |
 | **Drops are in memory.** A restart loses undelivered replies. | The client re-queries over a fresh path. Persisting them would create a durable on-disk record of who asked something. | Redis with a TTL, if a relay must survive a restart mid-flight. |
-| **`@opaque/pq-wallet` is imported by relative path** from `directory.ts`. | It is a packaging change, not a code one — the FORS implementation is already shared. | A `file:` dependency in `backend/package.json`, like `@opaque/protocol-types`. |
 | **`deterministicDirectory` derives every relay secret from a string.** | It is test-only and says so loudly; `local-mesh.ts` uses OS randomness. | Nothing. Never point a deployment at it. |
-| **Three relays on one laptop are one operator** — one machine, one network, one log. | `npm run mesh:local` prints this. The code cannot tell the difference. | Three people, three networks. This is an operational fact, not a code change. |
+| **Three relays on one host are one operator** — one machine, one network, one log. | `npm run mesh:local` and `mesh/deploy/compose.yaml` both say so. The code cannot tell the difference. | Three people, three networks, running `mesh/deploy/Dockerfile`. This is a coordination problem, not a build problem. |
+
+## Deploying a relay
+
+`mesh/deploy/` holds the image and the compose file. The image builds and three
+containers have carried a payment end to end through all three hops, so the
+packaging is proven; what is not proven, and cannot be from here, is three
+operators. See `mesh/deploy/README.md`, including the reverse-proxy warning —
+an access log writing `X-Forwarded-For` beside a request id rebuilds exactly
+the association property 1 exists to prevent, without touching this code.
