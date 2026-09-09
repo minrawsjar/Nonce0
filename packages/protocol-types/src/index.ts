@@ -249,6 +249,8 @@ export interface ApprovedRelease {
   readonly issuedAt: UnixSeconds;
   /** Delivery validity window — separate from the scheduling deadline. */
   readonly expiresAt: UnixSeconds;
+  /** V1 path: MAC-bound one-shot CRE authorizations for atomic settlement. */
+  readonly authorizations?: readonly { readonly id: Bytes32; readonly pool: Address }[];
   readonly authenticationTag: Hex;
 }
 
