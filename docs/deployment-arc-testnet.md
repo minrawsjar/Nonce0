@@ -30,11 +30,17 @@ eight-member anonymity copy over it is lying about what a user is getting.
 `capabilities()` exists precisely so a UI reads the answer instead of assuming
 it.
 
-This is §6.3's documented fallback, not a decision made quietly here. The
-eight-member ring was measured at 1.08 MiB per proof and roughly nine times an
-Arc block to verify (`node backend/zk/bench.ts`), so it cannot be verified
-on-chain at all at these parameters. The team's routing decision — single-note,
-off-chain verification, or both clearly labelled — is still open.
+This is §6.3's documented fallback, and **it is no longer the routing the
+project has chosen.** The decision has since been made: verify the ring proof
+off-chain, enforce the result through the contract. `AttestedRingVerifier`
+implements it, reports `RING_8` / `ringSize 8` / `requiresCommitReveal false`,
+and is fully tested — but the addresses above predate it, so **this deployment
+still runs the single-note verifier**.
+
+Moving to it means a new pool: `PrivatePool.verifier` is immutable, and
+`poolId` derives from the pool's own address. That is the seam working as
+intended rather than a problem — custody code does not change — but it is a
+redeploy and a migration of deposits, not a switch to flip.
 
 `requiresCommitReveal = true` follows from the same choice: a single-note spend
 publishes enough to re-spend the note, so the reveal is front-runnable and the
@@ -46,3 +52,12 @@ own challenge and would not need it.
 The pool reads its mode through the `ISpendVerifier` seam, so replacing the
 verifier does not touch custody. What it does change is what `capabilities()`
 reports, which is the value every interface is required to read.
+
+Under `AttestedRingVerifier` those values become `proofMode RING_8`,
+`ringSize 8`, `requiresCommitReveal false` — and that last one removes a
+transaction and a two-block wait from every payment, because an attested spend
+binds its recipient and has nothing left worth front-running.
+
+`verifierId` is the field that carries the trust model. It commits to the
+attester's address, so two pools differing only in who attests cannot be
+confused for one another by anything reading capabilities.
