@@ -20,6 +20,7 @@ import { sha256 } from '@noble/hashes/sha2.js';
 
 import {
   ProtocolFailure,
+  type Address,
   type ApprovedRelease,
   type Bytes32,
   type Hex,
@@ -81,6 +82,7 @@ function macInput(release: Omit<ApprovedRelease, 'authenticationTag'>): Uint8Arr
     utf8(encodeBigint(spend.scope.chainId)),
     utf8(spend.scope.pool),
     utf8(String(spend.scope.denomination)),
+    utf8((release.authorizations ?? []).map((a) => `${a.pool}:${a.id}`).join(',')),
   ]);
 }
 
@@ -101,6 +103,7 @@ export function issueRelease(input: {
   readonly issuedAt: UnixSeconds;
   readonly ttlSeconds: bigint;
   readonly secret: Uint8Array;
+  readonly authorizations?: readonly { readonly id: Bytes32; readonly pool: Address }[];
 }): ApprovedRelease {
   if (input.ttlSeconds <= 0n) {
     throw new ProtocolFailure('INVALID_INPUT', 'a release TTL must be positive');
@@ -112,6 +115,7 @@ export function issueRelease(input: {
     policyVersion: input.policyVersion,
     issuedAt: input.issuedAt,
     expiresAt: (input.issuedAt + input.ttlSeconds) as UnixSeconds,
+    ...(input.authorizations === undefined ? {} : { authorizations: input.authorizations }),
   };
   return { ...unsigned, authenticationTag: tag(unsigned, input.secret) };
 }
