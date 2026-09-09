@@ -84,7 +84,9 @@ export function startFromFlags(argv: readonly string[]): ReturnType<typeof creat
   });
 }
 
-if (process.argv[1] !== undefined && import.meta.url.endsWith(process.argv[1].split('/').pop()!)) {
+// Exact path, not a basename match: `endsWith('run-relay.ts')` would also
+// fire for any other script that happens to end that way.
+if (import.meta.filename === process.argv[1]) {
   const argv = process.argv.slice(2);
   const relay = startFromFlags(argv);
   const port = Number(need(parseFlags(argv), 'port'));

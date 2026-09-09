@@ -115,7 +115,7 @@ export async function serveLocalMesh(
   return relays;
 }
 
-if (process.argv[1]?.endsWith('local-mesh.ts')) {
+if (import.meta.filename === process.argv[1]) {
   const argv = process.argv.slice(2);
   const out = argv[argv.indexOf('--out') + 1] ?? './.mesh';
   const mesh = buildLocalMesh();
