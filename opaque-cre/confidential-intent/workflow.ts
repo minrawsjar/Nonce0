@@ -52,7 +52,8 @@
 // when. The cost, stated where it is paid: revocation is only as fast as the
 // credential TTL.
 
-import { cre, hexToBase64, type TeeRuntime } from '@chainlink/cre-sdk'
+import { cre, hexToBase64, TxStatus, type HTTPPayload, type TeeRuntime } from '@chainlink/cre-sdk'
+import { bytesToHex } from 'viem'
 import { encodeAbiParameters, parseAbiParameters } from 'viem'
 import { z } from 'zod'
 
@@ -73,19 +74,47 @@ import { openIntent } from '../../backend/cre/sealed-intent.ts'
 // ─── Config ─────────────────────────────────────────────────────────────────
 
 export const configSchema = z.object({
-	schedule: z.string(),
-	/** Which key version the client sealed to. Bound into the AEAD's AAD. */
+	/**
+	 * Ethereum addresses allowed to sign a trigger request. EMPTY ACCEPTS
+	 * ANYTHING, which is correct for simulation and wrong for a deployment:
+	 * anyone could then queue an intent for the enclave to work through.
+	 */
+	authorizedKeys: z.array(z.string()),
+	/** Which key version clients sealed to. Bound into the AEAD's AAD. */
 	encryptionKeyId: z.string(),
 	policyVersion: z.string(),
-	/** The ciphertext. Safe in a config file — that is the entire point. */
-	sealedIntent: z.string(),
-	/** Decimal strings: JSON has no bigint, and JSON.stringify throws on one. */
-	deadline: z.string(),
 	releaseTtlSeconds: z.string(),
-	expectedSpendHash: z.string(),
-	chainId: z.string(),
-	pool: z.string(),
-	denomination: z.number(),
+	/**
+	 * Where an approved release settles. Optional on purpose: with no receiver
+	 * the workflow stops at a signed report, which is what simulation and any
+	 * deployment without a live pool should do. Writing to a placeholder
+	 * address would look like settlement and settle nothing.
+	 */
+	settlement: z
+		.object({ chainSelector: z.string(), receiver: z.string(), gasLimit: z.string() })
+		.optional(),
+})
+
+/**
+ * What arrives per request. The sealed intent is no longer in config: one
+ * intent baked into configuration is a fixture, and a payment protocol needs
+ * a payment to arrive.
+ *
+ * Every bigint is a decimal string, because JSON.stringify throws on a bigint
+ * outright. This schema is the boundary where they are revived.
+ */
+const requestSchema = z.object({
+	intentId: z.string(),
+	sealedIntent: z.string(),
+	spendHash: z.string(),
+	deadline: z.string(),
+	minPrivacyScore: z.number(),
+	idempotencyKey: z.string(),
+	scope: z.object({
+		chainId: z.string(),
+		pool: z.string(),
+		denomination: z.number(),
+	}),
 })
 type Config = z.infer<typeof configSchema>
 
@@ -94,8 +123,16 @@ const text = (b: Uint8Array): string => new TextDecoder().decode(b)
 
 // ─── The confidential handler ───────────────────────────────────────────────
 
-export const onCronTrigger = async (runtime: TeeRuntime<Config>): Promise<string> => {
+export const onIntentSubmitted = async (
+	runtime: TeeRuntime<Config>,
+	trigger: HTTPPayload,
+): Promise<string> => {
 	const config = runtime.config
+
+	// The request body arrives as bytes. Parsed and VALIDATED before anything
+	// else: this is attacker-supplied input, and the fields below decide which
+	// pool a payment is checked against.
+	const request = requestSchema.parse(JSON.parse(text(trigger.input)))
 
 	// ── Step 1: the secrets, released only into an attested enclave ──
 	// Nothing is declared upfront. That is Confidential HTTP's mechanism
@@ -111,16 +148,16 @@ export const onCronTrigger = async (runtime: TeeRuntime<Config>): Promise<string
 	const intent: EncryptedIntent = {
 		version: 'opaque/v1' as EncryptedIntent['version'],
 		scope: {
-			chainId: BigInt(config.chainId) as EncryptedIntent['scope']['chainId'],
-			pool: config.pool as Address,
-			denomination: config.denomination as EncryptedIntent['scope']['denomination'],
+			chainId: BigInt(request.scope.chainId) as EncryptedIntent['scope']['chainId'],
+			pool: request.scope.pool as Address,
+			denomination: request.scope.denomination as EncryptedIntent['scope']['denomination'],
 		},
-		encryptedPayload: config.sealedIntent as Hex,
+		encryptedPayload: request.sealedIntent as Hex,
 		encryptionKeyId: config.encryptionKeyId,
-		spendHash: config.expectedSpendHash as Bytes32,
-		minPrivacyScore: 5_000 as EncryptedIntent['minPrivacyScore'],
-		deadline: BigInt(config.deadline) as UnixSeconds,
-		idempotencyKey: 'sim-intent-1' as EncryptedIntent['idempotencyKey'],
+		spendHash: request.spendHash as Bytes32,
+		minPrivacyScore: request.minPrivacyScore as EncryptedIntent['minPrivacyScore'],
+		deadline: BigInt(request.deadline) as UnixSeconds,
+		idempotencyKey: request.idempotencyKey as EncryptedIntent['idempotencyKey'],
 	}
 
 	let claimed = false
@@ -195,7 +232,7 @@ export const onCronTrigger = async (runtime: TeeRuntime<Config>): Promise<string
 
 	const result = await evaluateIntent(
 		{
-			intentId: 'sim-intent-1' as IntentId,
+			intentId: request.intentId as IntentId,
 			intent,
 			now,
 			claimAttempt: () => (claimed ? false : ((claimed = true), true)),
@@ -203,11 +240,11 @@ export const onCronTrigger = async (runtime: TeeRuntime<Config>): Promise<string
 		deps,
 	)
 
-	// ⚠️ Simulation only. Logs leave the enclave, so this must go before a
-	// production deploy. It is a verdict and a count — never a recipient, an
-	// amount, or an intent id that could be joined against a relay's records.
-	runtime.log(`Enclave decision: ${result.kind}`)
-
+	// NO LOGGING IN HERE. Log output leaves the enclave, so a line written on
+	// this side of the boundary is not confidential — and by this point a
+	// recipient is in scope. The handler's return value is the only channel,
+	// and it carries a verdict and a hash, never a recipient. This is why the
+	// decision is not logged even though the reason would be convenient.
 	if (result.kind !== 'APPROVED') {
 		return `${result.kind}${'reason' in result ? `: ${result.reason}` : ''}`
 	}
@@ -217,7 +254,7 @@ export const onCronTrigger = async (runtime: TeeRuntime<Config>): Promise<string
 	// has already approved, plus a MAC that lets the managed egress believe it
 	// without re-running any of the policy that produced it.
 	const release = issueRelease({
-		intentId: 'sim-intent-1' as IntentId,
+		intentId: request.intentId as IntentId,
 		spend: result.spend,
 		policyVersion: config.policyVersion,
 		issuedAt: now,
@@ -238,7 +275,7 @@ export const onCronTrigger = async (runtime: TeeRuntime<Config>): Promise<string
 		],
 	)
 
-	donRuntime
+	const signedReport = donRuntime
 		.report({
 			encodedPayload: hexToBase64(encodedPayload),
 			encoderName: 'evm',
@@ -247,20 +284,54 @@ export const onCronTrigger = async (runtime: TeeRuntime<Config>): Promise<string
 		})
 		.result()
 
+	// ── Step 5: settle, if a receiver is configured ──
+	// The write runs on DON nodes, never in the enclave, and carries only what
+	// was encoded above. Chain writes are never confidential, which is exactly
+	// why the recipient is not in the payload.
+	if (config.settlement !== undefined) {
+		// The chain selector is a bigint, and arrives as a decimal string for
+		// the same reason every other bigint in this project does.
+		const txResult = new cre.capabilities.EVMClient(BigInt(config.settlement.chainSelector))
+			.writeReport(donRuntime, {
+				receiver: config.settlement.receiver,
+				report: signedReport,
+				gasConfig: { gasLimit: config.settlement.gasLimit },
+			})
+			.result()
+
+		if (txResult.txStatus !== TxStatus.SUCCESS) {
+			// The message can name a node or a nonce, so it is thrown rather
+			// than returned: the handler's return value is a caller-facing
+			// channel and this is an operator-facing failure.
+			throw new Error(`settlement failed with status ${txResult.txStatus}`)
+		}
+		return `SETTLED ${bytesToHex(txResult.txHash ?? new Uint8Array(32)).slice(0, 12)}…`
+	}
+
 	return `APPROVED (spendHash ${release.spendHash.slice(0, 12)}…, deadline reached: ${result.deadlineReached})`
 }
 
 // ─── Workflow init ──────────────────────────────────────────────────────────
 
 export function initWorkflow(config: Config) {
-	const cronTrigger = new cre.capabilities.CronCapability()
+	const httpTrigger = new cre.capabilities.HTTPCapability()
 
 	return [
 		// AWS Nitro, us-west-2 — currently the only registered TEE and region.
 		// Pinned explicitly rather than left permissive, so a widening of that
 		// list is a review rather than a silent change of who holds our plaintext.
-		cre.handlerInTee(cronTrigger.trigger({ schedule: config.schedule }), onCronTrigger, [
-			{ tee: 'nitro', regions: ['us-west-2'] },
-		]),
+		cre.handlerInTee(
+			httpTrigger.trigger({
+				// ECDSA_EVM is the only key type the capability defines. Spelled
+				// out rather than defaulted, so an empty list reads as a
+				// deliberate "simulation only" and not as a forgotten field.
+				authorizedKeys: config.authorizedKeys.map((publicKey) => ({
+					type: 'KEY_TYPE_ECDSA_EVM' as const,
+					publicKey,
+				})),
+			}),
+			onIntentSubmitted,
+			[{ tee: 'nitro', regions: ['us-west-2'] }],
+		),
 	]
 }

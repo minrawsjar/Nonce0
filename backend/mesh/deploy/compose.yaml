@@ -1,0 +1,29 @@
+# Three relays, for proving the deployment works end to end.
+#
+# NOT AN ANONYMITY SET. One host, one Docker network, one kernel, one log
+# destination. The three services below have distinct operator ids in the
+# directory and that is a fiction the code cannot detect. A real mesh is this
+# same image on three machines run by three people who do not share a bill.
+services:
+  # The host runs the stand-in egress on 9000; containers reach it by this name.
+  relay1:
+    image: opaque-relay
+    build:
+      context: ../../..
+      dockerfile: backend/mesh/deploy/Dockerfile
+    command: ["--id", "R1", "--secret-key-file", "/config/R1.key", "--egress-query", "http://egress:9000/query", "--egress-payment", "http://egress:9000/submit"]
+    volumes: ["./config:/config:ro"]
+    ports: ["18081:8080"]
+    extra_hosts: ["egress:host-gateway"]
+  relay2:
+    image: opaque-relay
+    command: ["--id", "R2", "--secret-key-file", "/config/R2.key", "--egress-query", "http://egress:9000/query", "--egress-payment", "http://egress:9000/submit"]
+    volumes: ["./config:/config:ro"]
+    ports: ["18082:8080"]
+    extra_hosts: ["egress:host-gateway"]
+  relay3:
+    image: opaque-relay
+    command: ["--id", "R3", "--secret-key-file", "/config/R3.key", "--egress-query", "http://egress:9000/query", "--egress-payment", "http://egress:9000/submit"]
+    volumes: ["./config:/config:ro"]
+    ports: ["18083:8080"]
+    extra_hosts: ["egress:host-gateway"]

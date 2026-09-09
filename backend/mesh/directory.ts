@@ -29,21 +29,19 @@ import { ml_kem768 } from '@noble/post-quantum/ml-kem.js';
 import { ProtocolFailure, type Bytes32, type Hex, type RelayId, type UnixSeconds } from '@opaque/protocol-types';
 import { asBytes32, assertRelayPath, encodeBigint, fromHex, toHex } from '@opaque/protocol-types/codecs.js';
 
-// pq-wallet is not yet a declared dependency of @opaque/backend, so these are
-// relative imports into the sibling package rather than '@opaque/pq-wallet'.
-// See "Deliberate gaps" in protocol.md: a packaging change, not a code one.
-import { canonical, utf8 } from '../../packages/pq-wallet/src/digest.ts';
 import {
+  canonical,
   decodeSignature,
   encodeSignature,
   forsSchemeId,
+  forsVerify,
   keyGen,
   pkCommitment,
   sign,
-  verify as forsVerify,
+  utf8,
   type ForsPublicKey,
   type ForsSecretKey,
-} from '../../packages/pq-wallet/src/fors.ts';
+} from '@opaque/pq-wallet';
 
 import { MESH_VERSION, safeEqualHex } from './transport.ts';
 import type {

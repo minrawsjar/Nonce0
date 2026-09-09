@@ -86,34 +86,42 @@ writeFileSync(
   { mode: 0o600 },
 );
 
-// ── config: the public half and the ciphertext ────────────────────────────
-const configPath = join(root, 'confidential-intent', 'config.staging.json');
-const config = JSON.parse(readFileSync(configPath, 'utf8')) as Record<string, unknown>;
+// ── the HTTP trigger payload ──────────────────────────────────────────────
+// The intent arrives per request now, not baked into config. This is the body
+// a client POSTs, and what --http-payload feeds the simulator.
+const payloadPath = join(root, 'intent-request.json');
 writeFileSync(
-  configPath,
+  payloadPath,
   `${JSON.stringify(
     {
-      ...config,
-      encryptionKeyId: KEY_ID,
-      policyVersion: POLICY_VERSION,
-      // The intent the enclave will open. Ciphertext, so it is safe in a file
-      // that is committed and safe in a config the DON can read.
+      intentId: 'sim-intent-1',
       sealedIntent: sealed,
+      spendHash: spendHash(spend),
       // Already past, so evaluateIntent takes the deadline branch and makes no
       // score request at all — the property that a Graph outage must never
       // strand a payment whose deadline has passed.
       deadline: (BigInt(Math.floor(Date.now() / 1000)) - 60n).toString(),
-      expectedSpendHash: spendHash(spend),
-      releaseTtlSeconds: '900',
+      minPrivacyScore: 5_000,
+      idempotencyKey: 'sim-idempotency-1',
       // evaluateIntent re-checks the decrypted spend against these, so a
       // payload swapped after submission is caught before any policy runs.
-      chainId: spend.scope.chainId.toString(),
-      pool: spend.scope.pool,
-      denomination: spend.scope.denomination,
+      scope: {
+        chainId: spend.scope.chainId.toString(),
+        pool: spend.scope.pool,
+        denomination: spend.scope.denomination,
+      },
     },
     null,
     2,
   )}\n`,
+);
+
+// The public half goes in config, so the client knows which key to seal to.
+const configPath = join(root, 'confidential-intent', 'config.staging.json');
+const config = JSON.parse(readFileSync(configPath, 'utf8')) as Record<string, unknown>;
+writeFileSync(
+  configPath,
+  `${JSON.stringify({ ...config, encryptionKeyId: KEY_ID, policyVersion: POLICY_VERSION }, null, 2)}\n`,
 );
 
 process.stdout.write(
@@ -122,5 +130,6 @@ process.stdout.write(
     `  sealed intent     : ${sealed.length - 2} hex chars\n` +
     `  recipient         : ${recipient} (inside the ciphertext only)\n` +
     `  spendHash         : ${spendHash(spend)}\n` +
+    `  request payload   : ${payloadPath}\n` +
     `  secrets           : written to .env, not printed\n`,
 );

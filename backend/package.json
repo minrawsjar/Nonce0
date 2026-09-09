@@ -3,8 +3,10 @@
   "version": "1.0.0-review",
   "private": true,
   "type": "module",
-  "description": "Opaque V1 — relay mesh (§5) and CRE confidential execution. Swarnim, S3/S4.",
-  "engines": { "node": ">=22.18" },
+  "description": "Opaque V1 \u2014 relay mesh (\u00a75) and CRE confidential execution. Swarnim, S3/S4.",
+  "engines": {
+    "node": ">=22.18"
+  },
   "scripts": {
     "test": "node --test mesh/test/*.test.ts cre/test/*.test.ts zk/test/*.test.ts",
     "typecheck": "tsc --noEmit",
@@ -23,6 +25,7 @@
   ],
   "dependencies": {
     "@opaque/protocol-types": "file:../packages/protocol-types",
+    "@opaque/pq-wallet": "file:../packages/pq-wallet",
     "@noble/hashes": "^2.4.0",
     "@noble/post-quantum": "^0.7.1"
   },

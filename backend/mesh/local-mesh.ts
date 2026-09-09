@@ -40,7 +40,31 @@ export interface LocalMesh {
   readonly ports: ReadonlyMap<RelayId, number>;
 }
 
-export function buildLocalMesh(basePort = 8081, now = BigInt(Math.floor(Date.now() / 1000))): LocalMesh {
+export interface LocalMeshOptions {
+  readonly basePort?: number;
+  readonly now?: bigint;
+  /**
+   * How each relay is addressed BY THE OTHER RELAYS. Defaults to loopback,
+   * which is right for one host and wrong everywhere else: in containers hop 1
+   * must reach hop 2 by service name, and across machines by hostname. Getting
+   * this wrong does not fail at startup — it fails at the first forward, which
+   * is a much worse place to find out.
+   */
+  readonly endpointFor?: (id: RelayId, index: number, port: number) => string;
+}
+
+export function buildLocalMesh(
+  optionsOrBasePort: LocalMeshOptions | number = {},
+  legacyNow?: bigint,
+): LocalMesh {
+  const options: LocalMeshOptions =
+    typeof optionsOrBasePort === 'number'
+      ? { basePort: optionsOrBasePort, ...(legacyNow === undefined ? {} : { now: legacyNow }) }
+      : optionsOrBasePort;
+  const basePort = options.basePort ?? 8081;
+  const now = options.now ?? BigInt(Math.floor(Date.now() / 1000));
+  const endpointFor =
+    options.endpointFor ?? ((_id, _i, port) => `http://127.0.0.1:${port}/v1/relay`);
   const entries: DirectoryEntry[] = [];
   const secretKeys = new Map<RelayId, Hex>();
   const ports = new Map<RelayId, number>();
@@ -56,7 +80,7 @@ export function buildLocalMesh(basePort = 8081, now = BigInt(Math.floor(Date.now
       // Distinct on paper. On one laptop it is one operator wearing three
       // hats, and toPath's no-repeated-operator rule cannot see that.
       operatorId: `local-operator-${i}`,
-      endpoint: `http://127.0.0.1:${port}/v1/relay`,
+      endpoint: endpointFor(id, i - 1, port),
       kemPublicKey: keypair.publicKey,
       keyEpoch: keypair.keyEpoch,
       validFrom: now as UnixSeconds,
