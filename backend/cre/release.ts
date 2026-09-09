@@ -15,7 +15,8 @@
 // disclosed, not hidden — deferred decision D1. Do not describe this as
 // pool-wide compliance enforcement.
 
-import { createHmac, timingSafeEqual } from 'node:crypto';
+import { hmac } from '@noble/hashes/hmac.js';
+import { sha256 } from '@noble/hashes/sha2.js';
 
 import {
   ProtocolFailure,
@@ -26,9 +27,27 @@ import {
   type PrivateSpend,
   type UnixSeconds,
 } from '@opaque/protocol-types';
-import { encodeBigint, spendHash, toHex } from '@opaque/protocol-types/codecs.js';
+import { encodeBigint, fromHex, spendHash, toHex } from '@opaque/protocol-types/codecs.js';
 
 const RELEASE_MAC_DOMAIN = 'opaque/v1/cre/approved-release';
+
+/**
+ * Constant time, and pure JS on purpose. issueRelease runs INSIDE the
+ * confidential handler, and a CRE workflow is compiled to WASM and executed
+ * under Javy (QuickJS) — node:crypto and Buffer do not exist there, so
+ * createHmac/timingSafeEqual would not merely be slow, they would fail to
+ * compile. @noble/hashes is the same implementation the mesh already trusts.
+ *
+ * Length is compared first and separately: the loop below cannot say anything
+ * about a length it never reads, and an early return on unequal lengths leaks
+ * only what the tag's fixed size already tells anyone.
+ */
+function equalBytes(a: Uint8Array, b: Uint8Array): boolean {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a[i]! ^ b[i]!;
+  return diff === 0;
+}
 
 const utf8 = (s: string): Uint8Array => new TextEncoder().encode(s);
 
@@ -66,7 +85,7 @@ function macInput(release: Omit<ApprovedRelease, 'authenticationTag'>): Uint8Arr
 }
 
 const tag = (release: Omit<ApprovedRelease, 'authenticationTag'>, secret: Uint8Array): Hex =>
-  toHex(createHmac('sha256', secret).update(macInput(release)).digest());
+  toHex(hmac(sha256, secret, macInput(release)));
 
 /**
  * Called only after policy has APPROVED, inside the confidential handler.
@@ -126,9 +145,7 @@ export function verifyRelease(input: {
   const { release, now } = input;
   const { authenticationTag, ...unsigned } = release;
 
-  const expected = Buffer.from(tag(unsigned, input.secret).slice(2), 'hex');
-  const actual = Buffer.from(authenticationTag.slice(2), 'hex');
-  if (actual.length !== expected.length || !timingSafeEqual(actual, expected)) {
+  if (!equalBytes(fromHex(authenticationTag), fromHex(tag(unsigned, input.secret)))) {
     throw new ProtocolFailure('POLICY_DENIED', 'release authentication failed');
   }
 
