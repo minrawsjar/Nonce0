@@ -1,0 +1,27 @@
+# The two services that are not relays.
+#
+# The executor holds ciphertext and no keys. The egress holds two secrets and
+# signs transactions. They are separate services because that difference is the
+# point: only one of them can move money, and it is not the one with a public
+# address that anyone can post to.
+services:
+  executor:
+    image: opaque-backend
+    build:
+      context: ../..
+      dockerfile: backend/deploy/Dockerfile
+    command: ["backend/cre/run-executor.ts", "--port", "8090", "--trigger-url", "${CRE_TRIGGER_URL}"]
+    ports: ["8090:8090"]
+
+  egress:
+    image: opaque-backend
+    command: ["backend/mesh/run-egress.ts", "--port", "8091", "--pool", "${POOL_ADDRESS}", "--secret-file", "/config/release.mac"]
+    environment:
+      # Signs settlement transactions. Comes from the host environment, is never
+      # written into this file, and is never committed.
+      EGRESS_PRIVATE_KEY: "${EGRESS_PRIVATE_KEY}"
+    volumes: ["./config:/config:ro"]
+    # NOT published. The egress accepts an ApprovedRelease from the confidential
+    # workflow and nothing else. Exposed to the internet, the release MAC would
+    # be the only thing between a stranger and a settlement.
+    expose: ["8091"]

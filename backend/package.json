@@ -11,7 +11,8 @@
     "test": "node --test mesh/test/*.test.ts cre/test/*.test.ts zk/test/*.test.ts",
     "typecheck": "tsc --noEmit",
     "mesh:keys": "node mesh/local-mesh.ts --out ./.mesh",
-    "mesh:local": "node mesh/local-mesh.ts --out ./.mesh --serve"
+    "mesh:local": "node mesh/local-mesh.ts --out ./.mesh --serve",
+    "test:chain": "node --test chain/test/*.test.ts"
   },
   "comment": [
     "Runs .ts directly: Node >=22.18 strips types natively, so there is no build",
@@ -21,13 +22,19 @@
     "throws ERR_INVALID_ARG_VALUE even on OpenSSL 3.6.3), and browsers have no",
     "ML-KEM at all. The client builds its own onion layers, so the KEM must be a",
     "library used identically on both sides or the two ends disagree on bytes.",
-    "That is why @noble/post-quantum is a dependency and not an accident."
+    "That is why @noble/post-quantum is a dependency and not an accident.",
+    "",
+    "`test` is offline and deterministic. `test:chain` reads the LIVE Arc",
+    "deployment, which is the only way to catch an ABI that has drifted from the",
+    "deployed bytecode \u2014 but it needs a network, so it is a separate script",
+    "rather than something that turns CI red when an RPC has a bad minute."
   ],
   "dependencies": {
-    "@opaque/protocol-types": "file:../packages/protocol-types",
-    "@opaque/pq-wallet": "file:../packages/pq-wallet",
     "@noble/hashes": "^2.4.0",
-    "@noble/post-quantum": "^0.7.1"
+    "@noble/post-quantum": "^0.7.1",
+    "@opaque/pq-wallet": "file:../packages/pq-wallet",
+    "@opaque/protocol-types": "file:../packages/protocol-types",
+    "viem": "^2.56.3"
   },
   "devDependencies": {
     "@types/node": "^22.15.0",
