@@ -146,3 +146,54 @@ refuses to proceed if the prediction is wrong.
 - ERC-4337 `PQValidator` wrapping `PQKeyRegistry.consume`.
 - `rotationDeadline` is stored and never enforced; nothing forces rotation yet.
 - No audit, no testnet deployment yet.
+
+## Deploying to Arc Testnet
+
+The RPC is named in `foundry.toml`, so a deploy does not depend on a URL pasted
+from memory. All three facts below were verified live rather than assumed:
+
+| Check | Result |
+|---|---|
+| `eth_chainId` | `0x4cef52` = **5042002**, matching `PoolScope.chainId` |
+| USDC at `0x3600…0000` | contract exists, `symbol()` = `USDC` |
+| `decimals()` | **6**, which is the interface `PrivatePool` is written against |
+
+Arc's NATIVE USDC carries 18 decimals and pays for gas. The ERC-20 above
+carries 6 and is what the pool holds. They are one asset through two
+interfaces and confusing them is a factor of 10^12.
+
+### What a deploy costs
+
+A dry run against the live network:
+
+```
+Chain 5042002
+Estimated gas price:  45 gwei
+Estimated gas used:   3,842,743
+Estimated cost:       ~0.173 native USDC
+```
+
+So the deployer needs roughly **0.2 native USDC** for gas, from
+[faucet.circle.com](https://faucet.circle.com).
+
+### Running it
+
+The key never goes in a flag, a file in this repo, or a chat window. Export it
+into the shell that runs the command and nowhere else:
+
+```bash
+read -rs PRIVATE_KEY && export PRIVATE_KEY   # paste, press enter; not echoed, not in history
+forge script script/Deploy.s.sol --rpc-url arc_testnet --broadcast
+```
+
+`--broadcast` is the only difference between a rehearsal and a deployment. Run
+it once without, read the addresses, then add it.
+
+### After deploying
+
+`broadcast/Deploy.s.sol/5042002/run-latest.json` is the deployment record and
+is worth committing; the `dry-run/` subtree beside it is not, and is ignored.
+
+Then set the three addresses wherever the app reads them, and confirm
+`capabilities()` reports `SINGLE_NOTE_PQ` — because it does, and any interface
+that renders eight-member anonymity copy over it is lying.

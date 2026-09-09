@@ -25,3 +25,11 @@ runs = 1024
 [invariant]
 runs = 256
 depth = 32
+
+# Named so a deploy is `--rpc-url arc_testnet` rather than a URL pasted from
+# memory. Verified live: eth_chainId returns 0x4cef52 (5042002), and USDC at
+# 0x3600...0000 reports symbol "USDC" and 6 decimals, which is the interface
+# PrivatePool is written against. Arc's NATIVE USDC is 18 decimals and is used
+# for gas; confusing the two is a factor of 10^12.
+[rpc_endpoints]
+arc_testnet = "https://rpc.testnet.arc.io"
