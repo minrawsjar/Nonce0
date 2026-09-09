@@ -184,3 +184,86 @@ test('it serves over a real socket', async () => {
     await egress.close();
   }
 });
+
+// ── the authorization list (V1 CRE settlement) ────────────────────────────
+
+const POOL_A = `0x${'aa'.repeat(20)}`;
+const POOL_B = `0x${'bb'.repeat(20)}`;
+const ID_1 = `0x${'01'.repeat(32)}`;
+const ID_2 = `0x${'02'.repeat(32)}`;
+
+function batchHarness() {
+  const batches: unknown[][] = [];
+  const egress = createEgress({
+    secret,
+    now: () => NOW,
+    submitter: {
+      async submit(): Promise<TxHash> {
+        return `0x${'ee'.repeat(32)}` as TxHash;
+      },
+      async submitAuthorizations(list): Promise<TxHash> {
+        batches.push([...list]);
+        return `0x${'ff'.repeat(32)}` as TxHash;
+      },
+    },
+  });
+  return { egress, batches };
+}
+
+test('an authorization list cannot be re-split under a tag issued for one entry', async () => {
+  // The forgery this closes: the MAC used to join entries as `pool:id` with
+  // commas, so ONE authorization whose id read "<ID_1>,<POOL_B>:<ID_2>"
+  // produced the same bytes as TWO authorizations POOL_A/ID_1 and POOL_B/ID_2.
+  // A genuine tag then authorised a settlement list the workflow never issued.
+  const one = issueRelease({
+    intentId: 'intent-split' as IntentId,
+    spend,
+    policyVersion: 'opaque-policy-v1',
+    issuedAt: NOW,
+    ttlSeconds: 900n,
+    secret,
+    authorizations: [{ pool: POOL_A as any, id: `${ID_1},${POOL_B}:${ID_2}` as any }],
+  });
+  const resplit = { ...one, authorizations: [{ pool: POOL_A, id: ID_1 }, { pool: POOL_B, id: ID_2 }] };
+
+  const { egress, batches } = batchHarness();
+  const answer = await post(egress, wire(resplit));
+  assert.notEqual(answer.status, 202, 'a re-split list must not settle');
+  assert.equal(batches.length, 0, 'and nothing may reach the submitter');
+});
+
+test('an authorization that is not an address and a 32-byte id never reaches the MAC', async () => {
+  // A brand is erased at runtime, so these arrive as whatever the wire says.
+  // Refused as INVALID_INPUT at the boundary — not 502, which would tell the
+  // caller to retry a body that will never parse.
+  const { egress, batches } = batchHarness();
+  for (const bad of [
+    [{ pool: POOL_A, id: 'not-hex' }],
+    [{ pool: 'nope', id: ID_1 }],
+    [{ pool: POOL_A }],
+    ['just-a-string'],
+    'not-an-array',
+  ]) {
+    const answer = await post(egress, wire({ ...releaseFor('intent-bad'), authorizations: bad }));
+    assert.equal(answer.status, 400, `expected 400 for ${JSON.stringify(bad)}`);
+    assert.equal(answer.json.code, 'INVALID_INPUT');
+  }
+  assert.equal(batches.length, 0);
+});
+
+test('a genuine authorization list settles as one batch', async () => {
+  const release = issueRelease({
+    intentId: 'intent-batch' as IntentId,
+    spend,
+    policyVersion: 'opaque-policy-v1',
+    issuedAt: NOW,
+    ttlSeconds: 900n,
+    secret,
+    authorizations: [{ pool: POOL_A as any, id: ID_1 as any }, { pool: POOL_B as any, id: ID_2 as any }],
+  });
+  const { egress, batches } = batchHarness();
+  const answer = await post(egress, wire(release));
+  assert.equal(answer.status, 202, JSON.stringify(answer.json));
+  assert.equal(batches.length, 1, 'one release is one settlement transaction');
+  assert.equal(batches[0]!.length, 2);
+});

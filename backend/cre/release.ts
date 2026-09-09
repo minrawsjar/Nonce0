@@ -82,7 +82,19 @@ function macInput(release: Omit<ApprovedRelease, 'authenticationTag'>): Uint8Arr
     utf8(encodeBigint(spend.scope.chainId)),
     utf8(spend.scope.pool),
     utf8(String(spend.scope.denomination)),
-    utf8((release.authorizations ?? []).map((a) => `${a.pool}:${a.id}`).join(',')),
+    // Length-prefixed, and the COUNT first. Joining these with separators —
+    // `pool:id` entries joined by `,` — was a forgery: one authorization whose
+    // id read "0x01,0xBB:0x02" produced the same bytes as two authorizations
+    // 0xAA/0x01 and 0xBB/0x02, so a genuine tag authorised a settlement list
+    // nobody issued. `authorizations` reaches this function straight off the
+    // wire, which is exactly the case a separator cannot survive.
+    //
+    // Every field goes through `canonical`, so no two lists share an encoding
+    // regardless of what the entries contain. The count is what stops a list
+    // being re-split; the length prefixes are what stop a field being slid
+    // into its neighbour.
+    utf8(String((release.authorizations ?? []).length)),
+    ...(release.authorizations ?? []).flatMap((a) => [utf8(a.pool), utf8(a.id)]),
   ]);
 }
 

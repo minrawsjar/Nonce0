@@ -31,7 +31,9 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 
 import {
   ProtocolFailure,
+  type Address,
   type ApprovedRelease,
+  type Bytes32,
   type ErrorCode,
   type IntentId,
   type TxHash,
@@ -40,6 +42,13 @@ import {
 
 import { MemoryReleaseSeenSet, type ReleaseSeenSet } from '../cre/release.ts';
 import { deliverApprovedRelease, releaseAuditLine, type EgressSubmitter } from './approved-release.ts';
+
+/**
+ * One batch settlement is one transaction, and a transaction has a gas limit.
+ * An unbounded list is a release that cannot settle after the sender has been
+ * told it would.
+ */
+const MAX_AUTHORIZATIONS = 32;
 
 /** A release is small. Anything larger is not one. */
 const MAX_BODY_BYTES = 256 * 1024;
@@ -109,7 +118,43 @@ function reviveRelease(raw: unknown): ApprovedRelease {
     ...held,
     issuedAt: at('issuedAt') as UnixSeconds,
     expiresAt: at('expiresAt') as UnixSeconds,
+    ...(held['authorizations'] === undefined
+      ? {}
+      : { authorizations: authorizationsOf(held['authorizations']) }),
   } as unknown as ApprovedRelease;
+}
+
+/**
+ * Checked here because a TypeScript brand is erased at runtime and proves
+ * nothing about a value that arrived over a wire — protocol-types says so at
+ * the top of the file, and this is the case it means. `authorizations` used to
+ * be spread through unvalidated, so an attacker-shaped string reached both the
+ * MAC and the settlement submitter.
+ *
+ * Shape only. Whether these authorizations exist and are consumable is the
+ * gate's business on chain; this refuses anything that is not a pool address
+ * and a 32-byte id, which is what makes the MAC's encoding unambiguous.
+ */
+function authorizationsOf(raw: unknown): readonly { readonly id: Bytes32; readonly pool: Address }[] {
+  if (!Array.isArray(raw)) {
+    throw new ProtocolFailure('INVALID_INPUT', 'authorizations must be an array');
+  }
+  if (raw.length > MAX_AUTHORIZATIONS) {
+    throw new ProtocolFailure('INVALID_INPUT', 'too many authorizations in one release');
+  }
+  return raw.map((entry): { readonly id: Bytes32; readonly pool: Address } => {
+    if (typeof entry !== 'object' || entry === null) {
+      throw new ProtocolFailure('INVALID_INPUT', 'an authorization must be an object');
+    }
+    const { id, pool } = entry as Record<string, unknown>;
+    if (typeof pool !== 'string' || !/^0x[0-9a-fA-F]{40}$/.test(pool)) {
+      throw new ProtocolFailure('INVALID_INPUT', 'authorization pool must be an address');
+    }
+    if (typeof id !== 'string' || !/^0x[0-9a-fA-F]{64}$/.test(id)) {
+      throw new ProtocolFailure('INVALID_INPUT', 'authorization id must be 32 bytes of hex');
+    }
+    return { id: id as Bytes32, pool: pool as Address };
+  });
 }
 
 function send(res: ServerResponse, status: number, body: unknown): void {
