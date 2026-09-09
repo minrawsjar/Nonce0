@@ -235,7 +235,7 @@ export function createRelay(options: RelayOptions): Relay {
     if (route.dropRelay !== relayId) {
       // V1 LIMITATION, and a loud one rather than a silent misdelivery: there
       // is no relay-to-relay drop deposit, so a client must name the hop that
-      // answers as its drop. See deliberateGaps in the README.
+      // answers as its drop. See "Deliberate gaps" in protocol.md.
       throw new ProtocolFailure('INVALID_INPUT', 'this relay only holds drops it answered');
     }
     drops.put(route.dropId, seal(payload.responseKey, answer), at + DROP_TTL_MS);

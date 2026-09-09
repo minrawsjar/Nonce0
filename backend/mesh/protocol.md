@@ -128,3 +128,86 @@ a reverse proxy writing `X-Forwarded-For` next to a request id undoes property
 It does not verify proofs, hold funds, or authorise anything. A compromised
 relay cannot forge or approve a spend; at worst it can decline to forward, or
 contribute to deanonymising a network origin if enough hops collude.
+
+---
+
+# The service layer
+
+`transport.ts` is the cryptography. These are the pieces that turn it into
+three relays anyone can run.
+
+| File | What it owns |
+|---|---|
+| `directory.ts` | Who the relays are, and why you should believe it |
+| `scheduler.ts` | When a message leaves |
+| `return-path.ts` | How an answer reaches a client with no inbound address |
+| `server.ts` | The two HTTP endpoints an operator runs |
+| `client.ts` | The browser side — builds the onion, collects the answer |
+| `local-mesh.ts` | Generates a real three-relay mesh; `npm run mesh:local` |
+
+## Directory trust
+
+Pinned root, hash-chained forward. Every version commits to the key allowed to
+sign the next, so a client pinned at version N authenticates N+1 **offline**,
+with no online authority and no elliptic curve. Signatures are FORS+C over
+keccak256.
+
+Three refusals that are not obvious:
+
+- **A correctly signed older directory is an attack.** It is exactly how a
+  retired or seized relay key gets put back in front of a client, so the
+  version floor is strict, not `>=`.
+- **A directory that chains to its own signer is refused.** FORS+C is
+  few-time; letting one key sign a version and its successor spends the
+  margin for nothing.
+- **`toPath` substitutes nothing.** A dead relay is a refusal, not a quiet
+  swap — otherwise path selection belongs to whoever wrote the directory.
+  A repeated *operator* is refused too: two hops at one company collude for
+  free, which is three hops reduced to two.
+
+## Return path
+
+A browser cannot be dialled, and opening a port would defeat the point. So a
+reply is left, not sent:
+
+1. The client generates a **one-time** ML-KEM keypair and a 16-byte drop id,
+   and puts both in the innermost payload where only hop 3 can read them.
+2. Hop 3 encapsulates to that key and deposits the sealed answer at the drop.
+3. The client collects it later, over a fresh path.
+
+The drop id is the only credential: unguessable, single-use, tied to no
+intent. There is no "the reply for intent X" lookup, because that lookup is
+the linkage. The route is **not** encrypted a second time — it rides inside
+the innermost layer, so hops 1 and 2 cannot see it and hop 3 must read it.
+
+## The two endpoints
+
+```
+POST /v1/relay        one frame. Answers 202 with a bare acknowledgement:
+                      no id, nothing to correlate against a relay's log.
+GET  /v1/status/:id   collects a drop. Unknown, expired and already-collected
+                      are the same 404, so this is not an oracle for which
+                      drop ids ever existed.
+```
+
+**The egress operation is the message kind**, not a payload field. The
+allowlist has one entry per kind, so a client can never name a destination:
+no URL to smuggle, no redirect to walk out of.
+
+A FINAL message is queued like any other. Answering the instant the last layer
+opens would make hop 3's response time a direct readout of when the client
+asked.
+
+## Deliberate gaps
+
+Named here so they are decisions rather than oversights.
+
+| Gap | Why it is acceptable for V1 | What it would take |
+|---|---|---|
+| **No relay-to-relay drop deposit.** The client must name hop 3 as its drop relay, and collects from it directly. | The drop relay learns that some IP asked for one unguessable id — not what the answer says, nor which intent it belongs to. It is still a connection. | A deposit endpoint authenticated between relays, so a drop can live on a relay that saw neither the query nor the answer. |
+| **Collection is not itself onion-routed.** | Same as above; the collection carries no content. | Route the collection as a QUERY, which needs the row above first. |
+| **Layer sizes differ between depths**, so an observer at one relay can tell a first hop from a third. | Removing it needs a constant-size construction; a packet cannot nest inside itself at constant size. | Sphinx-style header shifting with hop-side re-padding. |
+| **Drops are in memory.** A restart loses undelivered replies. | The client re-queries over a fresh path. Persisting them would create a durable on-disk record of who asked something. | Redis with a TTL, if a relay must survive a restart mid-flight. |
+| **`@opaque/pq-wallet` is imported by relative path** from `directory.ts`. | It is a packaging change, not a code one — the FORS implementation is already shared. | A `file:` dependency in `backend/package.json`, like `@opaque/protocol-types`. |
+| **`deterministicDirectory` derives every relay secret from a string.** | It is test-only and says so loudly; `local-mesh.ts` uses OS randomness. | Nothing. Never point a deployment at it. |
+| **Three relays on one laptop are one operator** — one machine, one network, one log. | `npm run mesh:local` prints this. The code cannot tell the difference. | Three people, three networks. This is an operational fact, not a code change. |

@@ -31,7 +31,7 @@ import { asBytes32, assertRelayPath, encodeBigint, fromHex, toHex } from '@opaqu
 
 // pq-wallet is not yet a declared dependency of @opaque/backend, so these are
 // relative imports into the sibling package rather than '@opaque/pq-wallet'.
-// See deliberateGaps: the package link is a packaging change, not a code one.
+// See "Deliberate gaps" in protocol.md: a packaging change, not a code one.
 import { canonical, utf8 } from '../../packages/pq-wallet/src/digest.ts';
 import {
   decodeSignature,
