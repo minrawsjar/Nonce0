@@ -10,6 +10,7 @@
 | [interfaces.md](interfaces.md) | The frozen exports each module may depend on. |
 | [workspace.md](workspace.md) | Where each owner's code lives. |
 | [handoff-manan.md](handoff-manan.md) | Manan: PQ wallet (§5) — what exists, what is missing, and the three rules that matter. |
+| [cre-key-origin.md](cre-key-origin.md) | What Chainlink CRE actually supports for encrypted inputs, and the sealing path that works without inventing an API. |
 | [handoff-aditya.md](handoff-aditya.md) | Aditya: notes, selection, Graph and contracts — including the decision that blocks the pool. |
 
 [spec.md](spec.md) is v1, kept only for the record. **Do not
