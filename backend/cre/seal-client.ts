@@ -11,7 +11,16 @@
 import { gcm } from '@noble/ciphers/aes.js';
 import { ml_kem768 } from '@noble/post-quantum/ml-kem.js';
 
-import { ProtocolFailure, type Hex } from '@opaque/protocol-types';
+import {
+  PROTOCOL_VERSION,
+  ProtocolFailure,
+  type Bytes32,
+  type CredentialHandle,
+  type EncryptedIntent,
+  type Hex,
+  type PaymentRequest,
+  type PoolScope,
+} from '@opaque/protocol-types';
 import { fromHex, toHex } from '@opaque/protocol-types/codecs.js';
 
 import {
@@ -74,4 +83,70 @@ export function sealIntent(publicKey: Hex, keyId: string, payload: Uint8Array): 
     throw new ProtocolFailure('INVALID_INPUT', 'sealed intent exceeds the size the enclave accepts');
   }
   return toHex(sealed);
+}
+
+// ── the adapter port ──────────────────────────────────────────────────────
+
+export interface IntentSealerOptions {
+  /**
+   * The CRE ML-KEM-768 encapsulation key, read from the SIGNED relay
+   * directory. Never from a Graph response or a config a server can rewrite:
+   * an attacker who substitutes this key reads every payment.
+   */
+  readonly crePublicKey: Hex;
+  /** Which key version. Bound into the AEAD's AAD, so rotation is a barrier. */
+  readonly encryptionKeyId: string;
+  /**
+   * Resolves the policy credential the enclave will verify. Injected because
+   * where a credential comes from is a deployment question — a local vault, a
+   * prior issuance call — and this module must not care.
+   */
+  readonly resolveCredential: (handle: CredentialHandle) => Promise<string>;
+}
+
+/**
+ * Builds the EncryptedIntent the executor accepts.
+ *
+ * Everything the mesh, the executor and the chain get to see is chosen here,
+ * and it is deliberately thin: a scope, a hash, a deadline, a score floor and
+ * an opaque blob. The recipient, the amount beyond the pool's fixed
+ * denomination, and the policy credential are all INSIDE the ciphertext.
+ *
+ * `spendHash` is the binding that makes the rest safe. It is public, and
+ * evaluate-intent.ts recomputes it over the decrypted spend, so a payload
+ * swapped after submission is caught before any policy decision is made on it.
+ */
+export function createIntentSealer(
+  options: IntentSealerOptions,
+): (input: {
+  readonly scope: PoolScope;
+  readonly spendHash: Bytes32;
+  readonly spend: unknown;
+  readonly request: PaymentRequest;
+}) => Promise<EncryptedIntent> {
+  return async (input) => {
+    const credential = await options.resolveCredential(input.request.credentialHandle);
+
+    // Bigints cross as decimal strings. JSON.stringify throws on one outright,
+    // and the enclave revives them on the way in.
+    const payload = JSON.stringify(
+      { spend: input.spend, credential },
+      (_key, value: unknown) => (typeof value === 'bigint' ? value.toString(10) : value),
+    );
+
+    return {
+      version: PROTOCOL_VERSION,
+      scope: input.scope,
+      encryptedPayload: sealIntent(
+        options.crePublicKey,
+        options.encryptionKeyId,
+        new TextEncoder().encode(payload),
+      ),
+      encryptionKeyId: options.encryptionKeyId,
+      spendHash: input.spendHash,
+      minPrivacyScore: input.request.minPrivacyScore,
+      deadline: input.request.deadline,
+      idempotencyKey: input.request.idempotencyKey,
+    };
+  };
 }
