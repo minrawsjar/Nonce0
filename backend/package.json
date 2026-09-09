@@ -7,7 +7,9 @@
   "engines": { "node": ">=22.18" },
   "scripts": {
     "test": "node --test mesh/test/*.test.ts cre/test/*.test.ts zk/test/*.test.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "mesh:keys": "node mesh/local-mesh.ts --out ./.mesh",
+    "mesh:local": "node mesh/local-mesh.ts --out ./.mesh --serve"
   },
   "comment": [
     "Runs .ts directly: Node >=22.18 strips types natively, so there is no build",
