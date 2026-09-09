@@ -28,3 +28,8 @@ frontend/dist/
 # workspace installs (file: deps symlink across packages)
 packages/*/node_modules/
 backend/node_modules/
+
+# Agent skills, installed per-project by `npx skills add`.
+.agents/
+skills-lock.json
+.claude/skills/

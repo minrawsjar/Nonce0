@@ -1,0 +1,9 @@
+# Secrets. The fixture generator writes the simulation ML-KEM key and the
+# credential MAC key here, so this must never be committed.
+*.env
+.env
+
+node_modules/
+dist/
+*.wasm
+.cre_build_tmp*
