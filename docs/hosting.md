@@ -1,5 +1,41 @@
 # Hosting it: six relays, one operator
 
+## Quickest: Railway, one service
+
+The whole stack runs as one Railway service: six relays, the exit, the CRE
+stand-in, the egress and the credential authority. `railway.json` builds
+`backend/deploy/stack.Dockerfile`, and every public route is served on
+Railway's one port.
+
+1. **New project.** Railway → New Project → Deploy from GitHub repo → this
+   repo.
+2. **Variables.** Add `EGRESS_PRIVATE_KEY` and `ATTESTER_FORS_SEED`, copied
+   from `backend/.env`, in the service's Variables → Raw Editor. Nothing else
+   is needed.
+3. **Domain.** Settings → Networking → Generate Domain, then redeploy.
+   `PUBLIC_URL` is taken from `RAILWAY_PUBLIC_DOMAIN` automatically.
+4. **The wallet.** On Vercel, set
+   `VITE_STACK_URL=https://<that domain>/stack.json` and redeploy.
+
+Check it: `https://<domain>/stack.json` returns the config.
+
+Things to know:
+
+- **Each redeploy is a new mesh.** You get new relay keys, a new CRE key and a
+  new directory. Payments still in flight are lost; a wallet picks up the new
+  config on reload.
+- **The directory lasts 7 days**, so redeploy at least weekly.
+- **Keep `numReplicas` at 1.** There is one attester key, and two copies of
+  the stack could sign with it at the same index.
+- **Railway logs requests at its own edge,** so on Railway it sees what you
+  see.
+
+Six relays across six Railway services buy nothing over one: a single
+provider still sees every hop. Six hosts only help on six different
+providers, as below.
+
+## Six hosts
+
 Seven machines, all yours: six relays and one backend. The wallet stays on
 Vercel.
 

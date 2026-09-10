@@ -27,7 +27,7 @@
 // an attacker controls is a root the attacker chose.
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { createServer } from 'node:http';
+import { createServer, type RequestListener } from 'node:http';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -62,7 +62,12 @@ const POLICY = 'opaque-policy-v1';
 const LOOPBACK = '127.0.0.1';
 // Where the WALLET reaches this box. Unset: loopback, one laptop. Set to e.g.
 // https://mesh.example.com and the directory names the proxy's /r1…/r6.
-const PUBLIC_URL = process.env['PUBLIC_URL']?.replace(/\/+$/, '');
+// Railway names its domain in RAILWAY_PUBLIC_DOMAIN, so there it needs no setting.
+const RAILWAY = process.env['RAILWAY_PUBLIC_DOMAIN'];
+const PUBLIC_URL = (process.env['PUBLIC_URL'] ?? (RAILWAY && `https://${RAILWAY}`))?.replace(/\/+$/, '');
+// A PaaS gives a service ONE port and one TLS name, and sets PORT. Everything
+// the wallet and remote relays reach is then routed on it — see the bottom.
+const PORT = process.env['PORT'];
 
 const env = (name: string): string => {
   const v = process.env[name];
@@ -188,7 +193,7 @@ const relays = !('secretKeys' in mesh) ? [] : await serveLocalMesh(mesh, new Map
 // ── test credential authority ────────────────────────────────────────────
 // Issues for ANY recipient: a stand-in for a real policy authority, which the
 // wallet asks once, out of band, before paying — never during a payment.
-const credentials = createServer((req, res) => {
+const credentialHandler: RequestListener = (req, res) => {
   res.setHeader('access-control-allow-origin', '*');
   res.setHeader('access-control-allow-headers', 'content-type');
   if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return; }
@@ -208,12 +213,12 @@ const credentials = createServer((req, res) => {
       res.end(JSON.stringify({ message: (e as Error).message }));
     }
   });
-});
+};
+const credentials = createServer(credentialHandler);
 await new Promise<void>((r) => credentials.listen(PORTS.credentials, LOOPBACK, r));
 
 // ── what the wallet reads ────────────────────────────────────────────────
-mkdirSync(dirname(OUT), { recursive: true });
-writeFileSync(OUT, JSON.stringify({
+const walletConfig = JSON.stringify({
   $comment: 'Written by backend/stack.ts. Local development only — regenerated every start.',
   signedDirectory: mesh.signed,
   trustRoot: mesh.root,
@@ -221,20 +226,43 @@ writeFileSync(OUT, JSON.stringify({
   credentialUrl: `${PUBLIC_URL ?? `http://${LOOPBACK}:${PORTS.credentials}`}/v1/credential`,
   pool: { address: ring8.address, denomination: ring8.denomination, proofMode: ring8.proofMode },
   capabilities: { pqWallet: 'MOCK', graph: 'LIVE', confidentialExecution: 'SIMULATED', policyScope: 'CRE_WORKFLOW_ONLY' },
-}, bigintReplacer, 2));
+}, bigintReplacer, 2);
+mkdirSync(dirname(OUT), { recursive: true });
+writeFileSync(OUT, walletConfig);
+
+// ── one public port ──────────────────────────────────────────────────────
+// Only what Caddy would route (deploy/Caddyfile): /rN/* to relay N, the exit,
+// the credential authority, the wallet config. The egress is not reachable.
+// Relays keep their loopback listeners too: listen() is what runs the batch
+// clock, and a handler without it would queue forever.
+const router = PORT === undefined ? undefined : createServer((req, res) => {
+  const url = req.url ?? '/';
+  const hop = /^\/r(\d+)(\/.*)$/.exec(url);
+  const relay = hop && relays.find((r) => r.relayId === `R${hop[1]}`);
+  if (hop && relay) { req.url = hop[2]; relay.handler(req, res); return; }
+  if (url.startsWith('/v1/mesh/')) { exit.handler(req, res); return; }
+  if (url === '/v1/credential') { credentialHandler(req, res); return; }
+  if (url === '/stack.json') {
+    res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store', 'access-control-allow-origin': '*' });
+    res.end(walletConfig);
+    return;
+  }
+  res.writeHead(404); res.end();
+});
+if (router) await new Promise<void>((r) => router.listen(Number(PORT), '0.0.0.0', r));
 
 const snap = await ringSource.getRingSnapshot(scope);
 log('opaque local stack — against the REAL Arc pool');
 log(`  pool       ${ring8.address}  (${ring8.proofMode}, ${snap.candidates.length} deposits)`);
 log(`  relays     ${mesh.signed.directory.entries.map((e) => e.endpoint.replace('/v1/relay', '')).join('  ')}`);
 log(`  exit       http://127.0.0.1:${PORTS.exit}   egress :${PORTS.egress}   credentials :${PORTS.credentials}`);
-log(`  wallet cfg ${OUT}`);
+log(`  wallet cfg ${OUT}${router ? `  and ${PUBLIC_URL ?? ''}/stack.json (all routes on :${PORT})` : ''}`);
 log('  THIS IS ONE OPERATOR, AND CRE IS SIMULATED. Not an anonymity set.');
 
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {
   process.on(signal, () => {
     simulator.stop();
-    void Promise.all([...relays.map((r) => r.close()), exit.close(), egress.close(), new Promise((r) => credentials.close(r))])
+    void Promise.all([...relays.map((r) => r.close()), exit.close(), egress.close(), new Promise((r) => credentials.close(r)), new Promise((r) => (router ? router.close(r) : r(undefined)))])
       .then(() => process.exit(0));
   });
 }
