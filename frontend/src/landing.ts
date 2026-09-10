@@ -109,3 +109,81 @@ async function initHero(): Promise<void> {
   });
 }
 void initHero();
+
+// Content motion starts only as each section approaches the viewport. It runs
+// once so the long-form page stays settled when a reader scrolls back.
+const contentMotion = gsap.matchMedia();
+contentMotion.add('(prefers-reduced-motion: no-preference)', () => {
+  for (const element of document.querySelectorAll<HTMLElement>('[data-reveal]')) {
+    gsap.from(element, {
+      opacity: 0,
+      y: 20,
+      duration: 0.65,
+      ease: 'power2.out',
+      scrollTrigger: { trigger: element, start: 'top 90%', once: true },
+    });
+  }
+
+  for (const pillar of document.querySelectorAll<HTMLElement>('.pillar')) {
+    gsap.fromTo(pillar, { '--draw': 0 }, {
+      '--draw': 1,
+      duration: 0.8,
+      ease: 'power2.out',
+      scrollTrigger: { trigger: pillar, start: 'top 88%', once: true },
+    });
+  }
+
+  const ledger = document.querySelector<HTMLElement>('.ledger');
+  const broken = document.querySelectorAll<HTMLElement>('.ledger span:not(.holds)');
+  if (ledger && broken.length > 0) {
+    gsap.fromTo(broken, { '--strike': 0 }, {
+      '--strike': 1,
+      duration: 0.4,
+      ease: 'power1.inOut',
+      stagger: 0.08,
+      scrollTrigger: { trigger: ledger, start: 'top 76%', once: true },
+    });
+  }
+
+  for (const band of document.querySelectorAll<HTMLElement>('.band')) {
+    const image = band.querySelector<HTMLImageElement>('img');
+    if (!image) continue;
+    gsap.fromTo(image, { yPercent: -4 }, {
+      yPercent: 4,
+      ease: 'none',
+      scrollTrigger: { trigger: band, start: 'top bottom', end: 'bottom top', scrub: 0.5 },
+    });
+  }
+});
+
+// Cut-out hardware images get a restrained pointer tilt on fine pointers.
+// A small range keeps the flat artwork convincing and avoids competing with
+// the page's scroll motion.
+if (window.matchMedia('(hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference)').matches) {
+  for (const host of document.querySelectorAll<HTMLElement>('[data-tilt]')) {
+    const face = host.querySelector<HTMLElement>('.tilt__body');
+    const glow = host.querySelector<HTMLElement>('.tilt__glow');
+    if (!face || !glow) continue;
+
+    const rotateX = gsap.quickTo(face, 'rotationX', { duration: 0.45, ease: 'power2.out' });
+    const rotateY = gsap.quickTo(face, 'rotationY', { duration: 0.45, ease: 'power2.out' });
+    const lift = gsap.quickTo(face, 'y', { duration: 0.45, ease: 'power2.out' });
+
+    host.addEventListener('pointermove', (event) => {
+      const box = host.getBoundingClientRect();
+      const x = clamp((event.clientX - box.left) / box.width) - 0.5;
+      const y = clamp((event.clientY - box.top) / box.height) - 0.5;
+      rotateX(6 - y * 12);
+      rotateY(x * 16);
+      lift(-6);
+      glow.style.setProperty('--lit', '0.55');
+    });
+
+    host.addEventListener('pointerleave', () => {
+      rotateX(6);
+      rotateY(0);
+      lift(0);
+      glow.style.setProperty('--lit', '0.25');
+    });
+  }
+}

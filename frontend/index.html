@@ -25,21 +25,33 @@
 </button>
 
 <header class="nav">
-  <div class="wrap nav__inner">
-    <a href="#top" aria-label="opaque — home">
-      <span class="wordmark">
-        <span class="wordmark__name">opaque</span>
-        <span class="wordmark__sub" aria-hidden="true"><i></i>post<i></i>quantum<i></i></span>
-      </span>
-    </a>
-    <nav class="nav__links" aria-label="Primary">
-      <a href="#product">Product</a>
-      <a href="#developers">Developers</a>
-      <a href="#docs">Docs</a>
-      <a href="#about">About</a>
-    </nav>
-    <a href="app.html" class="btn btn--outline">Get Started</a>
+  <!-- The band and the wave under it are one shape: the wave path closes up to
+       the top of its own box, so it is the header's bottom edge rather than a
+       decoration sitting below one. Both take the same fill, so there is no
+       seam between them at any width. -->
+  <div class="nav__band">
+    <div class="wrap nav__inner">
+      <a href="#top" class="nav__brand" aria-label="opaque — home">
+        <img src="media/logo.png" alt="opaque" width="600" height="200" decoding="async">
+      </a>
+      <nav class="nav__links" aria-label="Primary">
+        <a href="#how">How it works</a>
+        <a href="#why">The gap</a>
+        <a href="#threat">Threat model</a>
+        <a href="#build">Built on</a>
+      </nav>
+      <a href="app.html" class="btn btn--outline">Get Started</a>
+    </div>
   </div>
+  <!-- preserveAspectRatio="none" on purpose: the wave should stretch to the
+       viewport rather than keep its ratio, so its height stays constant while
+       its wavelength grows with the window. -->
+  <svg class="nav__wave" viewBox="0 0 1440 48" preserveAspectRatio="none" aria-hidden="true">
+    <path class="nav__wave-fill"
+          d="M0,24 C60,31 100,32 140,26 C260,10 430,38 570,22 C700,7 870,36 1000,20 C1140,3 1310,40 1440,14 V0 H0 Z"/>
+    <path class="nav__wave-lip"
+          d="M0,24 C60,31 100,32 140,26 C260,10 430,38 570,22 C700,7 870,36 1000,20 C1140,3 1310,40 1440,14"/>
+  </svg>
 </header>
 
 <main id="top">
@@ -87,7 +99,7 @@
 
       <p class="hero__line" data-line>Even an opaque wall can be broken tomorrow.<br>But never your wallet.</p>
 
-      <a class="hero__skip" href="#product">Skip intro <span aria-hidden="true">↗</span></a>
+      <a class="hero__skip" href="#how">Skip intro <span aria-hidden="true">↗</span></a>
 
       <div class="rail" aria-hidden="true">
         <span class="rail__hint">Scroll</span>
@@ -96,6 +108,193 @@
 
     </div>
   </section>
+
+  <!-- ══ The argument ═══════════════════════════════════════════════════
+       What the thing actually is. This copy is the earlier build's, carried
+       over unchanged and re-set in the dark instrument — the words were the
+       part that was working. -->
+
+  <div class="wrap slab" id="how" data-fig="01">
+    <p class="sec-n" data-reveal data-n="01">Post-quantum · network-private · conditional</p>
+    <h2 class="h2" data-reveal>Private payments built for the quantum era.</h2>
+    <p class="lede">An eight-note ring hides which note was spent. A three-hop relay mesh hides where
+      the request came from. A confidential intent waits for the right privacy conditions.</p>
+    <p class="prose" style="max-width:52ch;margin-top:var(--gap-6)">
+      Most privacy systems focus on <em>what</em> happened on-chain. Opaque also protects the key that
+      authorises a spend and the network path used to submit it—two places where privacy can disappear
+      before settlement begins.
+    </p>
+  </div>
+
+  <div class="wrap slab" data-fig="02">
+    <div class="pillars">
+      <div class="pillar" data-reveal>
+        <p class="sec-n" data-reveal data-n="02">Quantum-safe keys</p>
+        <h3>Hash-based authorisation, without elliptic curves.</h3>
+        <p class="prose">
+          The wallet uses a FORS+C hash-based key to authorise deposits and rotation. Anonymous spends
+          use a hash-only proof over eight note commitments, so the spend path does not depend on
+          elliptic-curve cryptography.
+        </p>
+      </div>
+      <div class="pillar" data-reveal>
+        <p class="sec-n" data-reveal data-n="03">Network-level</p>
+        <h3>Hiding the payment is not hiding the person.</h3>
+        <p class="prose">
+          Encrypting a transaction can still leave an IP address behind. Opaque routes payment and query
+          traffic through three onion-encrypted hops, with batching and random delay, to resist simple
+          timing links between a wallet connection and settlement.
+        </p>
+      </div>
+      <div class="pillar" data-reveal>
+        <p class="sec-n" data-reveal data-n="04">Conditional settlement</p>
+        <h3>Execute when the privacy conditions are strong.</h3>
+        <p class="prose">
+          A Chainlink CRE workflow releases a confidential intent after compliance passes and the
+          requested privacy score is available—or its deadline arrives. Fixed-denomination USDC then
+          settles through the pool on Arc.
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <figure class="band" style="margin:0">
+    <img src="media/quantum-system.webp" alt="Engineers installing a quantum computer"
+         width="1800" height="1199" loading="lazy" decoding="async">
+    <figcaption class="band__note">
+      <p class="prose"><b>The machine does not have to exist yet to matter.</b>
+        Public-chain activity can be archived indefinitely. If a signature scheme is vulnerable to a
+        future quantum computer, a key exposed today can become a liability later.</p>
+    </figcaption>
+  </figure>
+
+  <div class="wrap slab slab--tight" data-fig="05">
+    <p class="sec-n" data-reveal data-n="05">What survives a quantum computer</p>
+    <div class="ledger">
+      <span data-reveal>secp256k1 <i>at risk</i></span><span>Ed25519 <i>at risk</i></span>
+      <span>BLS12-381 <i>at risk</i></span><span>bn254 pairing <i>at risk</i></span>
+      <span>Groth16 SNARK <i>at risk</i></span><span>Pedersen hiding <i>at risk</i></span>
+      <span class="holds">FORS+C <i>hash-based</i></span><span class="holds">MPC-in-the-head <i>hash-only</i></span>
+    </div>
+    <p class="caption" style="max-width:74ch">
+      Shor's algorithm threatens discrete-log and pairing-based systems. Hash-based designs face a
+      different, better-understood security reduction under Grover's algorithm.
+    </p>
+  </div>
+
+  <div class="wrap slab" id="why" data-fig="06">
+    <p class="sec-n" data-reveal data-n="06">The gap</p>
+    <h2 class="h2" data-reveal>Why nothing like this exists yet.</h2>
+    <div class="compare">
+      <div data-reveal class="compare__rows">
+        <div data-reveal class="compare__row">
+          <p class="prose"><b>Railgun, Aztec and Privacy Pools</b> focus on transaction privacy with
+            zero-knowledge systems. Opaque adds post-quantum spend authorisation and network-origin privacy.</p>
+        </div>
+        <div data-reveal class="compare__row">
+          <p class="prose"><b>Monero</b> combines ring-based transaction privacy with network-layer
+            protections, but uses different cryptographic assumptions and its own purpose-built chain.</p>
+        </div>
+        <div data-reveal class="compare__row">
+          <p class="prose"><b>Private RPC and protected mempools</b> reduce public transaction exposure, while
+            the provider can still observe the connection. Opaque routes the request itself through a relay mesh.</p>
+        </div>
+        <div data-reveal class="compare__row compare__row--claim">
+          <p class="prose"><b>The contribution is the composition:</b> hash-based spend authorisation,
+            ring-based sender privacy, network-origin privacy and privacy-aware execution in one flow.</p>
+        </div>
+      </div>
+      <figure>
+        <!-- The chip leans toward the cursor. .chip owns the perspective, the
+             body inside it does the turning, and the glow sits under both — see
+             landing.ts. It is a flat cut-out, so the tilt is an illusion and the
+             angles are kept small deliberately: past about 15 degrees the eye
+             starts asking to see the side of the chip, and there isn't one. -->
+        <div class="tilt" data-tilt>
+          <div class="tilt__glow" aria-hidden="true"></div>
+          <img class="tilt__body" src="media/chip.webp"
+               alt="A wire-bonded superconducting quantum processor"
+               width="1100" height="426" loading="lazy" decoding="async">
+        </div>
+        <figcaption class="caption">
+          Quantum hardware is still early. Public-chain history is permanent, which makes migration
+          planning useful well before cryptographically relevant machines arrive.
+        </figcaption>
+      </figure>
+    </div>
+  </div>
+
+  <div class="wrap slab" id="threat" data-fig="07">
+    <p class="sec-n" data-reveal data-n="07">Threat model</p>
+    <h2 class="h2" data-reveal>Said plainly, including what it does not do.</h2>
+    <div class="cards">
+      <div data-reveal class="card card--hides">
+        <h3>What it hides</h3>
+        <ul>
+          <li>Which ring member signed a payment</li>
+          <li>The payment amount</li>
+          <li>The sender's network origin</li>
+          <li>The input evaluated by the policy check</li>
+        </ul>
+      </div>
+      <div data-reveal class="card card--limits">
+        <h3>What it does not claim</h3>
+        <ul>
+          <li>Defence against a global passive network adversary</li>
+          <li>Defence if every relay hop is compromised at once</li>
+          <li>Protection from your own timing and amount patterns</li>
+          <li>Ring size 8 is a proof of concept, not a production anonymity set</li>
+          <li>Recovery if local note secrets are lost</li>
+        </ul>
+      </div>
+      <div data-reveal class="card card--trust">
+        <h3>What you trust</h3>
+        <p class="prose">
+          The current proof of concept trusts a CRE attester for proof soundness: it verifies the
+          zero-knowledge ring proof off-chain, while the contract enforces deposits, nullifiers,
+          denominations and the attester's post-quantum authorization. Relays affect network privacy,
+          but cannot approve a spend.
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <div class="wrap slab" id="build" data-fig="08">
+    <div class="built">
+      <div class="tilt" data-tilt>
+        <div class="tilt__glow" aria-hidden="true"></div>
+        <img class="tilt__body" src="media/quantum-tower.webp"
+             alt="The gold-plated dilution refrigerator of a quantum computer"
+             width="576" height="1400" loading="lazy" decoding="async">
+      </div>
+      <div>
+        <p class="sec-n" data-reveal data-n="08">Built on what's real</p>
+        <div class="built__list">
+          <div>
+            <p>FORS+C wallet keys</p>
+            <p class="prose">Few-time hash-based signatures with explicit usage limits and post-quantum
+              key rotation.</p>
+          </div>
+          <div>
+            <p>Hash-only ring proofs</p>
+            <p class="prose">MPC-in-the-head proves knowledge of one note opening without revealing which
+              member of the eight-note ring was spent.</p>
+          </div>
+          <div>
+            <p>Graph-guided routing</p>
+            <p class="prose">Indexed ring and relay health data drives decoy selection, hop selection and
+              privacy-aware execution.</p>
+          </div>
+        </div>
+        <div class="tags">
+          <span class="tag">Chainlink CRE</span>
+          <span class="tag">Arc / USDC</span>
+          <span class="tag">ETHOnline 2026</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
 
   <!-- ══ The resolution ═════════════════════════════════════════════════ -->
   <section class="dawn" id="product">
@@ -145,7 +344,7 @@
       <p class="dawn__sub">Building the infrastructure for a post-quantum internet — secure, open, and built for what's next.</p>
       <div class="dawn__cta">
         <a href="app.html" class="btn btn--solid">Get Started <span aria-hidden="true">&rarr;</span></a>
-        <a href="#docs" class="btn btn--quiet">Learn More</a>
+        <a href="#how" class="btn btn--quiet">Learn More</a>
       </div>
     </div>
 
@@ -153,6 +352,17 @@
     <p class="label label--dim dawn__corner dawn__corner--r">Built<br>for a more<br>private tomorrow.</p>
   </section>
 
+
+  <div class="wrap credits">
+    Photography &mdash;
+    <a href="https://commons.wikimedia.org/wiki/File:IBM_Quantum_System_One.jpg">IBM Quantum System One</a>
+    by OJB Quantum, <a href="https://creativecommons.org/licenses/by/4.0/">CC&nbsp;BY&nbsp;4.0</a>;
+    <a href="https://commons.wikimedia.org/wiki/File:IBM_Q_System_One_(Fraunhofer)_installation.jpg">IBM Q System One installation</a>
+    by IBM Research, <a href="https://creativecommons.org/licenses/by/2.0/">CC&nbsp;BY&nbsp;2.0</a>;
+    <a href="https://commons.wikimedia.org/wiki/File:Wire_Bonded_Superconducting_Quantum_Chip_with_6_Transmons_003.png">wire-bonded quantum chip</a>
+    by OJB Quantum, <a href="https://creativecommons.org/licenses/by/4.0/">CC&nbsp;BY&nbsp;4.0</a>.
+    Images are cropped and colour-graded. opaque is not affiliated with IBM.
+  </div>
 </main>
 
 <footer class="foot">
@@ -165,10 +375,10 @@
         </span>
       </a>
       <nav class="foot__links" aria-label="Footer">
-        <a href="#product">Product</a>
-        <a href="#developers">Developers</a>
-        <a href="#docs">Docs</a>
-        <a href="#about">About</a>
+        <a href="#how">How it works</a>
+        <a href="#why">The gap</a>
+        <a href="#threat">Threat model</a>
+        <a href="#build">Built on</a>
       </nav>
       <div class="foot__social">
         <a href="https://github.com" aria-label="opaque on GitHub" rel="noreferrer">

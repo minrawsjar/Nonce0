@@ -15,6 +15,16 @@
   --faint:      #6b635d;
   --rule:       rgba(244, 239, 233, 0.14);
 
+  --gap-3: 14px;
+  --gap-4: 19px;
+  --gap-6: 28px;
+
+  /* The header band. Warm espresso rather than another near-black, so the
+     strip reads as its own surface instead of a slightly different shade of
+     the page behind it. */
+  --band:       #2b1d16;
+  --band-deep:  #221710;
+
   --display: "Poppins", system-ui, sans-serif;
   --mark:    "Quicksand", "Poppins", system-ui, sans-serif;
 
@@ -92,34 +102,63 @@ img, svg { display: block; max-width: 100%; }
 
 /* Hidden for the whole of the hero — the sequence gets the screen to itself,
    and the full-screen button is the only chrome over it. landing.ts puts
-   .in-hero on the body and takes it off once the shield has closed. Default is
+   .in-hero on the body and takes it off once the wallet has arrived. Default is
    visible, so without JavaScript the page still has its navigation. */
 body.in-hero .nav { opacity: 0; visibility: hidden; pointer-events: none; }
 
 .nav {
-  opacity: 1;
   position: fixed;
   inset: 0 0 auto;
   z-index: 40;
-  padding-block: clamp(14px, 1.6vw, 22px);
-  transition: opacity 0.35s ease, visibility 0.35s ease, background-color 0.35s ease, border-color 0.35s ease;
-  border-bottom: 1px solid transparent;
+  opacity: 1;
+  transition: opacity 0.35s ease, visibility 0.35s ease;
 }
-/* The page runs from near-black to a bright ember horizon, so a permanently
-   transparent bar would lose the links halfway down it. */
-.nav.is-scrolled {
-  background: rgba(7, 6, 10, 0.72);
-  backdrop-filter: blur(14px);
-  border-bottom-color: var(--rule);
+
+.nav__band {
+  padding-block: clamp(12px, 1.5vw, 20px);
+  background: linear-gradient(180deg, var(--band) 0%, var(--band-deep) 100%);
 }
 .nav__inner { display: flex; align-items: center; justify-content: space-between; gap: 24px; }
-.nav .wordmark { --mark-size: 28px; }
+
+/* The wave is the band's bottom edge, not a separate strip: the fill path
+   closes up to y=0 so it continues the band, and both share a colour. Height is
+   fixed in px while the path stretches, so the wave flattens on a wide screen
+   and steepens on a narrow one rather than growing out of proportion. */
+.nav__wave {
+  display: block;
+  width: 100%;
+  height: clamp(18px, 2.4vw, 34px);
+  margin-top: -1px; /* kills the hairline seam sub-pixel rounding leaves */
+  filter: drop-shadow(0 6px 18px rgba(0, 0, 0, 0.45));
+}
+.nav__wave-fill { fill: var(--band-deep); }
+/* A lit rim along the crest, so the edge reads as drawn rather than as a shape
+   that happens to end there. */
+.nav__wave-lip {
+  fill: none;
+  stroke: var(--ember);
+  stroke-width: 1.4;
+  stroke-opacity: 0.5;
+  vector-effect: non-scaling-stroke;
+}
+
+.nav__brand { display: flex; align-items: center; }
+/* Sized off the sub-line, not the wordmark. The descenders of the p and q in
+   "opaque" double as the p and q of "post" and "quantum", and that line is only
+   about a sixth of the mark's height — at the 29px this used to be it fell to
+   ~5px and read as "ost — uantum", which looks like a broken image rather than
+   a logo. At 46px the whole lockup resolves. */
+.nav__brand img {
+  height: clamp(46px, 4.6vw, 62px);
+  width: auto;
+}
+
 .nav__links { display: flex; gap: clamp(20px, 2.6vw, 44px); }
 .nav__links a {
   font-size: 13px;
   font-weight: 300;
   letter-spacing: 0.04em;
-  color: var(--muted);
+  color: #c4b5a8;
   transition: color 0.2s ease;
 }
 .nav__links a:hover { color: var(--text); }
@@ -179,7 +218,7 @@ body.in-hero .nav { opacity: 0; visibility: hidden; pointer-events: none; }
   background: #08070c;
 }
 
-/* Only the active artwork pair is composited. */
+/* Only the active pair of frames is painted during the hero scrub. */
 .plate {
   position: absolute;
   inset: 0;
@@ -191,6 +230,7 @@ body.in-hero .nav { opacity: 0; visibility: hidden; pointer-events: none; }
 }
 /* The opening plate is what a JS-less visitor is left looking at. */
 [data-wide]:first-of-type { opacity: 1; visibility: visible; }
+
 /* Off-screen but not hidden: assistive technology and search still read it. */
 .sr-only {
   position: absolute;
@@ -296,6 +336,329 @@ body:not(.in-hero) .fs { opacity: 0; visibility: hidden; pointer-events: none; }
   white-space: nowrap;
   /* Gone as soon as the reader has taken the instruction. */
   opacity: calc(1 - var(--p, 0) * 8);
+}
+
+/* ── The argument ──────────────────────────────────────────────────────── */
+
+/* Everything between the hero and the closing call. This is the half of the
+   page that says what the thing actually is — it was written for the earlier
+   Classical build and is re-set here in the dark instrument, not re-written. */
+
+.slab { padding-block: clamp(72px, 9vw, 132px); }
+.slab--tight { padding-block: clamp(48px, 6vw, 84px); }
+.slab + .slab { padding-top: 0; }
+
+/* Numbered section label, the counter drawn as its own ember figure. */
+.sec-n {
+  display: flex;
+  align-items: baseline;
+  gap: 0.9em;
+  margin: 0 0 var(--gap-4);
+  font-size: clamp(9.5px, 0.72vw, 11px);
+  font-weight: 400;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.sec-n::before {
+  content: attr(data-n);
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 12px;
+  letter-spacing: 0;
+  color: var(--ember);
+}
+
+.h2 {
+  margin: 0 0 clamp(28px, 4vw, 52px);
+  font-size: clamp(26px, 3.6vw, 44px);
+  font-weight: 200;
+  line-height: 1.12;
+  letter-spacing: -0.01em;
+  max-width: 26ch;
+}
+.lede { font-size: clamp(16px, 1.5vw, 19px); font-weight: 300; line-height: 1.7; color: #cfc7c0; }
+.prose { font-size: 16px; font-weight: 300; line-height: 1.75; color: #b3aaa3; margin: 0; }
+.prose b, .prose strong { color: var(--text); font-weight: 500; }
+.prose em { color: var(--ember-lit); font-style: normal; }
+
+/* Three pillars. */
+.pillars {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr));
+  gap: clamp(30px, 4vw, 56px);
+}
+.pillar h3 {
+  margin: 0 0 var(--gap-3);
+  font-size: clamp(19px, 1.8vw, 24px);
+  font-weight: 300;
+  line-height: 1.25;
+  letter-spacing: -0.005em;
+}
+
+/* Full-bleed photograph with its argument beside it. */
+.band { position: relative; }
+.band img {
+  width: 100%;
+  height: clamp(280px, 44vh, 460px);
+  object-fit: cover;
+  /* The stock photography is cooler and flatter than the hero renders; this
+     pulls it toward the same ember grade so the page holds one temperature. */
+  filter: saturate(0.7) contrast(1.06) brightness(0.62) sepia(0.16);
+}
+.band::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, var(--ink) 0%, transparent 22%, transparent 62%, var(--ink) 100%);
+  pointer-events: none;
+}
+.band__note {
+  position: relative;
+  z-index: 2;
+  margin: calc(clamp(280px, 44vh, 460px) * -0.28) auto 0;
+  max-width: 62ch;
+  padding-inline: clamp(20px, 4vw, 64px);
+  text-align: center;
+}
+
+/* What survives a quantum computer — the whole claim in one glance. */
+.ledger {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(210px, 100%), 1fr));
+  gap: 1px;
+  background: var(--rule);
+  border: 1px solid var(--rule);
+}
+.ledger span {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: clamp(14px, 1.6vw, 20px) clamp(16px, 1.8vw, 22px);
+  background: var(--ink);
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 13px;
+  color: #cfc7c0;
+}
+.ledger i {
+  font-style: normal;
+  font-size: 10.5px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+/* Broken is the default state of everything shipping today; holding is the
+   exception, so only that one is lit. */
+.ledger i { color: #8b7f77; }
+.ledger .holds i { color: var(--ember); }
+.ledger .holds { background: linear-gradient(90deg, rgba(255, 122, 24, 0.07), transparent); }
+
+/* Why nothing like this exists yet. */
+.compare { display: grid; grid-template-columns: 1.25fr 1fr; gap: clamp(32px, 4.5vw, 72px); align-items: start; }
+.compare__rows { display: grid; gap: var(--gap-6); }
+.compare__row { border-top: 1px solid var(--rule); padding-top: var(--gap-4); }
+/* The last row is the claim itself, so it gets the ember rule. */
+.compare__row--claim { border-top-color: var(--ember); }
+.compare__row--claim .prose { color: #cfc7c0; }
+.compare figure { margin: 0; }
+.compare figure img {
+  width: 100%;
+  border-radius: 3px;
+  filter: saturate(0.72) contrast(1.05) brightness(0.7) sepia(0.14);
+}
+.caption { margin: var(--gap-3) 0 0; font-size: 12.5px; font-weight: 300; line-height: 1.65; color: #8b7f77; }
+
+/* Threat model, including what it does not claim. */
+.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(290px, 100%), 1fr)); gap: clamp(16px, 2vw, 24px); }
+.card { border: 1px solid var(--rule); border-radius: 4px; padding: clamp(22px, 2.6vw, 32px); }
+.card h3 {
+  margin: 0 0 var(--gap-4);
+  font-size: 11px;
+  font-weight: 400;
+  letter-spacing: 0.26em;
+  text-transform: uppercase;
+}
+.card--hides h3 { color: var(--ember); }
+.card--limits h3 { color: #9c8d84; }
+.card--trust h3 { color: #cfc7c0; }
+.card ul { margin: 0; padding-left: 17px; }
+.card li { font-size: 14px; font-weight: 300; line-height: 1.8; color: #b3aaa3; }
+
+/* Built on what's real. */
+.built { display: grid; grid-template-columns: minmax(0, 300px) 1fr; gap: clamp(32px, 4.5vw, 72px); align-items: center; }
+/* A cut-out, so no corners to round and no ground to grade — only a small
+   knock-back so it sits in the scene rather than glowing off it. The column is
+   narrow because the shape is: 576x1400 is nearly 1:2.4. */
+.built { grid-template-columns: minmax(0, 210px) 1fr; }
+.built img { width: 100%; filter: brightness(0.86) saturate(0.9); }
+.built__list { display: grid; gap: var(--gap-6); }
+.built__list p:first-child {
+  margin: 0 0 5px;
+  font-family: ui-monospace, Menlo, monospace;
+  font-size: 12.5px;
+  color: var(--ember);
+}
+
+.tags { display: flex; gap: var(--gap-3); flex-wrap: wrap; margin-top: clamp(28px, 4vw, 48px); }
+.tag {
+  padding: 7px 16px;
+  border: 1px solid var(--rule);
+  border-radius: 999px;
+  font-size: 11.5px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #9c8d84;
+}
+
+/* Attribution for the CC-BY photographs. Not decoration — the licence needs it. */
+.credits {
+  border-top: 1px solid var(--rule);
+  padding-block: var(--gap-6) clamp(48px, 6vw, 84px);
+  font-size: 11.5px;
+  font-weight: 300;
+  line-height: 1.8;
+  color: var(--faint);
+}
+.credits a { color: #8b7f77; border-bottom: 1px solid rgba(139, 127, 119, 0.4); }
+.credits a:hover { color: var(--ember-lit); border-bottom-color: var(--ember); }
+
+@media (max-width: 860px) {
+  .compare, .built { grid-template-columns: 1fr; }
+  .built img { max-width: 190px; }
+}
+
+/* ── The theatre ───────────────────────────────────────────────────────── */
+
+/* A giant ghosted figure behind each section, clipped by the section box. It
+   sits under everything and is invisible to assistive tech — the readable
+   number is the one in .sec-n. */
+.slab { position: relative; overflow: hidden; }
+.slab[data-fig]::before {
+  content: attr(data-fig);
+  position: absolute;
+  top: -0.34em;
+  right: -0.06em;
+  z-index: 0;
+  font-family: var(--mark);
+  font-size: clamp(180px, 26vw, 420px);
+  font-weight: 700;
+  line-height: 0.8;
+  letter-spacing: -0.04em;
+  color: var(--ember);
+  opacity: 0.045;
+  pointer-events: none;
+  user-select: none;
+}
+.slab > * { position: relative; z-index: 1; }
+
+/* A rule that draws itself across the top of each pillar as it arrives. */
+.pillar { position: relative; padding-top: var(--gap-6); }
+.pillar::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: 1px;
+  background: linear-gradient(90deg, var(--ember), rgba(255, 122, 24, 0.05));
+  transform: scaleX(var(--draw, 1));
+  transform-origin: 0 50%;
+}
+
+/* The ledger is the whole argument in one glance, so it gets the drama: the
+   broken half struck through and greyed, the two that hold lit from the left. */
+.ledger span { position: relative; transition: background-color 0.3s ease; }
+.ledger span:not(.holds) { color: #7d736c; }
+/* Scaled rather than sized: a transform is a number GSAP can actually
+   interpolate, where a calc() string is not, and it composites instead of
+   laying out. Defaults to 1 so the rule is simply there without JavaScript. */
+.ledger span:not(.holds)::after {
+  content: "";
+  position: absolute;
+  left: clamp(16px, 1.8vw, 22px);
+  right: clamp(16px, 1.8vw, 22px);
+  top: 50%;
+  height: 1px;
+  background: #6b5f57;
+  transform: scaleX(var(--strike, 1));
+  transform-origin: 0 50%;
+}
+.ledger .holds {
+  color: var(--text);
+  box-shadow: inset 3px 0 0 var(--ember);
+}
+.ledger .holds i { text-shadow: 0 0 14px rgba(255, 122, 24, 0.5); }
+.ledger span:hover { background: #0d0b10; }
+
+/* Photographs drift slower than the page. Set by landing.ts; the images are
+   over-tall so there is material to move without exposing an edge. */
+.band, .compare figure, .built > img { overflow: hidden; }
+.band img { height: clamp(340px, 52vh, 540px); will-change: transform; }
+
+/* The claim row earns a glow, since it is the one sentence the section exists
+   to deliver. */
+.compare__row--claim {
+  background: linear-gradient(90deg, rgba(255, 122, 24, 0.06), transparent 70%);
+  padding-left: clamp(14px, 1.6vw, 20px);
+  margin-left: calc(clamp(14px, 1.6vw, 20px) * -1);
+}
+
+/* Cards lift on hover — the only interactive affordance in this half. */
+.card { transition: border-color 0.3s ease, background-color 0.3s ease, transform 0.3s ease; }
+.card:hover { border-color: rgba(255, 122, 24, 0.4); background: rgba(255, 122, 24, 0.025); transform: translateY(-3px); }
+.card--hides { box-shadow: inset 0 1px 0 rgba(255, 122, 24, 0.5); }
+
+.tag { transition: border-color 0.25s ease, color 0.25s ease; }
+.tag:hover { border-color: var(--ember); color: var(--ember-lit); }
+
+/* Nothing above may move for a reader who asked for stillness. landing.ts skips
+   building any of it, so these only need to undo the resting states. */
+@media (prefers-reduced-motion: reduce) {
+  .pillar::before { transform: none; }
+  .ledger span:not(.holds)::after { transform: none; }
+  .card:hover { transform: none; }
+}
+
+/* ── Tilt ──────────────────────────────────────────────────────────────── */
+
+/* Perspective lives on the wrapper, the turn on the body inside it. Splitting
+   them matters: a perspective on the same element that transforms gets applied
+   after the rotation and the depth reads flat.
+
+   Two things use it — the chip and the refrigerator. Both are cut-outs with
+   transparent grounds, which is what makes the tilt work: there is no rectangle
+   edge to give away that the object is flat. */
+.tilt {
+  position: relative;
+  perspective: 1100px;
+  perspective-origin: 50% 50%;
+}
+.tilt__body {
+  display: block;
+  width: 100%;
+  height: auto;
+  transform-style: preserve-3d;
+  /* Resting angle, so it reads as an object on a surface rather than a sticker
+     lying flat against the page. Overwritten every frame once JS is up. */
+  transform: rotateX(6deg) rotateY(0deg) translateY(0) scale(1);
+  will-change: transform;
+}
+/* Light pooling under it, brightening as the chip lifts. */
+.tilt__glow {
+  position: absolute;
+  left: 50%;
+  bottom: 4%;
+  width: 74%;
+  height: 34%;
+  transform: translateX(-50%);
+  border-radius: 50%;
+  background: radial-gradient(closest-side, rgba(255, 122, 24, 0.5), transparent 72%);
+  filter: blur(26px);
+  opacity: var(--lit, 0.25);
+  pointer-events: none;
+}
+
+/* No hover on a touch screen, and nothing to lift toward. */
+@media (hover: none), (prefers-reduced-motion: reduce) {
+  .tilt__body { transform: rotateX(6deg); }
+  .tilt__glow { opacity: 0.25; }
 }
 
 /* ── Section 4: the dawn ───────────────────────────────────────────────── */
@@ -426,7 +789,7 @@ body:not(.in-hero) .fs { opacity: 0; visibility: hidden; pointer-events: none; }
   .hero__line { top: 66%; }
 }
 
-/* Keep an exit available throughout the intro. */
+/* Keep an exit available throughout the pinned intro. */
 .hero__skip {
   position: absolute;
   z-index: 10;
@@ -436,15 +799,15 @@ body:not(.in-hero) .fs { opacity: 0; visibility: hidden; pointer-events: none; }
   align-items: center;
   gap: 12px;
   padding: 10px 0;
-  font-size: 12px;
+  font-size: 14px;
   letter-spacing: 0.04em;
   color: var(--muted);
+  transition: color 0.2s ease;
 }
 .hero__skip:hover { color: var(--text); }
 .hero__pin { isolation: isolate; }
-#product { scroll-margin-top: 76px; }
+#how, #why, #threat, #build, #product { scroll-margin-top: 110px; }
 
-/* Preserve the whole composition on phones; live type sits above the artwork. */
 @media (max-width: 600px) {
   .plate { object-fit: contain; object-position: center 48%; }
   .hero__title {
@@ -465,13 +828,16 @@ body:not(.in-hero) .fs { opacity: 0; visibility: hidden; pointer-events: none; }
   .hero__note { display: none; }
   .hero__line { top: 76%; width: calc(100% - 64px); font-size: 16px; }
   .rail { top: 76%; bottom: 10%; }
+  .nav__band { padding-block: 8px; }
   .nav__inner { gap: 12px; }
-  .nav .wordmark { --mark-size: 24px; }
+  .nav__brand img { height: 40px; }
+  .nav .btn--outline { padding: 8px 15px; }
+  .slab { padding-block: 64px; }
   .dawn__corner { bottom: 24px; }
 }
 
-/* The JS media context also removes the pin when this preference changes. */
+/* Static, readable opening and settled content when motion is disabled. */
 @media (prefers-reduced-motion: reduce) {
   .hero__line, .rail { display: none; }
-  .nav, .btn, .fs, .foot__social a { transition: none; }
+  .nav, .btn, .fs, .foot__social a, .card, .tag { transition: none; }
 }
