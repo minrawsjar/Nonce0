@@ -30,6 +30,83 @@ function el<T extends HTMLElement = HTMLElement>(id: string): T {
 let rt: WalletRuntime;
 let notes: readonly NoteSummary[] = [];
 let hops: readonly string[] = [];
+let opaqueAddress = '';
+let fundingAddress = '';
+
+interface BrowserProvider {
+  request(input: { method: string; params?: readonly unknown[] }): Promise<unknown>;
+  on?(event: string, listener: (...args: unknown[]) => void): void;
+}
+
+const provider = (): BrowserProvider | undefined =>
+  (globalThis as { ethereum?: BrowserProvider }).ethereum;
+const ARC_CHAIN_ID = 5_042_002;
+const ARC_HEX = `0x${ARC_CHAIN_ID.toString(16)}`;
+const ARC_EXPLORER = 'https://testnet.arcscan.app';
+const shortAddress = (value: string) => value ? `${value.slice(0, 6)}…${value.slice(-4)}` : 'Not connected';
+const isRejected = (error: unknown) => typeof error === 'object' && error !== null && 'code' in error && (error as { code: unknown }).code === 4001;
+
+function setStatus(id: string, message: string): void { el(id).textContent = message; }
+
+async function copyText(value: string, button?: HTMLButtonElement): Promise<void> {
+  if (!value) return;
+  await navigator.clipboard.writeText(value);
+  if (button) {
+    const old = button.textContent ?? 'Copy address';
+    button.textContent = 'Copied';
+    window.setTimeout(() => { button.textContent = old; }, 1_500);
+  }
+}
+
+async function readFundingWallet(): Promise<void> {
+  const injected = provider();
+  if (!injected) {
+    el('funding-state').textContent = 'No browser wallet found';
+    el('network-label').textContent = 'Arc testnet';
+    return;
+  }
+  const accounts = await injected.request({ method: 'eth_accounts' }) as string[];
+  fundingAddress = accounts[0] ?? '';
+  el('funding-state').textContent = shortAddress(fundingAddress);
+  const chainId = await injected.request({ method: 'eth_chainId' }) as string;
+  const correct = Number.parseInt(chainId, 16) === ARC_CHAIN_ID;
+  el('network-label').textContent = correct ? 'Arc testnet' : 'Switch to Arc';
+  document.querySelector('.network .live-dot')?.classList.toggle('wrong', !correct);
+}
+
+async function connectFundingWallet(): Promise<boolean> {
+  const injected = provider();
+  if (!injected) {
+    setStatus('wallet-status', 'Install MetaMask or another EIP-1193 wallet to fund private notes.');
+    window.open('https://metamask.io/download/', '_blank', 'noopener');
+    return false;
+  }
+  const button = el<HTMLButtonElement>('connect-wallet');
+  button.disabled = true;
+  setStatus('wallet-status', 'Waiting for your wallet…');
+  try {
+    const accounts = await injected.request({ method: 'eth_requestAccounts' }) as string[];
+    fundingAddress = accounts[0] ?? '';
+    const chainId = await injected.request({ method: 'eth_chainId' }) as string;
+    if (Number.parseInt(chainId, 16) !== ARC_CHAIN_ID) {
+      try {
+        await injected.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: ARC_HEX }] });
+      } catch (error) {
+        if (typeof error === 'object' && error !== null && 'code' in error && (error as { code: unknown }).code === 4902) {
+          await injected.request({ method: 'wallet_addEthereumChain', params: [{ chainId: ARC_HEX, chainName: 'Arc Testnet', nativeCurrency: { name: 'USDC', symbol: 'USDC', decimals: 18 }, rpcUrls: ['https://rpc.testnet.arc.io'], blockExplorerUrls: [ARC_EXPLORER] }] });
+        } else { throw error; }
+      }
+    }
+    await readFundingWallet();
+    button.textContent = 'Funding wallet connected';
+    setStatus('wallet-status', `Connected ${shortAddress(fundingAddress)} on Arc testnet.`);
+    return true;
+  } catch (error) {
+    if (isRejected(error)) setStatus('wallet-status', '');
+    else setStatus('wallet-status', `Could not connect: ${(error as Error).message}`);
+    return false;
+  } finally { button.disabled = false; }
+}
 
 // ── payments this browser has sent ────────────────────────────────────────
 //
@@ -55,6 +132,11 @@ const TERMINAL = new Set(['SETTLED', 'FAILED']);
 
 async function renderBudget(): Promise<void> {
   const state = await rt.app.walletState();
+  opaqueAddress = state.accountAddress as string;
+  el('account-short').textContent = shortAddress(opaqueAddress);
+  el('account-address').textContent = opaqueAddress;
+  el('receive-address').textContent = opaqueAddress;
+  el<HTMLAnchorElement>('open-explorer').href = `${ARC_EXPLORER}/address/${opaqueAddress}`;
   const max = Number(state.maxUses);
   const left = Math.max(0, max - Number(state.localSigningReservations));
   const low = left <= Math.ceil(max / 4);
@@ -92,18 +174,22 @@ async function refreshNotes(): Promise<void> {
   const available = notes.filter((n) => n.state === 'AVAILABLE');
   el('balance').textContent = `${available.length}.00`;
   el('note-count').textContent = `${available.length} note${available.length === 1 ? '' : 's'}`;
+  el('asset-balance').textContent = `${available.length}.00`;
+  el('asset-notes').textContent = `${available.length} private note${available.length === 1 ? '' : 's'}`;
   el<HTMLButtonElement>('arm').disabled = available.length === 0;
 }
 
 async function onDeposit(): Promise<void> {
   const button = el<HTMLButtonElement>('deposit');
-  const status = el('send-status');
+  const status = el('deposit-status');
   if (!rt.hasWallet) {
-    status.textContent = 'Depositing needs a wallet on Arc testnet (MetaMask or any EIP-1193 wallet), with USDC from faucet.circle.com.';
+    await connectFundingWallet();
     return;
   }
+  // This also verifies/switches the chain when an account was already exposed.
+  if (!await connectFundingWallet()) return;
   button.disabled = true;
-  status.textContent = 'Approve exactly 1 USDC, then confirm the deposit… (a deposit is public by design)';
+  status.textContent = 'Approve exactly 1 USDC, then confirm the deposit in your funding wallet…';
   try {
     const note = await rt.app.deposit(rt.scope);
     status.textContent = note.state === 'AVAILABLE'
@@ -111,7 +197,7 @@ async function onDeposit(): Promise<void> {
       : `Deposit sent; the note is ${note.state} until the chain confirms it.`;
     await refreshNotes();
   } catch (error) {
-    status.textContent = `Deposit failed: ${(error as Error).message}`;
+    status.textContent = isRejected(error) ? '' : `Deposit failed: ${(error as Error).message}`;
   } finally {
     button.disabled = false;
   }
@@ -307,20 +393,29 @@ async function renderCapabilities(): Promise<void> {
 
 // ── wiring ────────────────────────────────────────────────────────────────
 
-type View = 'send' | 'ring' | 'activity';
+type View = 'home' | 'send' | 'ring' | 'activity';
 function showView(name: View): void {
-  for (const view of ['send', 'ring', 'activity'] as const) {
+  for (const view of ['home', 'send', 'ring', 'activity'] as const) {
     el(`view-${view}`).hidden = view !== name;
     el(`tab-${view}`).setAttribute('aria-selected', String(view === name));
   }
 }
 
 async function init(): Promise<void> {
+  el('tab-home').addEventListener('click', () => showView('home'));
   el('tab-send').addEventListener('click', () => showView('send'));
   el('tab-ring').addEventListener('click', () => { showView('ring'); void refreshRing(); });
   el('tab-activity').addEventListener('click', () => { showView('activity'); void pollActivity(); });
   el<HTMLFormElement>('send-form').addEventListener('submit', (e) => void onSend(e as SubmitEvent));
   el('deposit').addEventListener('click', () => void onDeposit());
+  el('action-send').addEventListener('click', () => showView('send'));
+  el('action-receive').addEventListener('click', () => el<HTMLDialogElement>('receive-dialog').showModal());
+  el('account-button').addEventListener('click', () => el<HTMLDialogElement>('account-dialog').showModal());
+  el('copy-address').addEventListener('click', (event) => void copyText(opaqueAddress, event.currentTarget as HTMLButtonElement));
+  el('refresh-balance').addEventListener('click', () => void refreshNotes());
+  el('connect-wallet').addEventListener('click', () => void connectFundingWallet());
+  el('network-button').addEventListener('click', () => void connectFundingWallet());
+  document.querySelectorAll<HTMLElement>('[data-back]').forEach((node) => node.addEventListener('click', () => showView('home')));
   renderRingSvg();
   renderActivity();
 
@@ -334,6 +429,9 @@ async function init(): Promise<void> {
   try { await rt.app.walletState(); } catch { await rt.app.createWallet(); }
 
   await Promise.all([renderCapabilities(), refreshNotes(), renderBudget().catch(() => undefined)]);
+  await readFundingWallet().catch(() => undefined);
+  provider()?.on?.('accountsChanged', () => void readFundingWallet());
+  provider()?.on?.('chainChanged', () => void readFundingWallet());
   void refreshRing();
   void pollActivity();
   setInterval(() => void pollActivity(), 5_000);

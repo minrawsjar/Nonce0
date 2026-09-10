@@ -1,148 +1,105 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>opaque — wallet</title>
-<link rel="icon" href="favicon.svg" type="image/svg+xml">
-<!-- app.css is self-contained. It used to sit on top of styles.css, the
-     Classical system the first build was made in; the wallet now shares the
-     landing page's instrument instead — near-black, ember, Poppins — and two
-     conflicting :root token sets on one document is how a colour ends up
-     depending on link order. -->
-<link rel="stylesheet" href="app.css">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>opaque — private wallet</title>
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="app.css">
 </head>
 <body>
-
-<!-- No inline <script> and no onclick= anywhere in this file. Manifest V3
-     forbids both, and keeping the rule here means these exact bytes load as
-     the extension popup and as the hosted page with no fork. -->
-
-<!-- Ember bloom and film grain, the same two layers the landing page sits on.
-     Fixed and inert, so the popup and the hosted page get the same ground. -->
 <div class="bg" aria-hidden="true"></div>
-
-<!-- The shell the wallet sits inside — the same shield the hero closes on. It
-     turns slowly and never stops, which is the point: the thing protecting the
-     wallet is doing work. -->
-<main class="app" data-shield>
-
-  <header class="app-top">
-    <img class="app-mark" src="media/logo.webp" alt="opaque" width="600" height="127" decoding="async">
-    <div class="app-net"><i class="app-net__dot" aria-hidden="true"></i>Arc <b id="net">testnet</b></div>
+<main class="wallet">
+  <header class="topbar">
+    <a class="brand" href="index.html" aria-label="Opaque home"><img src="media/logo.png" alt="opaque" width="600" height="200"></a>
+    <div class="top-actions">
+      <button class="network" id="network-button" type="button"><i class="live-dot"></i><span id="network-label">Arc testnet</span><span>⌄</span></button>
+      <button class="account" id="account-button" type="button"><span class="identicon"><i></i></span><span><b>Opaque account</b><small id="account-short">Starting…</small></span><strong>⋮</strong></button>
+    </div>
   </header>
 
-  <!-- The signature budget. FORS+C is a FEW-time scheme: the key has a finite
-       number of signatures and spending past maxUses is a break, not a warning.
-       That makes this the most load-bearing number in the wallet, so it sits
-       above the tabs and is visible in every view. -->
-  <section class="budget" id="budget">
-    <!-- The crack that spreads as the budget is spent. Two copies of one path:
-         a dark fissure and an ember core inside it, both revealed by
-         stroke-dashoffset so the break grows rather than fades in. app.ts sets
-         --spent on the panel; everything else here is geometry. -->
-    <svg class="fracture" viewBox="0 0 380 150" preserveAspectRatio="none" aria-hidden="true">
-      <path class="fracture__dark" d="M14 8 L58 34 L44 58 L96 74 L78 96 L132 108 L118 132 L176 142
-                                      M96 74 L142 52 L188 66 M78 96 L36 118 M132 108 L184 96 L232 116
-                                      M188 66 L246 44 L300 62 M232 116 L286 104 L340 126 M300 62 L352 40"/>
-      <path class="fracture__lit"  d="M14 8 L58 34 L44 58 L96 74 L78 96 L132 108 L118 132 L176 142
-                                      M96 74 L142 52 L188 66 M78 96 L36 118 M132 108 L184 96 L232 116
-                                      M188 66 L246 44 L300 62 M232 116 L286 104 L340 126 M300 62 L352 40"/>
-    </svg>
-    <div class="budget-row">
-      <span class="budget-label">Signatures remaining</span>
-      <span class="budget-count"><b id="sig-left">—</b> <span id="sig-max"></span></span>
-    </div>
-    <div class="meter" id="meter"></div>
-    <p class="budget-note" id="budget-note"></p>
-  </section>
-
-  <nav class="tabs" role="tablist">
-    <button class="tab" id="tab-send"     role="tab" aria-selected="true"  aria-controls="view-send">Send</button>
-    <button class="tab" id="tab-ring"     role="tab" aria-selected="false" aria-controls="view-ring">Ring</button>
-    <button class="tab" id="tab-activity" role="tab" aria-selected="false" aria-controls="view-activity">Activity</button>
-  </nav>
-
-  <!-- ── Send ─────────────────────────────────────────────────────────── -->
-  <section id="view-send" role="tabpanel" aria-labelledby="tab-send">
-
-    <form id="send-form">
-      <div class="field amount">
-        <label>Pay with — one note</label>
-        <p class="field-hint">Private balance <b id="balance">—</b> USDC, in <b id="note-count">—</b>.
-          Every note is the same size: that is how the amount stays hidden.</p>
-        <button class="btn btn-wide" id="deposit" type="button">Deposit 1 USDC</button>
+  <div class="layout">
+    <aside class="sidebar">
+      <div><p class="eyebrow side-label">Wallet</p>
+        <nav class="nav" aria-label="Wallet navigation">
+          <button id="tab-home" aria-selected="true" type="button"><span class="nav-icon">⌂</span>Overview</button>
+          <button id="tab-send" aria-selected="false" type="button"><span class="nav-icon">↗</span>Send</button>
+          <button id="tab-ring" aria-selected="false" type="button"><span class="nav-icon">◎</span>Privacy</button>
+          <button id="tab-activity" aria-selected="false" type="button"><span class="nav-icon">◷</span>Activity</button>
+        </nav>
       </div>
+      <div class="side-foot"><p><i class="live-dot"></i>Private mesh online</p><a href="index.html">Back to opaque ↗</a></div>
+    </aside>
 
-      <div class="field">
-        <label for="recipient">Recipient</label>
-        <input id="recipient" class="mono" type="text" placeholder="0x…" autocomplete="off" spellcheck="false">
-      </div>
-
-      <p class="note">
-        <b>This payment can wait for better cover.</b> It executes when the ring pool
-        is fresh enough to hide it, or at the deadline — whichever comes first. Until
-        then the recipient and amount stay inside the enclave, not the mempool.
-      </p>
-
-      <div class="row">
-        <div class="field">
-          <label for="freshness">Fire at freshness ≥</label>
-          <input id="freshness" type="number" min="0" max="100" value="70">
+    <section class="workspace">
+      <section class="view" id="view-home" aria-labelledby="tab-home">
+        <div class="balance-head">
+          <div><p class="eyebrow">Private balance</p><h1><span id="balance">—</span> <small>USDC</small></h1><p id="note-count">Loading notes…</p></div>
+          <span class="shielded">▣ Shielded</span>
         </div>
-        <div class="field">
-          <label for="deadline">Or by</label>
-          <input id="deadline" type="number" min="1" max="72" value="12">
-          <p class="field-hint">hours</p>
+        <div class="quick-actions">
+          <button id="action-send" type="button"><i>↗</i><span>Send</span></button>
+          <button id="action-receive" type="button"><i>↙</i><span>Receive</span></button>
+          <button id="deposit" type="button"><i>↓</i><span>Deposit</span></button>
         </div>
-      </div>
+        <p class="status" id="deposit-status" role="status"></p>
 
-      <button class="btn btn-primary btn-wide" id="arm" type="submit">Send 1 USDC privately</button>
-      <p class="field-hint" id="send-status" role="status"></p>
-    </form>
+        <div class="dashboard">
+          <section class="panel">
+            <div class="panel-head"><div><p class="eyebrow">Assets</p><h2>Your funds</h2></div><button id="refresh-balance" type="button">Refresh</button></div>
+            <div class="asset"><i>$</i><span><b>USD Coin</b><small>Private note balance</small></span><span class="asset-value"><b><span id="asset-balance">—</span> USDC</b><small id="asset-notes">—</small></span></div>
+          </section>
+          <section class="panel">
+            <div class="panel-head"><div><p class="eyebrow">Account security</p><h2>Signing key</h2></div><span class="local">Local</span></div>
+            <div class="budget" id="budget"><div><span>Signatures remaining</span><strong><b id="sig-left">—</b> <small id="sig-max"></small></strong></div><div class="meter" id="meter"></div><p id="budget-note"></p></div>
+          </section>
+        </div>
+      </section>
 
-    <p class="unwired" id="fee-note"></p>
-  </section>
+      <section class="view narrow" id="view-send" aria-labelledby="tab-send" hidden>
+        <div class="title"><button class="back" data-back type="button">←</button><div><p class="eyebrow">Private transfer</p><h1>Send USDC</h1><p>One equal-sized note, routed when your privacy conditions are met.</p></div></div>
+        <form class="panel send-form" id="send-form">
+          <div class="amount"><span>Amount</span><strong>1.00 <small>USDC</small></strong><p>One private note per transfer</p></div>
+          <label class="field" for="recipient"><span>Recipient</span><input id="recipient" class="mono" type="text" placeholder="0x0000…" autocomplete="off" spellcheck="false"><small>Arc testnet address</small></label>
+          <div class="privacy-note"><b>Timing protection is on</b><p>The recipient stays sealed until the ring is fresh enough or your deadline arrives.</p></div>
+          <div class="form-row">
+            <label class="field" for="freshness"><span>Minimum freshness</span><div><input id="freshness" type="number" min="0" max="100" value="70"><i>/ 100</i></div></label>
+            <label class="field" for="deadline"><span>Deadline</span><div><input id="deadline" type="number" min="1" max="72" value="12"><i>hours</i></div></label>
+          </div>
+          <button class="primary" id="arm" type="submit">Review private transfer</button>
+          <p class="status" id="send-status" role="status"></p><p class="fine-print" id="fee-note"></p>
+        </form>
+      </section>
 
-  <!-- ── Ring ─────────────────────────────────────────────────────────── -->
-  <section id="view-ring" role="tabpanel" aria-labelledby="tab-ring" hidden>
+      <section class="view" id="view-ring" aria-labelledby="tab-ring" hidden>
+        <div class="title"><button class="back" data-back type="button">←</button><div><p class="eyebrow">Privacy route</p><h1>Your cover set</h1><p>Every member is shown identically. The wallet never reveals which one belongs to you.</p></div></div>
+        <div class="privacy-grid">
+          <section class="panel ring-panel"><div id="ring-wrap"></div><p>One member signed. No member is singled out.</p></section>
+          <div class="privacy-side"><dl class="stats"><div><dt>Pool freshness</dt><dd id="freshness-now">—</dd></div><div><dt>Eligible members</dt><dd id="pool-size">—</dd></div></dl><section class="panel route"><p class="eyebrow">Relay path · 3 hops</p><div id="hops"></div><p>Each payment draws a fresh route from the verified relay directory.</p></section></div>
+        </div>
+      </section>
 
-    <div class="ring-wrap" id="ring-wrap"></div>
-
-    <p class="note">
-      Eight members, drawn identically and kept that way. One of them is yours.
-      <b>opaque does not mark which, and neither should this screen</b> — a wallet that
-      knows which member signed is a wallet that can be made to say so.
-    </p>
-
-    <dl class="stats">
-      <div class="stat"><dt>Pool freshness</dt><dd id="freshness-now">—</dd></div>
-      <div class="stat"><dt>Eligible members</dt><dd id="pool-size">—</dd></div>
-    </dl>
-
-    <div class="budget-label">Relay path — 3 hops of 6</div>
-    <div class="hops" id="hops"></div>
-
-    <p class="note">
-      Hops are drawn from a Markov chain over the node pool, weighted by how much
-      other traffic each node is batching and against how often it has been picked.
-      Nothing here is trusted for the payment to be <em>valid</em> — only for it to be
-      <em>unlinkable</em>.
-    </p>
-  </section>
-
-  <!-- ── Activity ─────────────────────────────────────────────────────── -->
-  <section id="view-activity" role="tabpanel" aria-labelledby="tab-activity" hidden>
-    <div id="intent-list"></div>
-  </section>
-
-  <!-- Read from the pool and the stack, never assumed (T12): a capability this
-       build does not have is named here rather than implied by the UI. -->
-  <p class="unwired" id="caps">Connecting…</p>
-  <p class="unwired"><a href="index.html">← back to opaque</a></p>
-
+      <section class="view" id="view-activity" aria-labelledby="tab-activity" hidden>
+        <div class="title"><button class="back" data-back type="button">←</button><div><p class="eyebrow">History</p><h1>Activity</h1><p>Private transfers created in this browser.</p></div></div>
+        <section class="panel activity"><div id="intent-list"></div></section>
+      </section>
+    </section>
+  </div>
+  <footer id="caps">Connecting to the private mesh…</footer>
 </main>
 
+<dialog id="receive-dialog">
+  <form method="dialog" class="dialog-head"><div><p class="eyebrow">Receive on Arc</p><h2>Your Opaque account</h2></div><button value="close" aria-label="Close">×</button></form>
+  <p>Share this address to receive assets on Arc testnet. Private USDC notes are created with Deposit.</p>
+  <div class="address"><span class="identicon"><i></i></span><code id="receive-address">Starting…</code></div>
+  <div class="dialog-actions"><button class="secondary" id="copy-address" type="button">Copy address</button><a class="primary" id="open-explorer" href="https://testnet.arcscan.app" target="_blank" rel="noopener">View on explorer</a></div>
+</dialog>
+<dialog id="account-dialog">
+  <form method="dialog" class="dialog-head"><div><p class="eyebrow">Account details</p><h2>Opaque account</h2></div><button value="close" aria-label="Close">×</button></form>
+  <div class="detail"><span>Account address</span><code id="account-address">Starting…</code></div>
+  <div class="detail"><span>Funding wallet</span><strong id="funding-state">Not connected</strong></div>
+  <button class="primary" id="connect-wallet" type="button">Connect funding wallet</button><p class="status" id="wallet-status" role="status"></p>
+</dialog>
 <script type="module" src="/src/app.ts"></script>
 </body>
 </html>

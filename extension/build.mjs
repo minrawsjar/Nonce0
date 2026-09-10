@@ -26,6 +26,7 @@ mkdirSync(join(DIST, 'assets'), { recursive: true });
 mkdirSync(join(DIST, 'icons'), { recursive: true });
 
 let html = readFileSync(join(BUILT, 'app.html'), 'utf8');
+html = html.replace('<html lang="en">', '<html lang="en" class="extension">');
 
 // ── the CSP guard ─────────────────────────────────────────────────────────
 //
@@ -68,9 +69,12 @@ html = html.replace(/\s+crossorigin(?=[\s>])/g, '');
 
 // 2. The hosted page links back to the landing page. Inside the extension
 //    there is no landing page, so the link would dead-end on a blank tab.
-html = html.replace(
-  /<a href="index\.html">[^<]*<\/a>/,
-  '<a href="https://github.com/minrawsjar/Opaque">opaque on GitHub</a>',
+// Both the wordmark and the sidebar return to the hosted product. The wallet
+// now puts classes and nested markup on those anchors, so rewriting the href
+// is more durable than matching one exact old anchor shape.
+html = html.replaceAll(
+  'href="index.html"',
+  'href="https://www.opaque.credit" target="_blank" rel="noopener"',
 );
 
 writeFileSync(join(DIST, 'app.html'), html);
