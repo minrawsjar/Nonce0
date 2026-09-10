@@ -5,8 +5,8 @@
 # which relay hop was used for a given payment — publishing that would defeat
 # the exact thing the ring signature and the relay mesh exist to hide.
 #
-# The previous revision violated it. See README.md, "The fundingSourceCluster
-# leak", for what changed and why.
+# The previous revision violated it by publishing a funding-cluster id per
+# member; what replaced it is below, on fundingConcentrationBucket.
 
 type RingMember @entity(immutable: false) {
   "The note commitment (§6.6). Ring eligibility requires a real pool deposit."
@@ -21,6 +21,9 @@ type RingMember @entity(immutable: false) {
   "Aggregate count across all rings. Never which ring, never which payment."
   timesUsedInRing: Int!
 
+  "When a ring last included this member (block timestamp). Aggregate, §8.1."
+  lastUsedAt: BigInt
+
   """
   How large a share of the pool this member's funding cluster holds, coarsely
   bucketed: 0 = smallest share .. 3 = dominant share. This is the ONLY funding
@@ -30,15 +33,27 @@ type RingMember @entity(immutable: false) {
   equivalence class over note commitments — it lets anyone group notes by their
   common funder, which is the linkage the ring exists to destroy.
 
-  Emitted as null unless at least FUNDING_BUCKET_K (5) members of the pool
-  share the bucket, so a bucket can never single a member out. Null means
+  Emitted as null unless at least FUNDING_BUCKET_K (5) members share this
+  member's funder, so a bucket can never single a member out. Null means
   UNKNOWN and must never be read as zero (see RingCandidate in
-  @opaque/protocol-types).
+  @opaque/protocol-types). Computed at enrollment, from PrivatePool's
+  DepositFrom: the funder's share of the pool when this note joined it.
   """
   fundingConcentrationBucket: Int
 
   "Any on-chain activity besides enrollment/ring use. §8.1 step 3."
   hasOtherActivity: Boolean
+}
+
+"""
+Bookkeeping for fundingConcentrationBucket: how many notes one depositor has
+put in one pool. Everything here is already public in PrivatePool's
+DepositFrom events; RingMember never links to it.
+"""
+type FundingCluster @entity(immutable: false) {
+  "`${poolId}-${depositor}`."
+  id: ID!
+  memberCount: Int!
 }
 
 type RingPool @entity(immutable: false) {
@@ -52,7 +67,7 @@ type RingPool @entity(immutable: false) {
 # ── mesh (§8.2) ────────────────────────────────────────────────────────────
 
 type RelayNode @entity(immutable: false) {
-  "nodeId, one of 6."
+  "The signed directory's relay id (\"R1\"…), decoded from RelayDirectory's bytes32 nodeId."
   id: ID!
 
   endpoint: String!

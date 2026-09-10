@@ -134,11 +134,27 @@ export function createPaymentApplication(ports: AdapterPorts): PaymentApplicatio
       // Then reconciled against the chain. Without this a deposit stopped at
       // DEPOSIT_PENDING forever — and reserve() requires AVAILABLE, so a note
       // the user had paid for could never be spent. The pool port returns once
-      // the deposit is mined, so the evidence is there to find.
-      return ports.ring.reconcileNote(note.id);
+      // the deposit is mined — but Arc's public RPC is load-balanced, and the
+      // node that answers the next read can be a block behind the one that
+      // returned the receipt. So the evidence is looked for a few times before
+      // the note is left pending (listNotes keeps looking after that).
+      let summary = await ports.ring.reconcileNote(note.id);
+      for (let attempt = 0; attempt < 10 && summary.state === 'DEPOSIT_PENDING'; attempt++) {
+        await new Promise((resolve) => setTimeout(resolve, 3_000));
+        summary = await ports.ring.reconcileNote(note.id);
+      }
+      return summary;
     },
 
-    listNotes: (scope: PoolScope): Promise<readonly NoteSummary[]> => ports.ring.listNotes(scope),
+    async listNotes(scope: PoolScope): Promise<readonly NoteSummary[]> {
+      // A note still pending is re-checked against the chain every time the
+      // wallet looks: one missed read must not leave paid-for money unspendable.
+      const notes = await ports.ring.listNotes(scope);
+      const pending = notes.filter((n) => n.state === 'DEPOSIT_PENDING');
+      if (pending.length === 0) return notes;
+      await Promise.all(pending.map((n) => ports.ring.reconcileNote(n.id).catch(() => undefined)));
+      return ports.ring.listNotes(scope);
+    },
 
     /**
      * The one path a payment takes. Immediate mode is not a second path: the

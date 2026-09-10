@@ -1,1 +1,76 @@
-[{"anonymous":false,"inputs":[{"indexed":true,"internalType":"bytes32","name":"nodeId","type":"bytes32"},{"indexed":true,"internalType":"address","name":"operator","type":"address"},{"indexed":false,"internalType":"string","name":"endpoint","type":"string"},{"indexed":false,"internalType":"bytes32","name":"kemKeyCommitment","type":"bytes32"},{"indexed":false,"internalType":"uint64","name":"epoch","type":"uint64"}],"name":"RelayAnnounced","type":"event"},{"anonymous":false,"inputs":[{"indexed":true,"internalType":"bytes32","name":"nodeId","type":"bytes32"},{"indexed":false,"internalType":"uint16","name":"reliabilityBps","type":"uint16"},{"indexed":false,"internalType":"uint16","name":"batchOccupancy","type":"uint16"},{"indexed":false,"internalType":"uint32","name":"recentSelections","type":"uint32"},{"indexed":false,"internalType":"uint64","name":"observedAt","type":"uint64"}],"name":"RelayHealth","type":"event"}]
+[
+  {
+    "type": "event",
+    "name": "RelayAnnounced",
+    "inputs": [
+      {
+        "name": "nodeId",
+        "type": "bytes32",
+        "indexed": true,
+        "internalType": "bytes32"
+      },
+      {
+        "name": "operator",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "endpoint",
+        "type": "string",
+        "indexed": false,
+        "internalType": "string"
+      },
+      {
+        "name": "kemKeyCommitment",
+        "type": "bytes32",
+        "indexed": false,
+        "internalType": "bytes32"
+      },
+      {
+        "name": "epoch",
+        "type": "uint64",
+        "indexed": false,
+        "internalType": "uint64"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "RelayHealth",
+    "inputs": [
+      {
+        "name": "nodeId",
+        "type": "bytes32",
+        "indexed": true,
+        "internalType": "bytes32"
+      },
+      {
+        "name": "reliabilityBps",
+        "type": "uint16",
+        "indexed": false,
+        "internalType": "uint16"
+      },
+      {
+        "name": "batchOccupancy",
+        "type": "uint16",
+        "indexed": false,
+        "internalType": "uint16"
+      },
+      {
+        "name": "recentSelections",
+        "type": "uint32",
+        "indexed": false,
+        "internalType": "uint32"
+      },
+      {
+        "name": "observedAt",
+        "type": "uint64",
+        "indexed": false,
+        "internalType": "uint64"
+      }
+    ],
+    "anonymous": false
+  }
+]
