@@ -22,12 +22,10 @@ import {
   asChainId,
   derivePaymentContext,
   encodeBigint,
-  fromHex,
   poolId,
   toHex,
 } from '@opaque/protocol-types/codecs.js';
 import {
-  canonical,
   encodeSignature,
   forsSchemeId,
   FORS_C_DEFAULT,
@@ -38,6 +36,7 @@ import {
   utf8,
 } from '@opaque/pq-wallet';
 
+import { attestationPayload, ringVerifierId, type AttesterIdentity } from '../cre/attest.ts';
 import { deriveCommitment, deriveNullifier, SECRET_BYTES } from './statement.ts';
 
 // ── the fixed world both sides agree on ───────────────────────────────────
@@ -52,52 +51,23 @@ const POOL = asAddress('0x0000000000000000000000000000000000004444');
 const ATTESTER = asAddress('0x0000000000000000000000000000000000005555');
 const BOB = asAddress('0x0000000000000000000000000000000000000b0b');
 
-const VERIFIER_DOMAIN = 'opaque/v1/spend-verifier';
-const ATTEST_DOMAIN = 'opaque/v1/ring-attestation';
-const SCHEME = 'attested-ring8/zkboo-aes128-ring8';
 const USER_ACTION_DOMAIN = 'opaque/v1/pq-wallet/action';
 
 const scope: PoolScope = { chainId: asChainId(CHAIN_ID), pool: POOL, denomination: DENOMINATION };
 const POOL_ID = poolId(scope);
 
-// ── derivations that mirror AttestedRingVerifier.sol exactly ──────────────
+// ── derivations: the PRODUCTION ones, from cre/attest.ts ─────────────────
+//
+// Imported, not copied. These vectors are what AttestedRingVerifier.t.sol
+// checks signatures against, so generating them from the production module
+// makes that Foundry suite a check on the code the attester actually runs.
 
-/** `abi.encode(bytes32[])`: offset, length, then the words. */
-const abiEncodeRing = (ring: readonly Bytes32[]): Uint8Array => {
-  const out = new Uint8Array(64 + ring.length * 32);
-  new DataView(out.buffer).setUint32(28, 32, false); // head: offset to the array
-  new DataView(out.buffer).setUint32(60, ring.length, false);
-  ring.forEach((word, i) => out.set(fromHex(word), 64 + i * 32));
-  return out;
+const IDENTITY: AttesterIdentity = {
+  chainId: CHAIN_ID, registry: REGISTRY, attester: ATTESTER, pool: POOL, denomination: DENOMINATION,
 };
-
-/** `abi.encodePacked(uint32(20), addr)` — an address field, length-prefixed. */
-const addressField = (value: Address): Uint8Array => {
-  const out = new Uint8Array(24);
-  new DataView(out.buffer).setUint32(0, 20, false);
-  out.set(fromHex(value), 4);
-  return out;
-};
-
-const verifierId = (): Bytes32 =>
-  toHex(
-    keccak_256(
-      new Uint8Array([
-        ...canonical([utf8(VERIFIER_DOMAIN), utf8(SCHEME), fromHex(POOL_ID), utf8(String(DENOMINATION))]),
-        ...addressField(REGISTRY),
-        ...addressField(ATTESTER),
-      ]),
-    ),
-  ) as Bytes32;
-
+const verifierId = (): Bytes32 => ringVerifierId(IDENTITY);
 const attestation = (ring: readonly Bytes32[], nullifier: Bytes32, paymentContext: Bytes32): Uint8Array =>
-  canonical([
-    utf8(ATTEST_DOMAIN),
-    fromHex(verifierId()),
-    keccak_256(abiEncodeRing(ring)),
-    fromHex(nullifier),
-    fromHex(paymentContext),
-  ]);
+  attestationPayload(verifierId(), ring, nullifier, paymentContext);
 
 // ── the attester's post-quantum key ───────────────────────────────────────
 
