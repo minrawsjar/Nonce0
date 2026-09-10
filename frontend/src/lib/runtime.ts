@@ -12,8 +12,10 @@
 //   proof        built HERE, in a Web Worker of this page: the note secret
 //                never leaves the origin, and the tab does not freeze.
 //   account and  WALLET_RPC through the mesh: the account's registry state,
-//   note reads   balances, nonce, a note's nullifier. No RPC or bundler learns
-//                which wallet asked.
+//   note reads   balances, nonce, a note's nullifier, the pool's capabilities.
+//                No RPC or bundler learns which wallet asked.
+//   funding      the wallet's transactions, and the reads they need, through
+//   wallet       its own provider. The page opens no connection to an RPC.
 //   intent       sealed here to the CRE key, then chunked across the mesh.
 //   status       a mesh query. The page never opens a connection to the exit.
 //   account      LIVE on Arc: FORS keys in IndexedDB, the account deployed by
@@ -42,7 +44,8 @@ import type { DirectoryTrustRoot, SignedDirectory } from '../../../backend/mesh/
 import { createIntentSealer } from '../../../backend/cre/seal-client.ts';
 import { ARC_AUTHORITY, createLivePqWallet, createPqAccountOps } from '../../../backend/chain/pq-wallet-chain.ts';
 import { browserPayer, createBrowserPool, createMeshChainObserver } from '../../../backend/chain/wallet-chain.ts';
-import type { WalletRpcSend } from '../../../backend/chain/wallet-rpc.ts';
+import { capabilitiesOf } from '../../../backend/chain/pool.ts';
+import { readOne, type WalletRpcSend } from '../../../backend/chain/wallet-rpc.ts';
 import { MarkovPathPolicy } from '../../../graph/src/path-policy.ts';
 import { createNoteVault, createRingClient } from '../../../packages/ring-client/src/index.ts';
 import { IndexedDbSignerStore } from '../../../packages/pq-wallet/src/indexeddb-store.ts';
@@ -171,6 +174,7 @@ export async function startWallet(config?: StackConfig): Promise<WalletRuntime> 
       return opsFor(state.accountAddress as `0x${string}`).deposit(input);
     },
     isNullifierSpent: (s, nullifier) => chain.isNullifierSpent(s, nullifier),
+    capabilities: async (p) => capabilitiesOf((await readOne(walletRpc, p, 'capabilities', [])).value as never, cfg.capabilities),
   };
   const chain = createMeshChainObserver({
     walletRpc,

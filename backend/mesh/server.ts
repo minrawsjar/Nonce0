@@ -306,11 +306,13 @@ export function createRelay(options: RelayOptions): Relay {
 
   function collect(res: ServerResponse, dropId: string): void {
     const sealed = drops.take(dropId, now());
-    // An unknown drop, an expired one and an already-collected one are the
-    // same 404. Distinguishing them would turn this into an oracle for which
-    // drop ids ever existed.
+    // Not yet, never, expired and already collected are the same empty 204.
+    // Distinguishing them would turn this into an oracle for which drop ids
+    // ever existed. 204, not 404: a client polls this until its answer lands,
+    // and a pending poll is not an error.
     if (sealed === undefined) {
-      send(res, 404, { code: 'INVALID_INPUT', message: 'no such drop', retryable: false });
+      res.writeHead(204, { 'cache-control': 'no-store' });
+      res.end();
       return;
     }
     send(res, 200, { sealed });

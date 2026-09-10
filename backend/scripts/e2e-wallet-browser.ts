@@ -35,7 +35,7 @@
 // THE BROWSER and read `document`, and giving backend the DOM lib to allow them
 // would let server code touch `window` and `document` too.
 import { chromium } from '../../packages/pq-wallet/node_modules/playwright/index.mjs';
-import { createPublicClient, createWalletClient, http, parseAbiItem, parseEther, toFunctionSelector } from 'viem';
+import { createPublicClient, createWalletClient, http, parseAbiItem, parseEther } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import { asChainId, fromHex } from '@opaque/protocol-types/codecs.js';
 import { deployment, poolFor } from '../../deployments/index.ts';
@@ -96,9 +96,7 @@ page.on('pageerror', (e: Error) => errors.push(e.message));
 // What the page itself sends, to check nothing that names the wallet goes direct.
 const direct: { url: string; body: string }[] = [];
 page.on('request', (r: { url(): string; postData(): string | null }) => { if (!r.url().includes('railway.app') && !r.url().includes('opaque.credit') && !r.url().includes('127.0.0.1')) direct.push({ url: r.url(), body: r.postData() ?? '' }); });
-// Drop polls 404 until the answer lands — deliberately: a relay that said
-// "exists but not ready" would be an oracle for which drops are live.
-page.on('console', (m: { type(): string; text(): string }) => { if (m.type() === 'error' && !/404/.test(m.text())) errors.push(m.text()); });
+page.on('console', (m: { type(): string; text(): string }) => { if (m.type() === 'error') errors.push(m.text()); });
 const t0 = Date.now();
 const step = (s: string) => process.stdout.write(`[${((Date.now() - t0) / 1000).toFixed(1).padStart(5)}s] ${s}\n`);
 
@@ -182,13 +180,12 @@ const tx = await page.getAttribute('#intent-list a', 'href');
 step(`activity (status through the mesh): ${(await page.textContent('#intent-list .intent-state'))}  ${tx}`);
 step(`private balance after: ${await page.textContent('#balance')} USDC`);
 if (errors.length) step(`page errors: ${errors.slice(0, 3).join(' | ')}`);
-if (process.env['E2E_PQ'] === '1') {
-  const named = ['isNullifierSpent(bytes32)', 'isCommitmentKnown(bytes32)', 'stateOf(address)', 'getNonce(address,uint192)', 'balanceOf(address)'].map((f) => toFunctionSelector(f).slice(2));
-  const leaks = direct.filter((r) => /pimlico/.test(r.url) || named.some((sel) => r.body.includes(sel)) || /eth_getBalance|eth_getCode/.test(r.body));
-  step(`direct requests from the page: ${direct.length}; naming the account or a note, or to a bundler: ${leaks.length}`);
-  for (const l of leaks.slice(0, 3)) step(`  leak: ${l.url} ${l.body.slice(0, 160)}`);
-  if (leaks.length > 0) process.exitCode = 1;
-}
+// The page opens no connection to an RPC, a bundler or the subgraph: its reads
+// cross the mesh, and its funding wallet's go through the wallet's provider.
+const leaks = direct.filter((r) => [new URL(deployment.network.rpcUrl).host, 'pimlico', 'thegraph'].some((h) => r.url.includes(h)));
+step(`direct requests from the page: ${direct.length}; to an RPC, a bundler or the subgraph: ${leaks.length}`);
+for (const l of leaks.slice(0, 3)) step(`  leak: ${l.url} ${l.body.slice(0, 160)}`);
+if (leaks.length > 0) process.exitCode = 1;
 await context.close();
 await context.browser()?.close();
 process.stdout.write(`TX ${tx?.split('/').pop()}\n`);

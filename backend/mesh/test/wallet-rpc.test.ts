@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { encodeFunctionData } from 'viem';
+import { encodeFunctionData, toFunctionSelector } from 'viem';
 
 import type { Address, Hex } from '@opaque/protocol-types';
 import { fromHex, toHex } from '@opaque/protocol-types/codecs.js';
@@ -51,6 +51,8 @@ test('STATE reads allowlisted views, at one block, and nothing else', async () =
   assert.match((await ask('STATE', { calls: [{ to: stranger, data: balance }] })).error.message, /does not read/);
   assert.equal(reads.length, 1, 'refused calls never reached the chain');
   assert.ok(walletRpcAllowlist().get(deployment.tokens.usdc.address.toLowerCase())?.size === 1);
+  // The page's one pool-wide read, so it needs no RPC of its own.
+  assert.ok(walletRpcAllowlist().get(pool.toLowerCase())?.has(toFunctionSelector('capabilities()')));
 });
 
 test('bundler calls are relayed for PQ accounts on the pinned EntryPoint only', async () => {

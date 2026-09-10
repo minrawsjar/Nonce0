@@ -165,14 +165,15 @@ test('a query gets its answer back through a drop, and only once', async () => {
   assert.equal(text(channel.open(collected.json.sealed as Hex)), 'CONFIRMED');
 
   // Single-use: the credential is spent.
-  assert.equal((await get(built.get(ids[2]!)!, `/v1/status/${channel.dropId}`)).status, 404);
+  assert.equal((await get(built.get(ids[2]!)!, `/v1/status/${channel.dropId}`)).status, 204);
 });
 
-test('an unknown drop and a spent one are the same 404', async () => {
+test('an unknown drop and a spent one are the same empty 204', async () => {
   const { built } = mesh();
   const a = await get(built.get(ids[2]!)!, `/v1/status/${'0'.repeat(32)}`);
   const b = await get(built.get(ids[2]!)!, '/v1/status/not-a-drop-id');
-  assert.equal(a.status, 404);
+  assert.equal(a.status, 204);
+  assert.equal(b.status, 204);
   assert.deepEqual(a.json, b.json, 'a malformed id must not be distinguishable from an absent one');
 });
 
@@ -191,8 +192,8 @@ test('a drop is refused when the client names a relay that did not answer', asyn
   );
   for (const id of ids) await built.get(id)!.drainOnce(NOW_MS + 10n);
   // Loudly nowhere, rather than silently deposited at the wrong relay.
-  assert.equal((await get(built.get(ids[0]!)!, `/v1/status/${channel.dropId}`)).status, 404);
-  assert.equal((await get(built.get(ids[2]!)!, `/v1/status/${channel.dropId}`)).status, 404);
+  assert.equal((await get(built.get(ids[0]!)!, `/v1/status/${channel.dropId}`)).status, 204);
+  assert.equal((await get(built.get(ids[2]!)!, `/v1/status/${channel.dropId}`)).status, 204);
 });
 
 // ── refusals ──────────────────────────────────────────────────────────────
@@ -296,7 +297,8 @@ test('the relay serves the two endpoints over actual HTTP', async () => {
     assert.equal(accepted.headers.get('cache-control'), 'no-store');
 
     const missing = await fetch(`http://127.0.0.1:${port}/v1/status/${'a'.repeat(32)}`);
-    assert.equal(missing.status, 404);
+    assert.equal(missing.status, 204);
+    assert.equal(missing.headers.get('cache-control'), 'no-store', 'a poll must not be answered from cache');
   } finally {
     await relay.close();
   }

@@ -129,6 +129,34 @@ const ringOf = (spend: PrivateSpend): readonly `0x${string}`[] =>
     ? (spend.ring as readonly string[] as readonly `0x${string}`[])
     : ([spend.commitment] as readonly string[] as readonly `0x${string}`[]);
 
+/** The pool's capabilities() as the protocol type, however it was read. */
+export function capabilitiesOf(
+  onChain: { readonly proofMode: number; readonly ringSize: number; readonly verifierId: `0x${string}` },
+  offChain: PoolClientOptions['offChain'],
+): ProtocolCapabilities {
+  const proofMode = PROOF_MODES[onChain.proofMode];
+  if (proofMode === undefined) {
+    // A mode this build does not know is not a mode to guess at: rendering
+    // a spend under the wrong anonymity story is the failure to avoid.
+    throw new ProtocolFailure(
+      'UNSUPPORTED_PROOF_MODE',
+      `pool reports proof mode ${onChain.proofMode}, which this build does not know`,
+    );
+  }
+  if (onChain.ringSize !== 8 && onChain.ringSize !== 1) {
+    throw new ProtocolFailure('UNSUPPORTED_PROOF_MODE', `unexpected ring size ${onChain.ringSize}`);
+  }
+  // READ, never assumed. A SINGLE_NOTE_PQ deployment must never be
+  // rendered with eight-member anonymity copy.
+  return {
+    protocolVersion: PROTOCOL_VERSION,
+    proofMode,
+    ringSize: onChain.ringSize,
+    verifierId: onChain.verifierId as Bytes32,
+    ...offChain,
+  };
+}
+
 export interface OpaquePoolClient extends PrivatePoolContract {
   /** ERC-20 approval for one deposit. Separate because it is a separate tx. */
   approveDeposit(pool: Address): Promise<TxHash>;
@@ -137,9 +165,11 @@ export interface OpaquePoolClient extends PrivatePoolContract {
 
 export function createPoolClient(options: PoolClientOptions): OpaquePoolClient {
   const chain = options.chain ?? ARC_TESTNET;
+  // A browser reads through its wallet's own provider, never an RPC of its
+  // own: every read here serves a transaction that wallet is about to sign.
   const publicClient = createPublicClient({
     chain,
-    transport: http(options.rpcUrl ?? chain.rpcUrls.default.http[0]),
+    transport: options.provider !== undefined ? custom(options.provider) : http(options.rpcUrl ?? chain.rpcUrls.default.http[0]),
   }) as PublicClient;
 
   const wallet = (): WalletClient => {
@@ -213,40 +243,8 @@ export function createPoolClient(options: PoolClientOptions): OpaquePoolClient {
     publicClient,
 
     async capabilities(pool: Address): Promise<ProtocolCapabilities> {
-      const onChain = (await publicClient.readContract({
-        address: getAddress(pool),
-        abi: POOL_ABI,
-        functionName: 'capabilities',
-      })) as {
-        proofMode: number;
-        ringSize: number;
-        verifierId: Bytes32;
-        denomination: bigint;
-        requiresCommitReveal: boolean;
-      };
-
-      const proofMode = PROOF_MODES[onChain.proofMode];
-      if (proofMode === undefined) {
-        // A mode this build does not know is not a mode to guess at: rendering
-        // a spend under the wrong anonymity story is the failure to avoid.
-        throw new ProtocolFailure(
-          'UNSUPPORTED_PROOF_MODE',
-          `pool reports proof mode ${onChain.proofMode}, which this build does not know`,
-        );
-      }
-      if (onChain.ringSize !== 8 && onChain.ringSize !== 1) {
-        throw new ProtocolFailure('UNSUPPORTED_PROOF_MODE', `unexpected ring size ${onChain.ringSize}`);
-      }
-
-      // READ, never assumed. A SINGLE_NOTE_PQ deployment must never be
-      // rendered with eight-member anonymity copy.
-      return {
-        protocolVersion: PROTOCOL_VERSION,
-        proofMode,
-        ringSize: onChain.ringSize,
-        verifierId: onChain.verifierId,
-        ...options.offChain,
-      };
+      const onChain = await publicClient.readContract({ address: getAddress(pool), abi: POOL_ABI, functionName: 'capabilities' });
+      return capabilitiesOf(onChain, options.offChain);
     },
 
     async deposit(input: { scope: PoolScope; commitment: NoteCommitment }): Promise<TxHash> {

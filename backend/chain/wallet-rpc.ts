@@ -43,6 +43,7 @@ export const STATE_ABI = parseAbi([
   'function isCommitmentKnown(bytes32) view returns (bool)',
   'function balanceOf(address) view returns (uint256)',
   'function getNonce(address, uint192) view returns (uint256)',
+  'function capabilities() view returns ((uint8 proofMode, uint8 ringSize, bytes32 verifierId, uint256 denomination, bool requiresCommitReveal))',
 ]);
 
 /** Which view calls STATE will make: target -> selectors. Everything else is refused. */
@@ -52,7 +53,7 @@ export function walletRpcAllowlist(): ReadonlyMap<string, ReadonlySet<string>> {
   const add = (target: string, ...signatures: string[]) =>
     allow.set(target.toLowerCase(), new Set([...(allow.get(target.toLowerCase()) ?? []), ...signatures.map(sel)]));
   add(requireContract('pqKeyRegistry'), 'stateOf(address)');
-  for (const pool of deployment.pools) add(pool.address, 'isNullifierSpent(bytes32)', 'isCommitmentKnown(bytes32)');
+  for (const pool of deployment.pools) add(pool.address, 'isNullifierSpent(bytes32)', 'isCommitmentKnown(bytes32)', 'capabilities()');
   add(deployment.tokens.usdc.address, 'balanceOf(address)');
   add(entryPoint(), 'balanceOf(address)', 'getNonce(address,uint192)');
   return allow;
@@ -213,7 +214,7 @@ export async function readState(send: WalletRpcSend, calls: readonly { to: Addre
 }
 
 /** One allowlisted view, decoded. */
-export async function readOne<const F extends 'stateOf' | 'isNullifierSpent' | 'isCommitmentKnown' | 'balanceOf' | 'getNonce'>(
+export async function readOne<const F extends (typeof STATE_ABI)[number]['name']>(
   send: WalletRpcSend, to: Address, functionName: F, args: readonly unknown[],
 ) {
   const { results, blockNumber, timestamp } = await readState(send, [{ to, data: encodeFunctionData({ abi: STATE_ABI, functionName, args } as never) }]);

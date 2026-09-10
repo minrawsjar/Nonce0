@@ -115,7 +115,7 @@ test('a query crosses three relays and the answer comes back through a drop', as
     assert.equal(text(channel.open(sealed!)), 'CONFIRMED');
 
     // Single-use: the credential is spent by the collection above.
-    assert.equal((await fetch(dropUrl)).status, 404);
+    assert.equal((await fetch(dropUrl)).status, 204);
   } finally {
     await Promise.all(relays.map((r) => r.close()));
     await new Promise<void>((r) => server.close(() => r()));

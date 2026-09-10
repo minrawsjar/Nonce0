@@ -544,7 +544,12 @@ async function init(): Promise<void> {
   // The PQ account key lives in this browser; create one the first time.
   try { await rt.app.walletState(); } catch { await rt.app.createWallet(); }
 
-  await Promise.all([renderCapabilities(), refreshNotes(), renderBudget().catch(() => undefined)]);
+  // One failed read must not stop the rest of the page from starting.
+  await Promise.all([
+    renderCapabilities().catch((error: Error) => { el('caps').textContent = `Could not read the pool: ${error.message}`; }),
+    refreshNotes().catch(() => { el('note-count').textContent = 'Could not read notes — Refresh to retry'; }),
+    renderBudget().catch(() => undefined),
+  ]);
   await readFundingWallet().catch(() => undefined);
   provider()?.on?.('accountsChanged', () => void readFundingWallet());
   provider()?.on?.('chainChanged', () => void readFundingWallet());
