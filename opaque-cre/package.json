@@ -1,0 +1,22 @@
+{
+  "name": "opaque-cre",
+  "version": "1.0.0-review",
+  "private": true,
+  "type": "module",
+  "description": "Opaque — the Chainlink CRE confidential workflow and its simulation fixtures.",
+  "scripts": {
+    "fixture": "node tools/make-fixture.ts",
+    "simulate": "cre workflow simulate ./confidential-intent --target staging-settings --non-interactive --trigger-index 0"
+  },
+  "comment": [
+    "Root deps exist for tools/ ONLY, which runs under Node. The workflow itself",
+    "runs under Javy/QuickJS and takes its dependencies from",
+    "confidential-intent/package.json."
+  ],
+  "dependencies": {
+    "@opaque/protocol-types": "file:../packages/protocol-types",
+    "@noble/ciphers": "^2.0.1",
+    "@noble/hashes": "^2.4.0",
+    "@noble/post-quantum": "^0.7.1"
+  }
+}

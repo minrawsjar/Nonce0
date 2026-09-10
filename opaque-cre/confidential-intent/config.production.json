@@ -1,0 +1,6 @@
+{
+  "authorizedKeys": [],
+  "encryptionKeyId": "opaque-intent-key-v1",
+  "policyVersion": "opaque-policy-v1",
+  "releaseTtlSeconds": "900"
+}

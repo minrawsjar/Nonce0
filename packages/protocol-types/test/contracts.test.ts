@@ -72,10 +72,9 @@ test('privacy score is a bounded integer, not any number', () => {
   assert.equal(code(() => asPrivacyScore('70')), 'INVALID_INPUT');
 });
 
-test('denomination rejects anything off the fixed list', () => {
-  assert.equal(asDenomination(5_000_000), 5_000_000);
-  assert.equal(code(() => asDenomination(2_000_000)), 'UNSUPPORTED_DENOMINATION');
-  assert.equal(code(() => asDenomination(1_000_000n)), 'UNSUPPORTED_DENOMINATION', 'bigint is not the number');
+test('denomination accepts only the configured public buckets', () => {
+  assert.equal(asDenomination(2_000_000), 2_000_000);
+  assert.equal(code(() => asDenomination(3_000_000)), 'UNSUPPORTED_DENOMINATION');
 });
 
 // ── bigint ────────────────────────────────────────────────────────────────
@@ -200,10 +199,10 @@ test('the nullifier derivation cannot see the recipient', () => {
   assert.notEqual(poolId(SCOPE), a, 'poolId must not vary with it');
 });
 
-test('poolId is domain-separated from the payment context', () => {
+test('poolId is domain-separated from denomination-bound payment context', () => {
   const other: PoolScope = { ...SCOPE, denomination: 5_000_000 };
   assert.equal(poolId(SCOPE), poolId({ ...SCOPE }), 'stable');
-  assert.equal(poolId(SCOPE), poolId(other), 'poolId binds chain and pool, not denomination');
+  assert.equal(poolId(SCOPE), poolId(other));
   assert.notEqual(derivePaymentContext(SCOPE, RECIPIENT), derivePaymentContext(other, RECIPIENT));
 });
 

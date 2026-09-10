@@ -44,9 +44,10 @@ export type PrivacyScore = Brand<number, 'PrivacyScore'>;
 export type Usdc6 = Brand<bigint, 'Usdc6'>;
 export type NativeWei = Brand<bigint, 'NativeWei'>;
 
-export type Denomination = 1_000_000 | 5_000_000 | 10_000_000;
+/** Public value buckets. A ring is formed only within one bucket. */
+export type Denomination = 1_000_000 | 2_000_000 | 5_000_000 | 10_000_000 | 20_000_000 | 50_000_000 | 100_000_000;
 export const DENOMINATIONS: readonly Denomination[] = Object.freeze([
-  1_000_000, 5_000_000, 10_000_000,
+  1_000_000, 2_000_000, 5_000_000, 10_000_000, 20_000_000, 50_000_000, 100_000_000,
 ]);
 
 // ── domain separation ─────────────────────────────────────────────────────
@@ -248,7 +249,26 @@ export interface ApprovedRelease {
   readonly issuedAt: UnixSeconds;
   /** Delivery validity window — separate from the scheduling deadline. */
   readonly expiresAt: UnixSeconds;
+  /** V1 path: MAC-bound one-shot CRE authorizations for atomic settlement. */
+  readonly authorizations?: readonly { readonly id: Bytes32; readonly pool: Address }[];
   readonly authenticationTag: Hex;
+}
+
+/** Public, one-shot CRE result posted to Arc; proof bytes remain in CRE. */
+export interface SpendAuthorization {
+  readonly authorizationId: Bytes32;
+  readonly intentIdHash: Bytes32;
+  readonly spendHash: Bytes32;
+  readonly nullifier: Nullifier;
+  readonly pool: Address;
+  readonly recipient: Address;
+  readonly feeCollector: Address;
+  readonly grossAmount: Usdc6;
+  readonly feeAmount: Usdc6;
+  readonly feeBps: number;
+  readonly issuedAt: UnixSeconds;
+  readonly expiresAt: UnixSeconds;
+  readonly policyVersion: Bytes32;
 }
 
 // ── observations ──────────────────────────────────────────────────────────

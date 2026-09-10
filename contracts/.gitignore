@@ -1,0 +1,5 @@
+
+# forge script output. `broadcast/` holds a real deployment record and is worth
+# committing per-network when a deploy actually happens; the dry-run subtree is
+# throwaway, and `cache/` is where forge writes what it calls "sensitive values".
+broadcast/*/*/dry-run/

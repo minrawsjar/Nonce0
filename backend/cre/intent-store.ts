@@ -236,6 +236,32 @@ export class IntentStore {
     });
   }
 
+  /**
+   * The queue the confidential workflow reads: every intent not yet in a
+   * terminal state, in submission order.
+   *
+   * Insertion order, not sorted by score or deadline. Two workflow nodes must
+   * see the same list in the same order for their results to agree, and any
+   * ordering derived from a value that changes between reads (a score, a
+   * lease) would silently break that.
+   *
+   * These records carry EncryptedIntent, so the caller holds ciphertext. The
+   * decision to decrypt is evaluate-intent.ts's alone, and only for an
+   * eligible attempt.
+   */
+  pending(now: UnixSeconds): readonly IntentRecord[] {
+    const out: IntentRecord[] = [];
+    for (const record of this.#byId.values()) {
+      if (isTerminal(record.state)) continue;
+      // An intent whose deadline has passed is still pending: the deadline
+      // branch is what fires it, so dropping it here would strand exactly the
+      // payments that most need to go.
+      void now;
+      out.push(record);
+    }
+    return out;
+  }
+
   /** The safe projection. Never exposes the outbox, the payload or a broadcast id. */
   status(intentId: IntentId): IntentStatus {
     const record = this.#byId.get(intentId);

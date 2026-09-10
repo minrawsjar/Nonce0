@@ -81,7 +81,7 @@ The high-level wallet implements the frozen `PqWallet` methods exactly: `create`
 
 For browser storage, construct one `IndexedDbSignerStore` and supply it as both `signerStore` and `walletStore`. Use a persistent `walletId` scoped to your application/account. The store persists encrypted signer material and wallet metadata; no memory store is selected by the SDK factory. `MemorySignerStore` and `MemoryWalletStateStore` are explicit internal test/mock adapters.
 
-The approved signature-scheme exports are `keyGen`, `sign`, `verify`, `pkCommitment`, plus `pqDigest` and `PQ_DOMAIN`. These low-level primitives do not replace the high-level wallet's exposure accounting. Application pages must use the wallet/application adapter, not raw signer keys. Ring code must not import FORS parameters, tree helpers, paths, seeds, or wallet-internal files. A boundary test checks ring-client imports; ring fixes belong to its owner.
+The wallet signature-scheme exports are `keyGen`, `sign`, `verify`, `pkCommitment`, plus `pqDigest` and `PQ_DOMAIN`. The package also preserves the existing mesh exports, including `forsVerify` (an alias of `verify`), signature codecs, and encoding helpers. These low-level primitives do not replace the high-level wallet's exposure accounting. Application pages must use the wallet/application adapter, not raw signer keys. Ring code must not import FORS parameters, tree helpers, paths, seeds, or wallet-internal files. A boundary test checks ring-client imports; ring fixes belong to its owner.
 
 ## Signing and storage invariants
 

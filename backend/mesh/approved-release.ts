@@ -24,6 +24,8 @@ import { verifyRelease, type ReleaseSeenSet } from '../cre/release.ts';
 export interface EgressSubmitter {
   /** Submits the spend to the pool. Idempotent on the caller's behalf. */
   submit(spend: PrivateSpend): Promise<TxHash>;
+  /** V1 settlement. Implementations must submit one CREBatchSettlement call. */
+  submitAuthorizations?(authorizations: readonly { readonly id: string; readonly pool: string }[]): Promise<TxHash>;
 }
 
 export interface EgressResult {
@@ -65,6 +67,13 @@ export async function deliverApprovedRelease(input: {
     return { txHash: input.priorTxHash, deduplicated: true };
   }
 
+  const authorizations = input.release.authorizations;
+  if (authorizations !== undefined) {
+    if (authorizations.length === 0 || input.submitter.submitAuthorizations === undefined) {
+      throw new ProtocolFailure('SETTLEMENT_REVERTED', 'CRE authorization settlement is unavailable', true);
+    }
+    return { txHash: await input.submitter.submitAuthorizations(authorizations), deduplicated: false };
+  }
   return { txHash: await input.submitter.submit(spend), deduplicated: false };
 }
 

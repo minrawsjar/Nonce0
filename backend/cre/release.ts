@@ -15,10 +15,12 @@
 // disclosed, not hidden — deferred decision D1. Do not describe this as
 // pool-wide compliance enforcement.
 
-import { createHmac, timingSafeEqual } from 'node:crypto';
+import { hmac } from '@noble/hashes/hmac.js';
+import { sha256 } from '@noble/hashes/sha2.js';
 
 import {
   ProtocolFailure,
+  type Address,
   type ApprovedRelease,
   type Bytes32,
   type Hex,
@@ -26,9 +28,27 @@ import {
   type PrivateSpend,
   type UnixSeconds,
 } from '@opaque/protocol-types';
-import { encodeBigint, spendHash, toHex } from '@opaque/protocol-types/codecs.js';
+import { encodeBigint, fromHex, spendHash, toHex } from '@opaque/protocol-types/codecs.js';
 
 const RELEASE_MAC_DOMAIN = 'opaque/v1/cre/approved-release';
+
+/**
+ * Constant time, and pure JS on purpose. issueRelease runs INSIDE the
+ * confidential handler, and a CRE workflow is compiled to WASM and executed
+ * under Javy (QuickJS) — node:crypto and Buffer do not exist there, so
+ * createHmac/timingSafeEqual would not merely be slow, they would fail to
+ * compile. @noble/hashes is the same implementation the mesh already trusts.
+ *
+ * Length is compared first and separately: the loop below cannot say anything
+ * about a length it never reads, and an early return on unequal lengths leaks
+ * only what the tag's fixed size already tells anyone.
+ */
+function equalBytes(a: Uint8Array, b: Uint8Array): boolean {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a[i]! ^ b[i]!;
+  return diff === 0;
+}
 
 const utf8 = (s: string): Uint8Array => new TextEncoder().encode(s);
 
@@ -62,11 +82,24 @@ function macInput(release: Omit<ApprovedRelease, 'authenticationTag'>): Uint8Arr
     utf8(encodeBigint(spend.scope.chainId)),
     utf8(spend.scope.pool),
     utf8(String(spend.scope.denomination)),
+    // Length-prefixed, and the COUNT first. Joining these with separators —
+    // `pool:id` entries joined by `,` — was a forgery: one authorization whose
+    // id read "0x01,0xBB:0x02" produced the same bytes as two authorizations
+    // 0xAA/0x01 and 0xBB/0x02, so a genuine tag authorised a settlement list
+    // nobody issued. `authorizations` reaches this function straight off the
+    // wire, which is exactly the case a separator cannot survive.
+    //
+    // Every field goes through `canonical`, so no two lists share an encoding
+    // regardless of what the entries contain. The count is what stops a list
+    // being re-split; the length prefixes are what stop a field being slid
+    // into its neighbour.
+    utf8(String((release.authorizations ?? []).length)),
+    ...(release.authorizations ?? []).flatMap((a) => [utf8(a.pool), utf8(a.id)]),
   ]);
 }
 
 const tag = (release: Omit<ApprovedRelease, 'authenticationTag'>, secret: Uint8Array): Hex =>
-  toHex(createHmac('sha256', secret).update(macInput(release)).digest());
+  toHex(hmac(sha256, secret, macInput(release)));
 
 /**
  * Called only after policy has APPROVED, inside the confidential handler.
@@ -82,6 +115,7 @@ export function issueRelease(input: {
   readonly issuedAt: UnixSeconds;
   readonly ttlSeconds: bigint;
   readonly secret: Uint8Array;
+  readonly authorizations?: readonly { readonly id: Bytes32; readonly pool: Address }[];
 }): ApprovedRelease {
   if (input.ttlSeconds <= 0n) {
     throw new ProtocolFailure('INVALID_INPUT', 'a release TTL must be positive');
@@ -93,6 +127,7 @@ export function issueRelease(input: {
     policyVersion: input.policyVersion,
     issuedAt: input.issuedAt,
     expiresAt: (input.issuedAt + input.ttlSeconds) as UnixSeconds,
+    ...(input.authorizations === undefined ? {} : { authorizations: input.authorizations }),
   };
   return { ...unsigned, authenticationTag: tag(unsigned, input.secret) };
 }
@@ -126,9 +161,7 @@ export function verifyRelease(input: {
   const { release, now } = input;
   const { authenticationTag, ...unsigned } = release;
 
-  const expected = Buffer.from(tag(unsigned, input.secret).slice(2), 'hex');
-  const actual = Buffer.from(authenticationTag.slice(2), 'hex');
-  if (actual.length !== expected.length || !timingSafeEqual(actual, expected)) {
+  if (!equalBytes(fromHex(authenticationTag), fromHex(tag(unsigned, input.secret)))) {
     throw new ProtocolFailure('POLICY_DENIED', 'release authentication failed');
   }
 

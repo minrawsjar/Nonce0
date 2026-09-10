@@ -23,15 +23,25 @@ Three things are load-bearing and all three are stated plainly, because a
 protocol that hides its gaps is the failure mode this project exists to move
 away from.
 
-**1. On-chain ring verification does not work, and we measured it.** §6.3
-required a spike before anything depended on the ring. It is built, and
-`node backend/zk/bench.ts` runs it. At 219 repetitions (2⁻¹²⁸ soundness) the
-proof is **1.08 MiB**: calldata alone is 18M gas against Arc's 30M block limit,
-and verification is ~9× a whole block at a charitable 3 gas per boolean gate.
-Off-chain verification works, at 2.0 s, and stays publicly verifiable. The
-three ways forward — and the fact that choosing between them changes the trust
-model — are in [backend/zk/README.md](backend/zk/README.md). **§2's "verified
-fully on-chain" does not survive this measurement.**
+**1. Spends are verified off-chain and enforced on-chain, and that puts one
+trusted party in the path.** The chain still does most of the work: every ring
+member must be a real deposit, a nullifier is consumed exactly once, one
+denomination goes to the bound recipient, and the attester's post-quantum key
+must be live and inside its few-time budget. What moved off-chain is a single
+question — does this proof open one of these eight commitments.
+
+The cost, stated once: **a dishonest attester can approve a spend no valid
+proof supports**, and mint against the pool up to its balance. It cannot learn
+who paid — the proof it checks is zero-knowledge, so it verifies without seeing
+which member opened — and it cannot forge quietly, because the proofs can be
+published and re-verified by anyone. Trusted for soundness, never for privacy.
+
+This was not a preference. On-chain verification was measured at 1.08 MiB and
+~9× an Arc block (`node backend/zk/bench.ts`), so it was never available;
+**§2's "verified fully on-chain" does not survive that measurement.** The real
+choice was between shrinking the privacy claim to what the EVM can check and
+moving verification off it. See
+[contracts/src/opaque/pool/AttestedRingVerifier.sol](contracts/src/opaque/pool/AttestedRingVerifier.sol).
 
 **2. There is no recovery for notes.** A note is a secret in local browser
 storage and nothing else. Clear your browser data and any unspent notes are
@@ -66,8 +76,10 @@ CRE workflow (§10)        Fires when compliance passes AND
 Ring spend (§6)           Proves "I know a secret opening one of these 8 note
     │                     commitments" without saying which. Hashes only.
     ▼
-Relay mesh (§7)           3 hops, onion-encrypted, batched, randomly delayed.
-    │                     Carries queries too, so query traffic covers payments.
+Relay mesh (§7)           6 relays running, 3 drawn per payment — onion-
+    │                     encrypted, batched, randomly delayed. A fresh path
+    │                     each time, so no two payments share a route. Carries
+    │                     queries too, so query traffic covers payments.
     ▼
 Settlement               The pool releases a fixed denomination. No sender is
                           named at this step.

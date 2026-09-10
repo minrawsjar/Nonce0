@@ -1,0 +1,53 @@
+# Six relays, for proving the deployment works end to end.
+#
+# Six running, three per payment. The pool is what makes the graph feed's
+# ranking mean anything: pick three out of three and every payment walks the
+# same route no matter what the ranking says.
+#
+# NOT AN ANONYMITY SET. One host, one Docker network, one kernel, one log
+# destination. The six services below have distinct operator ids in the
+# directory and that is a fiction the code cannot detect — and six colluding
+# relays learn exactly what three would, so the larger pool buys nothing here.
+# A real mesh is this same image on six machines run by six people who do not
+# share a bill.
+services:
+  # The host runs the stand-in egress on 9000; containers reach it by this name.
+  relay1:
+    image: opaque-relay
+    build:
+      context: ../../..
+      dockerfile: backend/mesh/deploy/Dockerfile
+    command: ["--id", "R1", "--secret-key-file", "/config/R1.key", "--egress-query", "http://egress:9000/query", "--egress-payment", "http://egress:9000/submit"]
+    volumes: ["./config:/config:ro"]
+    ports: ["18081:8080"]
+    extra_hosts: ["egress:host-gateway"]
+  relay2:
+    image: opaque-relay
+    command: ["--id", "R2", "--secret-key-file", "/config/R2.key", "--egress-query", "http://egress:9000/query", "--egress-payment", "http://egress:9000/submit"]
+    volumes: ["./config:/config:ro"]
+    ports: ["18082:8080"]
+    extra_hosts: ["egress:host-gateway"]
+  relay3:
+    image: opaque-relay
+    command: ["--id", "R3", "--secret-key-file", "/config/R3.key", "--egress-query", "http://egress:9000/query", "--egress-payment", "http://egress:9000/submit"]
+    volumes: ["./config:/config:ro"]
+    ports: ["18083:8080"]
+    extra_hosts: ["egress:host-gateway"]
+  relay4:
+    image: opaque-relay
+    command: ["--id", "R4", "--secret-key-file", "/config/R4.key", "--egress-query", "http://egress:9000/query", "--egress-payment", "http://egress:9000/submit"]
+    volumes: ["./config:/config:ro"]
+    ports: ["18084:8080"]
+    extra_hosts: ["egress:host-gateway"]
+  relay5:
+    image: opaque-relay
+    command: ["--id", "R5", "--secret-key-file", "/config/R5.key", "--egress-query", "http://egress:9000/query", "--egress-payment", "http://egress:9000/submit"]
+    volumes: ["./config:/config:ro"]
+    ports: ["18085:8080"]
+    extra_hosts: ["egress:host-gateway"]
+  relay6:
+    image: opaque-relay
+    command: ["--id", "R6", "--secret-key-file", "/config/R6.key", "--egress-query", "http://egress:9000/query", "--egress-payment", "http://egress:9000/submit"]
+    volumes: ["./config:/config:ro"]
+    ports: ["18086:8080"]
+    extra_hosts: ["egress:host-gateway"]
