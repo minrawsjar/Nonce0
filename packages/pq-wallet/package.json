@@ -8,7 +8,8 @@
     "node": ">=22.18"
   },
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./browser": "./src/indexeddb-store.ts"
   },
   "scripts": {
     "test": "node --test test/*.test.ts",

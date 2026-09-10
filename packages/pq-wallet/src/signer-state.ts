@@ -3,6 +3,22 @@ import { asBytes32, assertHex } from '@opaque/protocol-types/codecs.js';
 import { keyGen, pkCommitment, randomSeed, type ForsParams, type ForsPublicKey } from './fors.ts';
 import { uint64 } from './registry.ts';
 
+/**
+ * WebCrypto's key type, taken from the platform's own `crypto.subtle` rather
+ * than from lib.DOM.
+ *
+ * This package runs in a browser AND in Node, and the bare name `CryptoKey` is
+ * a global only under lib.DOM. Naming it directly therefore forced every
+ * consumer to load DOM types — which broke the Node backend's typecheck, and
+ * "fixing" that by adding DOM to the backend's lib would have quietly allowed
+ * `window` and `document` in server code. Deriving it from `generateKey` gets
+ * the right type on both platforms and pulls in neither.
+ *
+ * `generateKey` returns a key or a key pair depending on the algorithm; AES-GCM
+ * yields the single key, which is what the Extract selects.
+ */
+export type SubtleKey = Extract<Awaited<ReturnType<typeof crypto.subtle.generateKey>>, { type: string }>;
+
 export interface SignedOutput {
   readonly digest: Bytes32;
   readonly signature: Hex;
@@ -23,7 +39,7 @@ export interface SignerRecord {
   readonly publicKey: ForsPublicKey;
   readonly encryptedSeed: Uint8Array<ArrayBuffer>;
   readonly iv: Uint8Array<ArrayBuffer>;
-  readonly encryptionKey: CryptoKey;
+  readonly encryptionKey: SubtleKey;
   readonly maxUses: bigint;
   readonly lifecycleReserve: bigint;
   readonly reservations: readonly Reservation[];
