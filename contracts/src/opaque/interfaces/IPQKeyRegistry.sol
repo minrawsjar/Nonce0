@@ -23,4 +23,9 @@ interface IPQKeyRegistry {
         returns (bytes32);
 
     function consume(address account, bytes calldata payload, bytes calldata signature) external;
+
+    /// Binds msg.sender to a key, once — which is why a PQ account calls it
+    /// itself, from its initializer.
+    function register(bytes32 pkCommitment, bytes32 nextCommitment, uint64 maxUses, uint64 rotationDeadline)
+        external;
 }

@@ -152,6 +152,25 @@ contract AttestedRingVerifierTest is Test {
         }
     }
 
+    /// §8.1's aggregate use counts need the ring; they must not get the
+    /// nullifier or the recipient alongside it, or anything indexed.
+    function test_ringUsageIsTheWholeRingAndNothingElse() public {
+        vm.recordLogs();
+        pool.spend(ring, _proof(nullifierA, sigA), BOB, bytes32(0));
+
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+        uint256 found;
+        for (uint256 i = 0; i < logs.length; i++) {
+            if (logs[i].topics[0] != keccak256("RingUsed(bytes32[])")) continue;
+            found++;
+            assertEq(logs[i].topics.length, 1, "nothing indexed");
+            bytes32[] memory emitted = abi.decode(logs[i].data, (bytes32[]));
+            assertEq(emitted.length, ring.length);
+            for (uint256 r = 0; r < ring.length; r++) assertEq(emitted[r], ring[r]);
+        }
+        assertEq(found, 1);
+    }
+
     function test_oneKeyAttestsMoreThanOneSpend() public {
         pool.spend(ring, _proof(nullifierA, sigA), BOB, bytes32(0));
         pool.spend(ring, _proof(nullifierB, sigB), BOB, bytes32(0));

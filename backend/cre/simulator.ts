@@ -53,9 +53,11 @@ export interface CreSimulatorOptions {
   readonly releaseTtlSeconds: bigint;
   readonly attester: {
     readonly identity: AttesterIdentity;
-    readonly forsSeed: Uint8Array;
-    /** The attester's CURRENT index in PQKeyRegistry. */
-    readonly useCount: () => Promise<bigint>;
+    /**
+     * The key to sign with and its CURRENT index in PQKeyRegistry. Asked
+     * before every attestation, so it can rotate first — cre/attester-keys.ts.
+     */
+    readonly current: () => Promise<{ readonly forsSeed: Uint8Array; readonly useCount: bigint }>;
   };
   /** Hands a release to the egress and returns the broadcast tx. */
   readonly deliver: (release: ApprovedRelease) => Promise<TxHash>;
@@ -92,8 +94,7 @@ export function createCreSimulator(options: CreSimulatorOptions): CreSimulator {
     const attested = attestRingSpend({
       spend,
       identity: options.attester.identity,
-      forsSeed: options.attester.forsSeed,
-      useCount: await options.attester.useCount(),
+      ...(await options.attester.current()),
     });
     const release = issueRelease({
       intentId,

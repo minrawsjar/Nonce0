@@ -130,7 +130,7 @@ test('a real ring payment crosses the mesh in chunks and settles', { timeout: 18
           chainId: 5042002n, registry: asAddress('0x7fc11e0f5d224439b2d710bb1c141913f454ef17'),
           attester: asAddress('0x8d47981ac51628fa19bf8b32afdda09f2d72d257'), pool: scope.pool, denomination: 1_000_000,
         },
-        forsSeed: new Uint8Array(32).fill(5), useCount: async () => 0n,
+        current: async () => ({ forsSeed: new Uint8Array(32).fill(5), useCount: 0n }),
       },
       deliver: async (release) => { delivered.push(release); return `0x${'cd'.repeat(32)}` as TxHash; },
       evidence: async (txHash, release) => ({ txHash, spendHash: spendHash(release.spend), succeeded: true }),

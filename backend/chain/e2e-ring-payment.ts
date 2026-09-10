@@ -40,6 +40,7 @@ import { createEgress } from '../mesh/egress.ts';
 import { buildLocalMesh, serveLocalMesh } from '../mesh/local-mesh.ts';
 import type { MeshMessageKind } from '../mesh/transport.ts';
 import { buildRingSpend, deriveCommitment } from '../zk/spend.ts';
+import { registryAttesterKeys } from './attester-registry.ts';
 import { ARC_TESTNET, createPoolClient, poolSubmitter } from './pool.ts';
 import { createChainRingSource } from './ring-source.ts';
 import { evaluatePublicReadiness } from '../../graph/src/privacy-score.ts';
@@ -62,7 +63,7 @@ const RECIPIENT = ATTESTER; // an address we control, so the USDC is not lost
 
 // Secrets from the environment only. None is ever printed.
 const decoySecrets = env('RING_DECOY_SECRETS').split(',').map((h) => fromHex(h as `0x${string}`));
-const attesterSeed = fromHex(env('ATTESTER_FORS_SEED') as `0x${string}`);
+const attesterMaster = fromHex(env('ATTESTER_FORS_MASTER') as `0x${string}`);
 const egressKey = env('EGRESS_PRIVATE_KEY') as `0x${string}`;
 // Local stand-ins for the CRE's Vault DON secrets. Fresh per run.
 const intentKeys = generateIntentKeypair();
@@ -164,8 +165,11 @@ try {
     },
     attester: {
       identity: { chainId: BigInt(deployment.network.chainId), registry: REGISTRY as never, attester: ATTESTER as never, pool: ring8.address as never, denomination: ring8.denomination },
-      forsSeed: attesterSeed,
-      useCount, // LIVE: the registry's current index
+      // LIVE: the registry's current key and index, rotating near the end.
+      current: registryAttesterKeys({
+        publicClient: publicClient as never, payer: privateKeyToAccount(egressKey), registry: REGISTRY as never,
+        attester: ATTESTER as never, master: attesterMaster, chainId: BigInt(deployment.network.chainId),
+      }).current,
     },
     async deliver(release: ApprovedRelease) {
       const response = await fetch(`http://127.0.0.1:${egressPort}/v1/release`, {

@@ -1,5 +1,5 @@
 {
-  "$comment": "THE source of truth for every public address and endpoint on Arc testnet. Public values only \u2014 never a private key, API key or MAC secret. `null` means NOT DEPLOYED, and the loader refuses it where a value is required; a zero address would instead fail silently on chain. Verified live by backend/chain/test/deployments.test.ts.",
+  "$comment": "THE source of truth for every public address and endpoint on Arc testnet. Public values only — never a private key, API key or MAC secret. `null` means NOT DEPLOYED, and the loader refuses it where a value is required; a zero address would instead fail silently on chain. Verified live by backend/chain/test/deployments.test.ts.",
   "network": {
     "name": "arc-testnet",
     "chainId": 5042002,
@@ -20,25 +20,38 @@
   },
   "contracts": {
     "pqKeyRegistry": {
-      "address": "0x7fc11e0f5d224439b2d710bb1c141913f454ef17",
-      "deployedAtBlock": 61282726
+      "address": "0x6eb5b42373191121d31dfc4b5c8571c4eaf58e8f",
+      "deployedAtBlock": 61450879
     },
     "singleNotePqVerifier": {
       "address": "0x8ad3c8f52f17b0f62a4da3c3a1905a04e114b015",
       "deployedAtBlock": 61282726
     },
     "attestedRingVerifier": {
-      "address": "0xa06a0488d2ddfb267cc6f090b97bfc2bd9870612",
-      "deployedAtBlock": 61403357
+      "address": "0x1b501bbcb3bd32645da3508f7779f8c196a28c85",
+      "deployedAtBlock": 61451611
     },
-    "relayDirectory": null,
+    "relayDirectory": {
+      "address": "0xcf588b5b8ab2fa11ccf28a5c0631da4269a36653",
+      "deployedAtBlock": 61450880
+    },
     "crePolicyGate": null,
     "creBatchSettlement": null,
-    "pqAccountFactory": null,
-    "pqAccountValidator": null
+    "pqAccountImplementation": {
+      "address": "0xeccec6b1e6a2e5367902675c49e577633f705012",
+      "deployedAtBlock": 61450879
+    },
+    "pqAccountFactory": {
+      "address": "0x13beaec42922e3f63fa0dbe5bba270edf46ab214",
+      "deployedAtBlock": 61450880
+    },
+    "pqAccountValidator": {
+      "address": "0xfad5b4149489eaf9bbe402eca4b26f9284046ea2",
+      "deployedAtBlock": 61450879
+    }
   },
   "accounts": {
-    "$comment": "Public identities, not contracts. The attester's authority is its FORS key registered in pqKeyRegistry; its ECDSA key did one thing \u2014 register \u2014 and has no power now.",
+    "$comment": "Public identities, not contracts. The attester's authority is its FORS key registered in pqKeyRegistry; its ECDSA key did one thing — register — and has no power now.",
     "attester": "0x8d47981ac51628fa19bf8b32afdda09f2d72d257"
   },
   "pools": [
@@ -52,11 +65,11 @@
     },
     {
       "$comment": "RING_8: the recommended path. 8 commitments in calldata, each proven a real deposit; the ZKBoo proof is verified off-chain and attested under the attester's FORS key.",
-      "address": "0x8b54cc1b008eafa270740d847e45954f10dbf150",
+      "address": "0x7e01b8a883b4dacc9063326a2e7d3eef0d679b63",
       "denomination": 1000000,
       "proofMode": "RING_8",
       "verifier": "attestedRingVerifier",
-      "deployedAtBlock": 61403359
+      "deployedAtBlock": 61451614
     }
   ],
   "erc4337": {

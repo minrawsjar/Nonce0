@@ -201,7 +201,7 @@
   },
   {
     "type": "function",
-    "name": "takeoverAfterDisable",
+    "name": "takeover",
     "inputs": [
       {
         "name": "account",
@@ -352,11 +352,6 @@
   },
   {
     "type": "error",
-    "name": "DisableNotElapsed",
-    "inputs": []
-  },
-  {
-    "type": "error",
     "name": "InvalidParameters",
     "inputs": []
   },
@@ -378,6 +373,11 @@
   {
     "type": "error",
     "name": "NotRegistered",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "TakeoverNotAllowed",
     "inputs": []
   },
   {

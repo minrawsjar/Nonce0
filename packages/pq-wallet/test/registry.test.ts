@@ -86,10 +86,10 @@ test('takeover_requires_precommitted_next_key_and_elapsed_timelock', () => {
   const { registry, signature, time } = setup();
   registry.initiateDisable(account, signature(disablePayload()));
   const payload = takeoverPayload(c!, 8n);
-  assert.throws(() => registry.takeoverAfterDisable(account, c!, 8n, signature(payload, 1, 0n)), { code: 'EXPIRED' });
+  assert.throws(() => registry.takeover(account, c!, 8n, signature(payload, 1, 0n)), { code: 'EXPIRED' });
   time(registry.stateOf(account)!.disableAfter);
-  assert.throws(() => registry.takeoverAfterDisable(account, c!, 8n, signature(payload, 0, 0n)), { code: 'PROOF_REJECTED' });
-  registry.takeoverAfterDisable(account, c!, 8n, signature(payload, 1, 0n));
+  assert.throws(() => registry.takeover(account, c!, 8n, signature(payload, 0, 0n)), { code: 'PROOF_REJECTED' });
+  registry.takeover(account, c!, 8n, signature(payload, 1, 0n));
   assert.equal(registry.stateOf(account)!.pkCommitment, b);
   assert.equal(registry.stateOf(account)!.useCount, 1n);
   assert.equal(registry.stateOf(account)!.disableAfter, 0n);
@@ -116,4 +116,18 @@ test('existing_solidity_registry_vectors_match_typescript', () => {
   rotation.register(account, { pkCommitment: f.pkA, nextCommitment: f.pkB, maxUses: 4n, rotationDeadline: 1000000n });
   rotation.rotate(account, f.pkC, BigInt(f.nextMaxUses), BigInt(f.nextDeadline), f.sigRotate0);
   assert.equal(rotation.stateOf(account)!.pkCommitment, f.pkB);
+});
+test('exhausted_key_hands_over_to_precommitted_next', () => {
+  const { registry, signature } = setup(1n);
+  const payload = takeoverPayload(c!, 8n);
+  // A signature left: the next key cannot barge in.
+  assert.throws(() => registry.takeover(account, c!, 8n, signature(payload, 1, 0n)), { code: 'EXPIRED' });
+  registry.consume(account, '0x12', signature(userActionPayload('0x12')));
+  // Exhausted: rotation would spend a signature the key no longer has.
+  assert.throws(() => registry.rotate(account, c!, 8n, 2000n, signature(rotationPayload(c!, 8n, 2000n))));
+  assert.throws(() => registry.takeover(account, c!, 8n, signature(payload, 0, 0n)), { code: 'PROOF_REJECTED' });
+  registry.takeover(account, c!, 8n, signature(payload, 1, 0n));
+  assert.equal(registry.stateOf(account)!.pkCommitment, b);
+  assert.equal(registry.stateOf(account)!.nextCommitment, c);
+  assert.equal(registry.stateOf(account)!.useCount, 1n);
 });

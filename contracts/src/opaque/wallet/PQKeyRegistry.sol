@@ -49,7 +49,7 @@ contract PQKeyRegistry {
     error NotRegistered();
     error KeyExhausted();
     error KeyDisabled();
-    error DisableNotElapsed();
+    error TakeoverNotAllowed();
     error BadSignature();
     error InvalidParameters();
 
@@ -175,11 +175,20 @@ contract PQKeyRegistry {
         emit DisableInitiated(account, s.disableAfter);
     }
 
-    /// @notice After the timelock, the NEXT key proves itself and takes over.
-    ///         This is the one path that does not verify under pkCommitment —
-    ///         it verifies under nextCommitment, which was pre-committed by the
-    ///         key that is now being retired.
-    function takeoverAfterDisable(
+    /// @notice The NEXT key proves itself and takes over, once the current key
+    ///         can no longer act: its disable timelock has elapsed, or it has
+    ///         used every signature it has. This is the one path that does not
+    ///         verify under pkCommitment — it verifies under nextCommitment,
+    ///         which was pre-committed by the key that is now being retired.
+    ///
+    ///         Exhaustion is here because without it a key that runs out
+    ///         bricks everything bound to its account: rotate() and
+    ///         initiateDisable() both spend a signature the key no longer has,
+    ///         and an attester's address is immutable in its verifier, so every
+    ///         note in that pool would be locked. It opens nothing: an exhausted
+    ///         key can sign nothing here, and only the holder of the key
+    ///         committed in advance can produce this signature.
+    function takeover(
         address account,
         bytes32 newNextCommitment,
         uint64 newMaxUses,
@@ -187,7 +196,8 @@ contract PQKeyRegistry {
     ) external {
         PQKeyState storage s = _state[account];
         if (s.pkCommitment == bytes32(0)) revert NotRegistered();
-        if (s.disableAfter == 0 || block.timestamp < s.disableAfter) revert DisableNotElapsed();
+        bool disabled = s.disableAfter != 0 && block.timestamp >= s.disableAfter;
+        if (!disabled && s.useCount < s.maxUses) revert TakeoverNotAllowed();
         if (newNextCommitment == bytes32(0) || newMaxUses == 0) revert InvalidParameters();
 
         ForsVerifier.Params memory p = ForsVerifier.parseParams(signature);

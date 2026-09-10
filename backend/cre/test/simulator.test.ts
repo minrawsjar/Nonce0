@@ -93,7 +93,7 @@ async function harness(credentialRecipient: Address = RECIPIENT) {
     executor, intentSecretKey: intentKeys.secretKey, encryptionKeyId: KEY_ID, credentialMac,
     // Evaluated one second later: the deadline has arrived, so it fires.
     policyVersion: POLICY, releaseTtlSeconds: 900n, now: () => (NOW + 1n) as UnixSeconds,
-    attester: { identity, forsSeed: FORS_SEED, useCount: async () => 0n },
+    attester: { identity, current: async () => ({ forsSeed: FORS_SEED, useCount: 0n }) },
     deliver: async (release) => { delivered.push(release); return `0x${'aa'.repeat(32)}` as TxHash; },
     evidence: async (txHash, release) => ({ txHash, spendHash: spendHash(release.spend), succeeded: true }),
     nullifierSpent: async () => true,

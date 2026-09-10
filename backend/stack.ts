@@ -39,6 +39,7 @@ import { asChainId, fromHex, spendHash, toHex } from '@opaque/protocol-types/cod
 
 import { deployment, poolFor, requireContract } from '../deployments/index.ts';
 import { evaluatePublicReadiness } from '../graph/src/privacy-score.ts';
+import { registryAttesterKeys } from './chain/attester-registry.ts';
 import { ARC_TESTNET, createPoolClient, poolSubmitter } from './chain/pool.ts';
 import { createChainRingSource } from './chain/ring-source.ts';
 import { issueCredential } from './cre/credential.ts';
@@ -96,7 +97,6 @@ const REGISTRY = requireContract('pqKeyRegistry');
 const ATTESTER = deployment.accounts.attester;
 const scope = { chainId: asChainId(BigInt(deployment.network.chainId)), pool: ring8.address, denomination: ring8.denomination } as never;
 const publicClient = createPublicClient({ chain: ARC_TESTNET, transport: http() });
-const registryAbi = parseAbi(['function stateOf(address) view returns ((bytes32,bytes32,uint64,uint64,uint64,uint64))']);
 const poolAbi = parseAbi([
   'function isNullifierSpent(bytes32) view returns (bool)',
   'event Spent(bytes32 indexed nullifier, address indexed recipient, uint256 amount)',
@@ -157,8 +157,15 @@ const simulator = createCreSimulator({
   },
   attester: {
     identity: { chainId: BigInt(deployment.network.chainId), registry: REGISTRY as never, attester: ATTESTER as never, pool: ring8.address as never, denomination: ring8.denomination },
-    forsSeed: fromHex(env('ATTESTER_FORS_SEED') as `0x${string}`),
-    useCount: async () => (await publicClient.readContract({ address: REGISTRY, abi: registryAbi, functionName: 'stateOf', args: [ATTESTER] }))[2],
+    // Rotates itself near the end of each key's budget; see cre/attester-keys.ts.
+    current: registryAttesterKeys({
+      publicClient: publicClient as never,
+      payer: privateKeyToAccount(env('EGRESS_PRIVATE_KEY') as `0x${string}`),
+      registry: REGISTRY as never,
+      attester: ATTESTER as never,
+      master: fromHex(env('ATTESTER_FORS_MASTER') as `0x${string}`),
+      chainId: BigInt(deployment.network.chainId),
+    }).current,
   },
   async deliver(release: ApprovedRelease) {
     const response = await fetch(`http://127.0.0.1:${PORTS.egress}/v1/release`, {

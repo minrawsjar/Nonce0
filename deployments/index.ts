@@ -20,7 +20,8 @@ export type ContractName =
   | 'crePolicyGate'
   | 'creBatchSettlement'
   | 'pqAccountFactory'
-  | 'pqAccountValidator';
+  | 'pqAccountValidator'
+  | 'pqAccountImplementation';
 
 export type ServiceName = 'graphUrl' | 'meshExitUrl' | 'releaseEgressUrl' | 'creTriggerUrl' | 'relayDirectoryUrl';
 

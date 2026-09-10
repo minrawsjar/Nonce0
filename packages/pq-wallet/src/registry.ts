@@ -130,10 +130,16 @@ export class PQKeyRegistry {
     this.#states.set(account, { ...state, useCount: state.useCount + 1n, disableAfter: at });
   }
 
-  takeoverAfterDisable(account: Address, next: Bytes32, maxUses: bigint, signature: Hex): void {
+  /** The pre-committed next key takes over once the current key can no longer
+   *  act: its disable timelock has elapsed, or it has used every signature.
+   *  Mirrors PQKeyRegistry.takeover — see there for why exhaustion counts. */
+  takeover(account: Address, next: Bytes32, maxUses: bigint, signature: Hex): void {
     const state = this.#require(account);
     const now = uint64(this.#now());
-    if (state.disableAfter === 0n || now < state.disableAfter) throw new ProtocolFailure('EXPIRED', 'Disable timelock has not elapsed');
+    const disabled = state.disableAfter !== 0n && now >= state.disableAfter;
+    if (!disabled && state.useCount < state.maxUses) {
+      throw new ProtocolFailure('EXPIRED', 'Takeover needs an elapsed disable or an exhausted key');
+    }
     const updated = { ...state, pkCommitment: state.nextCommitment, nextCommitment: next,
       useCount: 1n, maxUses, disableAfter: 0n };
     validateKeyState(updated);

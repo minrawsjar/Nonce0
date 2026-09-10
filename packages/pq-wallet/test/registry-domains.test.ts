@@ -12,7 +12,7 @@ import {
 
 // PQKeyRegistry does NOT hash the payload you hand it. `consume` wraps that
 // payload in its own action domain first, and `rotate`, `initiateDisable` and
-// `takeoverAfterDisable` each wrap it in theirs — then digests the result.
+// `takeover` each wrap it in theirs — then digests the result.
 //
 // So agreeing with the deployed `digest()` view function is not enough, and
 // the live test in backend/chain/test/registry-digest.test.ts cannot see this:

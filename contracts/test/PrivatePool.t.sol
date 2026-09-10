@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.26;
 
-import {Test} from "forge-std/Test.sol";
+import {Test, Vm} from "forge-std/Test.sol";
 import {MockUSDC} from "./mocks/MockUSDC.sol";
 import {IERC20, PrivatePool} from "../src/opaque/pool/PrivatePool.sol";
 import {SingleNotePqVerifier} from "../src/opaque/pool/SingleNotePqVerifier.sol";
@@ -76,6 +76,23 @@ contract PrivatePoolTest is Test {
         assertEq(usdc.balanceOf(BOB), DENOM, "recipient paid");
         assertEq(usdc.balanceOf(address(pool)), 0, "pool drained of that note");
         assertTrue(pool.isNullifierSpent(verifier.noteNullifier(secret)));
+    }
+
+    /// A one-note "ring" is the note itself: emitting it would name the
+    /// deposit the spend opened. The depositor, though, is public by design.
+    function test_aSingleNoteSpendNamesNoRingAndTheDepositNamesItsFunder() public {
+        bytes32 secret = keccak256("note-events");
+        vm.recordLogs();
+        _deposit(secret);
+        _spend(secret, BOB, bytes32(uint256(3)));
+
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+        bool funded;
+        for (uint256 i = 0; i < logs.length; i++) {
+            assertTrue(logs[i].topics[0] != keccak256("RingUsed(bytes32[])"), "a one-note ring was emitted");
+            if (logs[i].topics[0] == keccak256("DepositFrom(bytes32,address)")) funded = true;
+        }
+        assertTrue(funded, "DepositFrom emitted");
     }
 
     function test_theSameNoteCannotBeSpentTwice() public {

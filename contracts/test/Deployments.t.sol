@@ -33,7 +33,7 @@ contract DeploymentsTest is Test {
     /// yet — it has not even been written. (This used attestedRingVerifier until
     /// that was deployed, which is the point: null is a state, not a constant.)
     function test_anUndeployedContractIsRefusedByName() public {
-        vm.expectRevert(bytes("pqAccountFactory is not deployed: set it in ../deployments/arc-testnet.json"));
-        d.contractAddress("pqAccountFactory");
+        vm.expectRevert(bytes("crePolicyGate is not deployed: set it in ../deployments/arc-testnet.json"));
+        d.contractAddress("crePolicyGate");
     }
 }

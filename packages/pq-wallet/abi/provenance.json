@@ -1,6 +1,6 @@
 {
   "source": "contracts/src/opaque/wallet/PQKeyRegistry.sol",
-  "sourceSha256": "21cfa8f6330f05ba0fdaef3757a1e7f8f68ecc6fa0fc43595d22f669d05fde02",
+  "sourceSha256": "1229e8439e99e01ef6762e3433a482102369accebff3539879a07db8b8452adb",
   "compiler": "0.8.26",
   "optimizerRuns": 200,
   "viaIR": true,

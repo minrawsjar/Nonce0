@@ -47,6 +47,16 @@ contract PrivatePool is IPrivatePool {
     event Deposited(bytes32 indexed commitment, uint256 index);
     event SpendCommitted(bytes32 indexed spendCommitment, uint256 atBlock);
     event Spent(bytes32 indexed nullifier, address indexed recipient, uint256 amount);
+    /// §8.1: who funded a note, for the funding-cluster heuristic. A deposit is
+    /// attributable by design (§4); this only says so where an indexer can read
+    /// it — under ERC-4337 the transaction's sender is the bundler, not the
+    /// account that deposited.
+    event DepositFrom(bytes32 indexed commitment, address indexed depositor);
+    /// §8.1: the members of a ring that was used, for AGGREGATE per-member use
+    /// counts. Every member is already in the spend's calldata; this carries no
+    /// nullifier and no recipient, and is never emitted for a one-note "ring",
+    /// which would name the note it opened.
+    event RingUsed(bytes32[] ring);
 
     error UnknownCommitment();
     error DuplicateCommitment();
@@ -100,6 +110,7 @@ contract PrivatePool is IPrivatePool {
         // half-written pool, and cannot deposit twice against one transfer.
         if (!token.transferFrom(msg.sender, address(this), denomination)) revert TransferFailed();
         emit Deposited(commitment, index);
+        emit DepositFrom(commitment, msg.sender);
     }
 
     /// @notice Phase one of the two-phase spend. The commitment binds the
@@ -172,6 +183,7 @@ contract PrivatePool is IPrivatePool {
         // nullifier to the commitment it opened would undo the ring from the
         // indexing side, which is the §8 hard constraint.
         emit Spent(nullifier, recipient, denomination);
+        if (ring.length > 1) emit RingUsed(ring);
 
         if (!token.transfer(recipient, denomination)) revert TransferFailed();
     }

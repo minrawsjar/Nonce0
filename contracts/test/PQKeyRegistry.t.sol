@@ -137,11 +137,11 @@ contract PQKeyRegistryTest is Test {
         reg.initiateDisable(ACCOUNT, sigDisable0);
         uint64 at = reg.stateOf(ACCOUNT).disableAfter;
 
-        vm.expectRevert(PQKeyRegistry.DisableNotElapsed.selector);
-        reg.takeoverAfterDisable(ACCOUNT, pkC, nextMaxUses, sigTakeoverB);
+        vm.expectRevert(PQKeyRegistry.TakeoverNotAllowed.selector);
+        reg.takeover(ACCOUNT, pkC, nextMaxUses, sigTakeoverB);
 
         vm.warp(at + 1);
-        reg.takeoverAfterDisable(ACCOUNT, pkC, nextMaxUses, sigTakeoverB);
+        reg.takeover(ACCOUNT, pkC, nextMaxUses, sigTakeoverB);
         PQKeyRegistry.PQKeyState memory s = reg.stateOf(ACCOUNT);
         assertEq(s.pkCommitment, pkB, "next key took over");
         assertEq(s.disableAfter, 0, "account is live again");
@@ -151,7 +151,35 @@ contract PQKeyRegistryTest is Test {
         reg.initiateDisable(ACCOUNT, sigDisable0);
         vm.warp(reg.stateOf(ACCOUNT).disableAfter + 1);
         vm.expectRevert(PQKeyRegistry.BadSignature.selector);
-        reg.takeoverAfterDisable(ACCOUNT, pkC, nextMaxUses, sigRotate0);
+        reg.takeover(ACCOUNT, pkC, nextMaxUses, sigRotate0);
+    }
+
+    /// A key that has used every signature cannot rotate or disable — both
+    /// spend a signature — so without this its account is bricked for good,
+    /// and for an attester, so is every note in its pool.
+    function test_anExhaustedKeyHandsOverToThePreCommittedNext() public {
+        PQKeyRegistry tight = new PQKeyRegistry();
+        vm.prank(ACCOUNT);
+        tight.register(pkA, pkB, 1, 1_000_000);
+
+        // Live, with a signature left: the next key cannot barge in.
+        vm.expectRevert(PQKeyRegistry.TakeoverNotAllowed.selector);
+        tight.takeover(ACCOUNT, pkC, nextMaxUses, sigTakeoverB);
+
+        tight.consume(ACCOUNT, userPayload, sigConsume0);
+        vm.expectRevert(PQKeyRegistry.KeyExhausted.selector);
+        tight.rotate(ACCOUNT, pkC, nextMaxUses, nextDeadline, sigRotate0);
+
+        // Exhausted: only the pre-committed next key, and no timelock.
+        vm.expectRevert(PQKeyRegistry.BadSignature.selector);
+        tight.takeover(ACCOUNT, pkC, nextMaxUses, sigRotate0);
+        tight.takeover(ACCOUNT, pkC, nextMaxUses, sigTakeoverB);
+
+        PQKeyRegistry.PQKeyState memory s = tight.stateOf(ACCOUNT);
+        assertEq(s.pkCommitment, pkB, "next key took over");
+        assertEq(s.nextCommitment, pkC, "and pre-committed its own successor");
+        assertEq(s.useCount, 1, "the takeover spent index 0 of the new key");
+        assertEq(s.maxUses, nextMaxUses);
     }
 
     function test_unregisteredAccountsHaveNoState() public {
