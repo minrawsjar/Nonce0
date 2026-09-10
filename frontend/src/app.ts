@@ -50,6 +50,13 @@ const ARC_EXPLORER = 'https://testnet.arcscan.app';
  * in the account and pays for the next one.
  */
 const DEPOSIT_GAS_USDC = 0.2;
+/**
+ * Timing protection, fixed rather than asked for: a payment waits until the
+ * pool's freshness reaches this (of 100), and goes at DEADLINE_HOURS whatever
+ * the pool looks like, so a quiet pool delays it but never strands it.
+ */
+const MIN_FRESHNESS = 70;
+const DEADLINE_HOURS = 12;
 const shortAddress = (value: string) => value ? `${value.slice(0, 6)}…${value.slice(-4)}` : 'Not connected';
 const isRejected = (error: unknown) => typeof error === 'object' && error !== null && 'code' in error && (error as { code: unknown }).code === 4001;
 
@@ -442,8 +449,6 @@ async function onSend(event: SubmitEvent): Promise<void> {
     status.textContent = 'Getting a policy credential for this recipient…';
     const credentialHandle = await rt.obtainCredential(recipient as `0x${string}`);
 
-    const hours = Math.max(1, Math.min(72, Number(el<HTMLInputElement>('deadline').value) || 12));
-    const freshness = Math.max(0, Math.min(100, Number(el<HTMLInputElement>('freshness').value) || 70));
     for (const note of available.slice(0, count)) {
       status.textContent = count === 1
         ? 'Building the ring proof in this browser (a few seconds — the note secret never leaves the page)…'
@@ -451,8 +456,8 @@ async function onSend(event: SubmitEvent): Promise<void> {
       const ref = await rt.app.submitPayment({
         noteId: note.id,
         recipient: recipient as never,
-        minPrivacyScore: (freshness * 100) as PrivacyScore,
-        deadline: (BigInt(Math.floor(Date.now() / 1000) + hours * 3600)) as UnixSeconds,
+        minPrivacyScore: (MIN_FRESHNESS * 100) as PrivacyScore,
+        deadline: (BigInt(Math.floor(Date.now() / 1000) + DEADLINE_HOURS * 3600)) as UnixSeconds,
         credentialHandle,
         idempotencyKey: `pay-${note.id}-${Date.now()}` as never,
       });
@@ -462,8 +467,8 @@ async function onSend(event: SubmitEvent): Promise<void> {
       done++;
     }
     status.textContent = count === 1
-      ? 'Sent across the mesh. It settles when cover is good enough, or at the deadline.'
-      : `Sent ${count} payments across the mesh. Each settles on its own, when cover is good enough or at the deadline.`;
+      ? `Sent across the mesh. It settles once the pool's cover is good enough, within ${DEADLINE_HOURS} hours at the latest.`
+      : `Sent ${count} payments across the mesh. Each settles on its own, once the pool's cover is good enough, within ${DEADLINE_HOURS} hours at the latest.`;
     el<HTMLInputElement>('recipient').value = '';
     await refreshNotes();
     showView('activity');

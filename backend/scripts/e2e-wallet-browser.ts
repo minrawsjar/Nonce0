@@ -188,7 +188,6 @@ step(`ring view (through the mesh): ${await page.textContent('#pool-size')} · f
 
 await page.click('#tab-send');
 await page.fill('#recipient', RECIPIENT);
-await page.fill('#freshness', '50');
 await page.fill('#send-amount', String(NOTES));
 // The page adds its rows and refreshes its balance only after the last
 // payment is out, while its own poll may render earlier ones: wait for both.

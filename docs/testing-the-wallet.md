@@ -70,8 +70,10 @@ wallet after restarting the stack.
    address settle as separate 1-USDC transfers, which are easier to link to
    each other than a single one. Amounts like 2.37 are not possible: hiding
    them needs elliptic-curve range proofs, which this design rules out.
-4. **Watch Activity.** It settles when the privacy score clears your threshold,
-   or at the deadline. A *view settlement* link appears when it lands.
+4. **Watch Activity.** Each payment settles once the pool's freshness
+   reaches 70/100, which on a busy pool is right away, and after 12 hours
+   whatever the pool looks like. The wallet sets both; there is nothing to
+   tune. A *view settlement* link appears when it lands.
 
 The network tab shows a stream of `204`s from `/v1/status/…` while a payment is
 in flight. Those are the wallet polling for an answer that has not arrived yet.
