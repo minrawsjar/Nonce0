@@ -24,9 +24,9 @@
 // for another. E2E_PQ=1 deposits from the page's PQ account instead: the
 // funding wallet activates it, Node funds it (standing in for a transfer to
 // the Receive address), and the deposit is a UserOperation its FORS key signs.
-// That run then rotates the key, withdraws what is left, backs up, restores
-// the backup into a fresh browser, and checks that no read naming the account
-// or a note, and no bundler call, left the page except through the mesh.
+// That run then rotates the key, withdraws what is left, backs up, and restores
+// the backup into a fresh browser. Every run fails if the page sent a request
+// to anyone but its own origin and the stack: no RPC, bundler, subgraph or CDN.
 //
 // Uses the Playwright already installed for the wallet SDK's browser test, and
 // the machine's own Chrome (channel: 'chrome') rather than a downloaded build.
@@ -34,6 +34,8 @@
 // Outside backend's typecheck on purpose: the waitForFunction callbacks run IN
 // THE BROWSER and read `document`, and giving backend the DOM lib to allow them
 // would let server code touch `window` and `document` too.
+import { writeFileSync } from 'node:fs';
+
 import { chromium } from '../../packages/pq-wallet/node_modules/playwright/index.mjs';
 import { createPublicClient, createWalletClient, http, parseAbiItem, parseEther } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
@@ -102,7 +104,7 @@ const step = (s: string) => process.stdout.write(`[${((Date.now() - t0) / 1000).
 
 await page.goto(APP_URL);
 await page.waitForFunction(() => /RING_8/.test(document.getElementById('caps')?.textContent ?? ''), null, { timeout: 60_000 });
-step(`capabilities (read from the pool on chain): ${await page.textContent('#caps')}`);
+step(`capabilities (the pool's, read over the mesh): ${await page.textContent('#caps')}`);
 step(`private balance: ${await page.textContent('#balance')} USDC in ${await page.textContent('#note-count')}`);
 
 if (signer !== undefined && process.env['E2E_PQ'] === '1') {
@@ -146,9 +148,16 @@ if (signer !== undefined && process.env['E2E_PQ'] === '1') {
 
   // Backup, then restore into a browser that has never seen this account.
   await page.fill('#backup-pass', 'correct horse battery staple');
-  const [download] = await Promise.all([page.waitForEvent('download'), page.click('#backup-export')]);
+  // The file is taken as the button hands it to the download link: Chrome under
+  // Playwright completes only the first download a persistent profile ever makes.
+  await page.evaluate(() => {
+    const make = URL.createObjectURL;
+    URL.createObjectURL = (blob: Blob) => { (window as any).__backup = blob; return make(blob); };
+  });
+  await page.click('#backup-export');
+  await page.waitForFunction(() => (window as any).__backup !== undefined, null, { timeout: 60_000 });
   const file = `${process.env['TMPDIR'] ?? '/tmp'}/opaque-e2e-backup.json`;
-  await download.saveAs(file);
+  writeFileSync(file, await page.evaluate(() => (window as any).__backup.text()));
   await page.keyboard.press('Escape');
   const fresh = await chromium.launch(launch).then((b: any) => b.newContext());
   const other = await fresh.newPage();
@@ -180,12 +189,12 @@ const tx = await page.getAttribute('#intent-list a', 'href');
 step(`activity (status through the mesh): ${(await page.textContent('#intent-list .intent-state'))}  ${tx}`);
 step(`private balance after: ${await page.textContent('#balance')} USDC`);
 if (errors.length) step(`page errors: ${errors.slice(0, 3).join(' | ')}`);
-// The page opens no connection to an RPC, a bundler or the subgraph: its reads
-// cross the mesh, and its funding wallet's go through the wallet's provider.
-const leaks = direct.filter((r) => [new URL(deployment.network.rpcUrl).host, 'pimlico', 'thegraph'].some((h) => r.url.includes(h)));
-step(`direct requests from the page: ${direct.length}; to an RPC, a bundler or the subgraph: ${leaks.length}`);
-for (const l of leaks.slice(0, 3)) step(`  leak: ${l.url} ${l.body.slice(0, 160)}`);
-if (leaks.length > 0) process.exitCode = 1;
+// The page talks to its own origin and the stack, and to nobody else: its reads
+// cross the mesh, its funding wallet's go through the wallet's provider, and
+// its fonts are its own. Not an RPC, a bundler, the subgraph, or a font CDN.
+step(`requests from the page to anyone but its origin and the stack: ${direct.length}`);
+for (const l of direct.slice(0, 3)) step(`  leak: ${l.url} ${l.body.slice(0, 160)}`);
+if (direct.length > 0) process.exitCode = 1;
 await context.close();
 await context.browser()?.close();
 process.stdout.write(`TX ${tx?.split('/').pop()}\n`);

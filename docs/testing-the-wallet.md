@@ -94,7 +94,7 @@ from the page's PQ account.
 
 ## What the page never sends directly
 
-The page opens no connection to an RPC, a bundler or the subgraph. Every read
+The page opens no connection to an RPC, a bundler, the subgraph or a font CDN. Every read
 it makes, and every UserOperation, goes through the mesh as a `WALLET_RPC`
 query. The exit answers it against a strict allowlist
 (`backend/chain/wallet-rpc.ts`). Neither the RPC nor the bundler learns which
