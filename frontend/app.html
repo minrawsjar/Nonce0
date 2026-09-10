@@ -41,7 +41,7 @@
           <button id="action-send" type="button"><i>↗</i><span>Send</span></button>
           <button id="action-receive" type="button"><i>↙</i><span>Receive</span></button>
           <button id="deposit" type="button"><i>↓</i><span>Deposit</span></button>
-          <label class="deposit-amount" for="deposit-count"><span>Deposit amount</span><span class="amount-input"><input id="deposit-count" type="number" min="1" max="10" step="1" value="1" inputmode="numeric"><span class="unit">USDC</span></span><small>As 1-USDC notes, so none stands out in a ring</small></label>
+          <label class="deposit-amount" for="deposit-count"><span>Deposit amount</span><span class="amount-input"><input id="deposit-count" type="number" autocomplete="off" min="1" max="10" step="1" value="1" inputmode="numeric"><span class="unit">USDC</span></span><small>As 1-USDC notes, so none stands out in a ring</small></label>
         </div>
         <p class="status" id="deposit-status" role="status"></p>
 
@@ -60,12 +60,12 @@
       <section class="view narrow" id="view-send" aria-labelledby="tab-send" hidden>
         <div class="title"><button class="back" data-back type="button">←</button><div><p class="eyebrow">Private transfer</p><h1>Send USDC</h1><p>Equal-sized notes, each routed when your privacy conditions are met.</p></div></div>
         <form class="panel send-form" id="send-form">
-          <label class="amount" for="send-amount"><span>Amount</span><strong><input id="send-amount" type="number" min="1" step="1" value="1" inputmode="numeric" aria-describedby="send-amount-note"> <small>USDC</small></strong><p id="send-amount-note">Whole USDC. Each one is its own note and its own private payment; several sent together to one address are easier to link than one.</p></label>
+          <label class="amount" for="send-amount"><span>Amount</span><strong><input id="send-amount" type="number" autocomplete="off" min="1" step="1" value="1" inputmode="numeric" aria-describedby="send-amount-note"> <small>USDC</small></strong><p id="send-amount-note">Whole USDC. Each one is its own note and its own private payment; several sent together to one address are easier to link than one.</p></label>
           <label class="field" for="recipient"><span>Recipient</span><input id="recipient" class="mono" type="text" placeholder="0x0000…" autocomplete="off" spellcheck="false"><small>Arc testnet address</small></label>
           <div class="privacy-note"><b>Timing protection is on</b><p>The recipient stays sealed until the ring is fresh enough or your deadline arrives.</p></div>
           <div class="form-row">
-            <label class="field" for="freshness"><span>Minimum freshness</span><div><input id="freshness" type="number" min="0" max="100" value="70"><i>/ 100</i></div></label>
-            <label class="field" for="deadline"><span>Deadline</span><div><input id="deadline" type="number" min="1" max="72" value="12"><i>hours</i></div></label>
+            <label class="field" for="freshness"><span>Minimum freshness</span><div><input id="freshness" type="number" autocomplete="off" min="0" max="100" value="70"><i>/ 100</i></div></label>
+            <label class="field" for="deadline"><span>Deadline</span><div><input id="deadline" type="number" autocomplete="off" min="1" max="72" value="12"><i>hours</i></div></label>
           </div>
           <button class="primary" id="arm" type="submit">Review private transfer</button>
           <p class="status" id="send-status" role="status"></p><p class="fine-print" id="fee-note"></p>
