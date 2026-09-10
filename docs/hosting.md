@@ -2,22 +2,39 @@
 
 ## Quickest: Railway, one service
 
+**Live:** service `opaque-stack` in the Railway project `opaque`, at
+`https://opaque-stack-production.up.railway.app`. `opaque.credit` reads it
+through `VITE_STACK_URL`, which is set for Vercel's production and preview
+builds.
+
 The whole stack runs as one Railway service: six relays, the exit, the CRE
-stand-in, the egress and the credential authority. `railway.json` builds
-`backend/deploy/stack.Dockerfile`, and every public route is served on
-Railway's one port.
+stand-in, the egress and the credential authority. Every public route is
+served on Railway's one port. How it was set up, from the repo root:
 
-1. **New project.** Railway → New Project → Deploy from GitHub repo → this
-   repo.
-2. **Variables.** Add `EGRESS_PRIVATE_KEY` and `ATTESTER_FORS_SEED`, copied
-   from `backend/.env`, in the service's Variables → Raw Editor. Nothing else
-   is needed.
-3. **Domain.** Settings → Networking → Generate Domain, then redeploy.
-   `PUBLIC_URL` is taken from `RAILWAY_PUBLIC_DOMAIN` automatically.
-4. **The wallet.** On Vercel, set
-   `VITE_STACK_URL=https://<that domain>/stack.json` and redeploy.
+```bash
+railway login
+railway init --name opaque
+railway add --service opaque-stack
 
-Check it: `https://<domain>/stack.json` returns the config.
+# The two secrets, over stdin, so no value lands in argv or shell history.
+set -a; . backend/.env; set +a
+printf %s "$EGRESS_PRIVATE_KEY" | railway variable set EGRESS_PRIVATE_KEY --stdin --skip-deploys
+printf %s "$ATTESTER_FORS_SEED" | railway variable set ATTESTER_FORS_SEED --stdin --skip-deploys
+
+# Railway ignored railway.json for a CLI-made service; this variable it honours.
+railway variable set RAILWAY_DOCKERFILE_PATH=backend/deploy/stack.Dockerfile --skip-deploys
+railway variable set PORT=8080 --skip-deploys
+railway domain --port 8080      # PUBLIC_URL comes from RAILWAY_PUBLIC_DOMAIN
+
+railway up --detach             # uploads this checkout
+```
+
+`.railwayignore` keeps `.env`, `.stack` and every `.key` out of the upload.
+The service is not connected to GitHub, so a push does not redeploy it:
+**run `railway up --detach` again after backend changes.**
+
+Check it: `https://opaque-stack-production.up.railway.app/stack.json` returns
+the config, and `POST /v1/release` (the egress) returns 404.
 
 Things to know:
 
@@ -25,7 +42,7 @@ Things to know:
   new directory. Payments still in flight are lost; a wallet picks up the new
   config on reload.
 - **The directory lasts 7 days**, so redeploy at least weekly.
-- **Keep `numReplicas` at 1.** There is one attester key, and two copies of
+- **Keep it at one replica.** There is one attester key, and two copies of
   the stack could sign with it at the same index.
 - **Railway logs requests at its own edge,** so on Railway it sees what you
   see.

@@ -1,0 +1,15 @@
+# What `railway up` must never upload. .dockerignore guards the IMAGE; this
+# guards the archive sent to Railway before any image exists. Secrets reach the
+# service as its variables (docs/hosting.md), never as files.
+**/.env
+**/.env.*
+!**/.env.example
+**/*.key
+backend/.stack
+backend/deploy/config
+backend/mesh/deploy/config
+frontend/public/stack.json
+**/node_modules
+contracts/lib
+contracts/out
+contracts/cache

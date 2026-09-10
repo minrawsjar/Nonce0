@@ -73,7 +73,7 @@
   "services": {
     "$comment": "Endpoints, not keys. Each is null until that service is hosted.",
     "graphUrl": null,
-    "meshExitUrl": null,
+    "meshExitUrl": "https://opaque-stack-production.up.railway.app/v1/mesh",
     "releaseEgressUrl": null,
     "creTriggerUrl": null,
     "relayDirectoryUrl": null

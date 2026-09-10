@@ -1,5 +1,5 @@
 # The whole stack as ONE service, for a PaaS that gives one port and one TLS
-# name (Railway: railway.json points here). docs/hosting.md.
+# name (Railway: the service's RAILWAY_DOCKERFILE_PATH points here). docs/hosting.md.
 #
 # Six relays, the exit, the CRE stand-in, the egress and the credential
 # authority in one process, every public route on $PORT. One box, one
