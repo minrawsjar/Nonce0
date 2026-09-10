@@ -85,6 +85,7 @@ function fail(message: string): never {
 }
 
 export function assertForsParams(params: ForsParams): void {
+  if (typeof params !== 'object' || params === null) fail('fors parameters are required');
   const { k, a } = params;
   if (!Number.isInteger(k) || k < 1 || k > 64) fail(`fors k must be an integer within 1..64, got ${String(k)}`);
   // a > 20 means a million leaves per tree: keyGen stops being a hackathon
@@ -187,13 +188,16 @@ export function keyGen(
  * a public key cannot be re-presented under a weaker (k, a).
  */
 export const pkCommitment = (publicKey: ForsPublicKey): Bytes32 => {
-  assertForsParams(publicKey.params);
+  assertPublicKey(publicKey);
   return toHex(
     h(PK_COMMITMENT_DOMAIN, [u32(publicKey.params.k), u32(publicKey.params.a), publicKey.value]),
   ) as Bytes32;
 };
 
 export function sign(secretKey: ForsSecretKey, digest: Bytes32): ForsSignature {
+  if (!(secretKey?.seed instanceof Uint8Array) || secretKey.seed.length !== HASH_BYTES) {
+    fail('fors seed must be 32 bytes');
+  }
   const params = secretKey.params;
   const indices = deriveIndices(digest, params);
 
@@ -213,7 +217,36 @@ export function sign(secretKey: ForsSecretKey, digest: Bytes32): ForsSignature {
 const sameBytes = (a: Uint8Array, b: Uint8Array): boolean =>
   a.length === b.length && a.every((byte, i) => byte === b[i]);
 
+function assertPublicKey(publicKey: ForsPublicKey): void {
+  if (typeof publicKey !== 'object' || publicKey === null) fail('fors public key is required');
+  assertForsParams(publicKey.params);
+  if (!(publicKey.value instanceof Uint8Array) || publicKey.value.length !== HASH_BYTES) {
+    fail('fors public key value must be 32 bytes');
+  }
+}
+
+function assertSignature(publicKey: ForsPublicKey, signature: ForsSignature): void {
+  assertPublicKey(publicKey);
+  if (typeof signature !== 'object' || signature === null) fail('fors signature is required');
+  assertForsParams(signature.params);
+  const { k, a } = publicKey.params;
+  if (signature.params.k !== k || signature.params.a !== a) fail('signature parameters do not match the public key');
+  if (!Array.isArray(signature.leaves) || !Array.isArray(signature.paths) ||
+      signature.leaves.length !== k || signature.paths.length !== k) fail('invalid fors signature shape');
+  for (let i = 0; i < k; i++) {
+    const leaf = signature.leaves[i];
+    const path = signature.paths[i];
+    if (!(leaf instanceof Uint8Array) || leaf.length !== HASH_BYTES || !Array.isArray(path) || path.length !== a) {
+      fail('invalid fors leaf or authentication path');
+    }
+    for (let j = 0; j < a; j++) {
+      if (!(path[j] instanceof Uint8Array) || path[j]!.length !== HASH_BYTES) fail('invalid fors sibling');
+    }
+  }
+}
+
 export function verify(publicKey: ForsPublicKey, digest: Bytes32, signature: ForsSignature): boolean {
+  try { assertSignature(publicKey, signature); } catch { return false; }
   const params = publicKey.params;
   if (signature.params.k !== params.k || signature.params.a !== params.a) return false;
   if (signature.leaves.length !== params.k || signature.paths.length !== params.k) return false;
@@ -250,6 +283,7 @@ export function verify(publicKey: ForsPublicKey, digest: Bytes32, signature: For
 const encodedLength = (params: ForsParams): number => 3 + HASH_BYTES + params.k * HASH_BYTES * (1 + params.a);
 
 export function encodeSignature(publicKey: ForsPublicKey, signature: ForsSignature): Hex {
+  assertSignature(publicKey, signature);
   const params = publicKey.params;
   assertForsParams(params);
   if (signature.params.k !== params.k || signature.params.a !== params.a) {

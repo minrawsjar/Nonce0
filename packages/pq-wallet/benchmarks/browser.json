@@ -1,0 +1,31 @@
+{
+  "measuredAt": "2026-09-09T15:46:05.870Z",
+  "mode": "LOCAL_CHROMIUM",
+  "scheme": "FORS+C/keccak256/k=32,a=8",
+  "samples": [
+    {
+      "keyGenMs": 350.70000000298023,
+      "signMs": 269.79999999701977,
+      "verifyMs": 2.800000000745058,
+      "signatureBytes": 9251,
+      "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/149.0.0.0 Safari/537.36"
+    },
+    {
+      "keyGenMs": 266.30000000074506,
+      "signMs": 230.90000000223517,
+      "verifyMs": 4,
+      "signatureBytes": 9251,
+      "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/149.0.0.0 Safari/537.36"
+    },
+    {
+      "keyGenMs": 290.8999999985099,
+      "signMs": 313.30000000074506,
+      "verifyMs": 3.300000000745058,
+      "signatureBytes": 9251,
+      "userAgent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/149.0.0.0 Safari/537.36"
+    }
+  ],
+  "memory": "Not measured",
+  "gas": "Not measured",
+  "g2Passed": false
+}

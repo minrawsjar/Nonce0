@@ -3,16 +3,27 @@
   "version": "1.0.0-review",
   "private": true,
   "type": "module",
-  "description": "Opaque V1 — PQ wallet (§5): FORS+C few-time signatures, the §5.3 digest, and PQKeyRegistry state. Manan, S1.",
-  "engines": { "node": ">=22.18" },
-  "exports": { ".": "./src/index.ts" },
+  "description": "Opaque V1 \u2014 PQ wallet (\u00a75): FORS+C few-time signatures, the \u00a75.3 digest, and PQKeyRegistry state. Manan, S1.",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "exports": {
+    ".": "./src/index.ts"
+  },
   "scripts": {
     "test": "node --test test/*.test.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "dev": "node scripts/dev.ts",
+    "build:demo": "node scripts/dev.ts --build"
   },
   "dependencies": {
     "@noble/hashes": "^2.4.0",
     "@opaque/protocol-types": "file:../protocol-types"
   },
-  "devDependencies": { "@types/node": "^22.15.0", "typescript": "^7.0.2" }
+  "devDependencies": {
+    "@types/node": "^22.15.0",
+    "esbuild": "^0.28.2",
+    "playwright": "^1.63.0",
+    "typescript": "^7.0.2"
+  }
 }
