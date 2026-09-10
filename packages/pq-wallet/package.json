@@ -14,13 +14,18 @@
     "test": "node --test test/*.test.ts",
     "typecheck": "tsc --noEmit",
     "dev": "node scripts/dev.ts",
-    "build:demo": "node scripts/dev.ts --build"
+    "build:demo": "node scripts/dev.ts --build",
+    "test:account": "cd ../../contracts && PQ_ACCOUNT_TESTS=true forge test --ffi --match-contract OpaquePqAccountTest",
+    "test:account-integration": "PQ_ACCOUNT_INTEGRATION=1 node --test --test-isolation=none test/account-integration.test.ts"
   },
   "dependencies": {
     "@noble/hashes": "^2.4.0",
-    "@opaque/protocol-types": "file:../protocol-types"
+    "@opaque/protocol-types": "file:../protocol-types",
+    "viem": "2.56.3"
   },
   "devDependencies": {
+    "@account-abstraction/contracts": "0.7.0",
+    "@openzeppelin/contracts": "5.0.2",
     "@types/node": "^22.15.0",
     "esbuild": "^0.28.2",
     "playwright": "^1.63.0",

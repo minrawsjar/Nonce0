@@ -1,0 +1,66 @@
+{
+  "recordedAt": "2026-09-10T10:45:10.353873+00:00",
+  "scope": "Local-only no-extension smart-account implementation; no Arc deployment or live provider admission claim",
+  "entryPoint": "@account-abstraction/contracts@0.7.0",
+  "openzeppelin": "@openzeppelin/contracts@5.0.2",
+  "viem": "2.56.3",
+  "checks": [
+    {
+      "command": "npm run typecheck; npm run build:demo",
+      "result": "PASS"
+    },
+    {
+      "command": "node --test --test-isolation=none test/*.test.ts",
+      "passed": 74,
+      "skipped": 2,
+      "note": "Account integration and original browser signer suite are opt-in."
+    },
+    {
+      "command": "PQ_ACCOUNT_TESTS=true forge test --root contracts --ffi --match-path test/{wallet/OpaquePqAccount,PQKeyRegistry,ForsVerifier}.t.sol",
+      "passed": 45,
+      "failed": 0,
+      "fuzzRuns": 1024
+    },
+    {
+      "command": "PQ_ACCOUNT_INTEGRATION=1 PQ_ACCOUNT_BROWSER=1 node --test --test-isolation=none test/account-integration.test.ts",
+      "passed": 1,
+      "failed": 0,
+      "note": "Real EntryPoint and account contracts on Anvil; test-only RPC harness uses fixed estimates and a permissive test sponsor. Fresh Chromium profile has no window.ethereum. SDK and browser create/activate/transfer/refresh/rotate/disable passed."
+    }
+  ],
+  "g2Passed": false,
+  "liveArcTransactions": false,
+  "providerSimulationVerified": false,
+  "sourceSha256": {
+    "contracts/src/opaque/wallet/account/AccountBoundPQKeyRegistry.sol": "c9dcf98cafc268fff485ef908753c75db3737f09464f9a406a2bf1dc692cf14f",
+    "contracts/src/opaque/wallet/account/OpaquePqAccount.sol": "8f1c9bb78dfdaae7520a351493a74fc8534fa6aba7c7133157a4c8de1eeda2e2",
+    "contracts/src/opaque/wallet/account/OpaquePqAccountFactory.sol": "f3e479b3d2fc3c74ce33b5de738977578b27d7387ca05efc8f5af2df62b5f5fb",
+    "packages/pq-wallet/src/account-config.ts": "5e0e46a15058bb3ed5de295f467ff46b8d452fba1d101d03a0ad86762dcd6e5e",
+    "packages/pq-wallet/src/account-wallet.ts": "3f8f201753dbef27e5115a77cf21590e4c2da274eea6b35662abef6cb97a0792",
+    "packages/pq-wallet/src/arc-chain-adapter.ts": "edc3580623e2911423463b1425287db151f200968677d15fe614ba571205809a",
+    "packages/pq-wallet/src/authority.ts": "c6de838506662057575af271c33056af441095c37781d75a2d770834c19f2c7e",
+    "packages/pq-wallet/src/bundler-client.ts": "37385a4c92f5093110c5bd8cc150803bea6ad885dd2456427abd8155fcbbb76d",
+    "packages/pq-wallet/src/chain-adapter.ts": "403a0f6bb9cbadbea014ee61eba1bf45c20ac27bf6ddbbb5b3c16a169244e1ce",
+    "packages/pq-wallet/src/digest.ts": "79668c9b009c0804d8ec6c167f2b1e1c10085e6994adc01ceab3b37e153eac44",
+    "packages/pq-wallet/src/fors.ts": "b8896b04f97495166711948275a6b1679e1ad74013fd1d7609ae1784720a501d",
+    "packages/pq-wallet/src/index.ts": "dca3e8800f2bd286e4dfce6859cdace8a88cec4f4e8d4f2be5c50f86be08677d",
+    "packages/pq-wallet/src/indexeddb-store.ts": "c43901cb8901c2a439542d2a2b53c043172a1bd2f1c3501fef353e2e16d7c07b",
+    "packages/pq-wallet/src/mock.ts": "94c60ba64105cbfd72db15dd96cf3244d64b2076e09343f077830489a746acb2",
+    "packages/pq-wallet/src/operation-outbox.ts": "adf3469264aa1d4a6e9a5e8fb1c6b6c1a7324a8e911dfa4e2d1e6d6902e0f41b",
+    "packages/pq-wallet/src/registry.ts": "f2b7e6ead9c9bf31ea2771c9124057093ceff391195f70a945e704037f874fd0",
+    "packages/pq-wallet/src/sign.ts": "e776174b7d09707e30861b3cf3b9c19f651d4dcb536c78589b312693b24f3929",
+    "packages/pq-wallet/src/signer-state.ts": "e1cddf6a0f57893ad9cee52720a83a84815145afb22f599d8d50bcb750e5a65b",
+    "packages/pq-wallet/src/user-operation.ts": "3e47cc6bb74d9f17a3bb23ec4b3fcade68a78f96acd7e120d61cab0abf6edaf2",
+    "packages/pq-wallet/src/wallet-state.ts": "bec31c46ee4f6fc6384806f087901db487d0f0bb87fe3ada2971a1ba031f207a",
+    "packages/pq-wallet/src/wallet.ts": "1bf5a47a7fd0dcbc891ea3a5d6eed7aaa8252701b0c036cfa8c435f17d4466e1"
+  },
+  "remaining": [
+    "Joint review and independent security review",
+    "Actual Arc v0.7 EntryPoint and custom-account bundler simulation, storage/stake and gas admission",
+    "Funded compatible sponsorship service",
+    "New account-bound registry/factory deployment and verified runtime manifest",
+    "Live Arc transfers and receipts",
+    "Actual elapsed disable/takeover live observation",
+    "Pool integration after live transfer milestone"
+  ]
+}

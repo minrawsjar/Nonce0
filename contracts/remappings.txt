@@ -1,0 +1,2 @@
+@account-abstraction/contracts/=../packages/pq-wallet/node_modules/@account-abstraction/contracts/
+@openzeppelin/contracts/=../packages/pq-wallet/node_modules/@openzeppelin/contracts/
