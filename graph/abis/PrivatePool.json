@@ -1,0 +1,11 @@
+[
+  {
+    "anonymous": false,
+    "inputs": [
+      {"indexed": true, "internalType": "bytes32", "name": "commitment", "type": "bytes32"},
+      {"indexed": false, "internalType": "uint256", "name": "index", "type": "uint256"}
+    ],
+    "name": "Deposited",
+    "type": "event"
+  }
+]

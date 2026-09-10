@@ -26,12 +26,16 @@ import { asPrivacyScore, assertRelayPath } from '@opaque/protocol-types/codecs.j
 
 /** 50% of recent batch windows served. Tuning knob, not a protocol constant. */
 export const DEFAULT_RELIABILITY_FLOOR: PrivacyScore = asPrivacyScore(5_000);
+/** Six candidates prevent the three-hop route from becoming a standing circuit. */
+export const MINIMUM_RELAY_POOL = 6;
 
 export interface MarkovPathPolicyOptions {
   /** Injected so tests are deterministic. Must return a value in [0, 1). */
   readonly random?: () => number;
   /** Nodes scoring below this are excluded from every row, including hop 1. */
   readonly reliabilityFloor?: number;
+  /** Must be at least six for the V1 mesh; exposed only to make tests explicit. */
+  readonly minimumPoolSize?: number;
 }
 
 interface Weighted {
@@ -68,6 +72,7 @@ function draw(row: readonly Weighted[], total: number, r: number): number {
 export class MarkovPathPolicy implements PathSelectionPolicy {
   readonly #random: () => number;
   readonly #floor: PrivacyScore;
+  readonly #minimumPoolSize: number;
 
   constructor(options: MarkovPathPolicyOptions = {}) {
     this.#random = options.random ?? Math.random;
@@ -75,6 +80,10 @@ export class MarkovPathPolicy implements PathSelectionPolicy {
       options.reliabilityFloor === undefined
         ? DEFAULT_RELIABILITY_FLOOR
         : asPrivacyScore(options.reliabilityFloor);
+    this.#minimumPoolSize = options.minimumPoolSize ?? MINIMUM_RELAY_POOL;
+    if (!Number.isInteger(this.#minimumPoolSize) || this.#minimumPoolSize < MINIMUM_RELAY_POOL) {
+      throw new ProtocolFailure('INVALID_INPUT', `minimumPoolSize must be an integer >= ${MINIMUM_RELAY_POOL}`);
+    }
   }
 
   selectPath(snapshot: RelaySnapshot): {
@@ -88,6 +97,13 @@ export class MarkovPathPolicy implements PathSelectionPolicy {
       .map(weigh)
       .filter((w) => w.node.reliabilityScore >= this.#floor && w.weight > 0);
 
+    if (eligible.length < this.#minimumPoolSize) {
+      throw new ProtocolFailure(
+        'INSUFFICIENT_RELAYS',
+        `need ${this.#minimumPoolSize} eligible relays to avoid a standing ${3}-hop circuit, have ${eligible.length}`,
+        true,
+      );
+    }
     const operators = new Set(eligible.map((w) => w.node.operatorId));
     if (operators.size < 3) {
       throw new ProtocolFailure(

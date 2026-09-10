@@ -84,13 +84,20 @@ export interface PoolScope {
   readonly denomination: Denomination;
 }
 
-export type ProofMode = 'RING_8' | 'SINGLE_NOTE_PQ';
+export type ProofMode = 'RING_8' | 'SINGLE_NOTE_PQ' | 'ATTESTED_OFFCHAIN';
 
 /**
  * What a deployment actually is, read from the pool rather than assumed.
+ *
  * SINGLE_NOTE_PQ makes no depositor-to-spend unlinkability claim, and the UI
  * is required to say so (T12). Never pad a single-note spend to eight and
  * present the padding as anonymity.
+ *
+ * ATTESTED_OFFCHAIN makes a claim the CHAIN CANNOT CHECK. The transaction
+ * carries an authorization id and nothing else — no ring, no note — so the
+ * size of the anonymity set is whatever the attester chose to demand, and a
+ * reader of the chain has no way to verify it happened at all. A UI must
+ * present that as trust in a named party, never as a number.
  */
 export interface ProtocolCapabilities {
   readonly protocolVersion: ProtocolVersion;

@@ -13,9 +13,16 @@ interface ISpendVerifier {
     ///      distinguished. It does not say who checked the proof. Read
     ///      `verifierId()` for that — it commits to the scheme and, where a
     ///      spend is attested rather than verified in the EVM, to the attester.
+    ///      ATTESTED_OFFCHAIN is neither: the chain sees no ring and no note,
+    ///      only an authorization id. Its anonymity set is whatever the
+    ///      attester demanded off-chain, and no reader of the transaction can
+    ///      check that number. RING_8 would be a lie there and SINGLE_NOTE_PQ
+    ///      would understate it, so it gets its own value rather than being
+    ///      squeezed into one that already means something else.
     enum ProofMode {
         RING_8,
-        SINGLE_NOTE_PQ
+        SINGLE_NOTE_PQ,
+        ATTESTED_OFFCHAIN
     }
 
     function verifierId() external view returns (bytes32);

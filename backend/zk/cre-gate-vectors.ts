@@ -1,0 +1,168 @@
+// Generates contracts/test/fixtures/cre-gate-vectors.json.
+//
+//   node zk/cre-gate-vectors.ts
+//
+// CREPolicyGate's authority is a FORS+C signature over a BATCH of settlement
+// authorizations, verified through PQKeyRegistry. These vectors are produced by
+// the same TypeScript a CRE workflow would run, and checked by Solidity in
+// contracts/test/CREAuthorizedPool.t.sol — so the two languages agree on bytes
+// rather than by inspection.
+
+import type { Address, Bytes32, Hex } from '@opaque/protocol-types';
+import { asAddress, asChainId, fromHex, toHex } from '@opaque/protocol-types/codecs.js';
+import {
+  canonical,
+  encodeSignature,
+  forsSchemeId,
+  FORS_C_DEFAULT,
+  keyGen,
+  pkCommitment,
+  pqDigest,
+  sign,
+  utf8,
+} from '@opaque/pq-wallet';
+import { keccak_256 } from '@noble/hashes/sha3.js';
+
+const CHAIN_ID = 31337n;
+const PUBLISH_DOMAIN = 'opaque/v1/cre/publish';
+const USER_ACTION_DOMAIN = 'opaque/v1/pq-wallet/action';
+
+const TOKEN = asAddress('0x0000000000000000000000000000000000001111');
+const REGISTRY = asAddress('0x0000000000000000000000000000000000002222');
+const GATE = asAddress('0x0000000000000000000000000000000000003333');
+const POOL_20 = asAddress('0x0000000000000000000000000000000000004444');
+const POOL_5 = asAddress('0x0000000000000000000000000000000000006666');
+const ATTESTER = asAddress('0x0000000000000000000000000000000000005555');
+const BOB = asAddress('0x0000000000000000000000000000000000000b0b');
+const FEES = asAddress('0x0000000000000000000000000000000000000fee');
+
+interface Authorization {
+  readonly id: Bytes32;
+  readonly spendHash: Bytes32;
+  readonly nullifier: Bytes32;
+  readonly pool: Address;
+  readonly recipient: Address;
+  readonly feeCollector: Address;
+  readonly grossAmount: bigint;
+  readonly feeAmount: bigint;
+  readonly feeBps: bigint;
+  readonly expiresAt: bigint;
+}
+
+/** `abi.encodePacked(uint32(20), addr)` — an address field, length-prefixed. */
+const addressField = (value: Address): Uint8Array => {
+  const out = new Uint8Array(24);
+  new DataView(out.buffer).setUint32(0, 20, false);
+  out.set(fromHex(value), 4);
+  return out;
+};
+
+/** Mirrors CREPolicyGate.publishPayload exactly. Count first, then each field. */
+const publishPayload = (list: readonly Authorization[]): Uint8Array => {
+  const head = canonical([utf8(PUBLISH_DOMAIN), utf8(String(list.length))]);
+  const parts: Uint8Array[] = [head];
+  for (const a of list) {
+    parts.push(
+      canonical([fromHex(a.id), fromHex(a.spendHash), fromHex(a.nullifier)]),
+      addressField(a.pool),
+      addressField(a.recipient),
+      addressField(a.feeCollector),
+      canonical([
+        utf8(String(a.grossAmount)),
+        utf8(String(a.feeAmount)),
+        utf8(String(a.feeBps)),
+        utf8(String(a.expiresAt)),
+      ]),
+    );
+  }
+  const total = parts.reduce((n, p) => n + p.length, 0);
+  const out = new Uint8Array(total);
+  let at = 0;
+  for (const p of parts) {
+    out.set(p, at);
+    at += p.length;
+  }
+  return out;
+};
+
+const attesterKey = keyGen(keccak_256(utf8('opaque/fixture/cre-attester/v1')));
+const attesterNext = keyGen(keccak_256(utf8('opaque/fixture/cre-attester/v2')));
+const impostor = keyGen(keccak_256(utf8('opaque/fixture/cre-impostor')));
+const SCHEME_ID = forsSchemeId(FORS_C_DEFAULT);
+
+const signBatch = (key: typeof attesterKey, useCount: bigint, list: readonly Authorization[]): Hex => {
+  const payload = new Uint8Array([...utf8(USER_ACTION_DOMAIN), ...publishPayload(list)]);
+  const digest = pqDigest({
+    chainId: asChainId(CHAIN_ID),
+    walletAddress: ATTESTER,
+    schemeId: SCHEME_ID,
+    useCount,
+    payload: toHex(payload) as Hex,
+  });
+  return encodeSignature(key.publicKey, sign(key.secretKey, digest));
+};
+
+const EXPIRES = 2_000_000_000n;
+const auth = (n: number, pool: Address, gross: bigint, fee: bigint): Authorization => ({
+  id: toHex(keccak_256(utf8(`opaque/fixture/cre/auth/${n}`))) as Bytes32,
+  spendHash: toHex(keccak_256(utf8(`opaque/fixture/cre/spend/${n}`))) as Bytes32,
+  nullifier: toHex(keccak_256(utf8(`opaque/fixture/cre/nullifier/${n}`))) as Bytes32,
+  pool,
+  recipient: BOB,
+  feeCollector: FEES,
+  grossAmount: gross,
+  feeAmount: fee,
+  feeBps: 50n,
+  expiresAt: EXPIRES,
+});
+
+// 50 bps, rounded up, exactly as CREAuthorizedPool computes it.
+const feeFor = (gross: bigint): bigint => (gross * 50n + 9_999n) / 10_000n;
+
+const single = [auth(1, POOL_20, 20_000_000n, feeFor(20_000_000n))];
+// The multi-note case: one payment decomposed across two denominations, one
+// signature, settled atomically by CREBatchSettlement.
+const batch = [
+  auth(2, POOL_20, 20_000_000n, feeFor(20_000_000n)),
+  auth(3, POOL_5, 5_000_000n, feeFor(5_000_000n)),
+];
+const third = [auth(4, POOL_20, 20_000_000n, feeFor(20_000_000n))];
+
+const wire = (list: readonly Authorization[]) =>
+  list.map((a) => ({ ...a, grossAmount: String(a.grossAmount), feeAmount: String(a.feeAmount), feeBps: Number(a.feeBps), expiresAt: String(a.expiresAt) }));
+
+const vectors = {
+  _comment: 'Generated by backend/zk/cre-gate-vectors.ts. Do not hand-edit; regenerate.',
+  chainId: String(CHAIN_ID),
+  schemeId: SCHEME_ID,
+  token: TOKEN, registry: REGISTRY, gate: GATE, attester: ATTESTER,
+  pool20: POOL_20, pool5: POOL_5, recipient: BOB, feeCollector: FEES,
+  pkAttester: pkCommitment(attesterKey.publicKey),
+  pkAttesterNext: pkCommitment(attesterNext.publicKey),
+  expiresAt: String(EXPIRES),
+
+  single: wire(single),
+  sigSingle: signBatch(attesterKey, 0n, single),
+  batch: wire(batch),
+  // The SAME batch at two indices. A FORS signature binds the useCount it was
+  // issued at, so a test that publishes the batch first needs the index-0 one
+  // and a test that publishes something before it needs index 1. That is the
+  // anti-replay working, not an inconvenience: one signature is good for
+  // exactly one position in the attester's sequence.
+  sigBatchAt0: signBatch(attesterKey, 0n, batch),
+  sigBatchAt1: signBatch(attesterKey, 1n, batch),
+  // A third, distinct batch at index 2 — needed to reach KeyExhausted, since
+  // re-presenting an earlier batch is refused as a duplicate before the
+  // registry is ever consulted.
+  third: wire(third),
+  sigThirdAt2: signBatch(attesterKey, 2n, third),
+  // The same batch, signed by a key the registry has never heard of.
+  sigImpostor: signBatch(impostor, 0n, batch),
+} as const;
+
+const out = new URL('../../contracts/test/fixtures/cre-gate-vectors.json', import.meta.url);
+const { writeFileSync } = await import('node:fs');
+writeFileSync(out, `${JSON.stringify(vectors, null, 1)}\n`);
+console.log(`wrote ${out.pathname}`);
+console.log(`  single fee  ${feeFor(20_000_000n)} on 20 USDC`);
+console.log(`  batch       ${batch.length} authorizations, one signature`);

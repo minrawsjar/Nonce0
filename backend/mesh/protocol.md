@@ -212,6 +212,37 @@ Named here so they are decisions rather than oversights.
 | **Six relays on one host are one operator** — one machine, one network, one log. | `npm run mesh:local` and `mesh/deploy/compose.yaml` both say so. The code cannot tell the difference, and six colluding relays learn exactly what three would. | Six people, six networks, running `mesh/deploy/Dockerfile`. This is a coordination problem, not a build problem. |
 | **The pool floor is hard.** One of six relays rotating out stops payments until it returns or the directory is re-signed. | Deliberate: five live relays can still build a path, and drawing from a narrowed set while returning a healthy-looking path is the failure mode being refused. | Re-sign the directory without the missing relay, or run spares. A soft floor would have to make the degraded anonymity visible to the caller, not hide it. |
 
+## The §8.2 health feed
+
+`graph-health.ts` adapts the Graph's relay observations into bootstrap's
+`health` hook. Wiring is one line, because `GraphHttpClient.getRelaySnapshot`
+already has the shape the adapter wants:
+
+```ts
+const feed = createGraphHealth({ fetchSnapshot: () => graph.getRelaySnapshot() });
+await feed.refresh();
+const mesh = createMeshBootstrap({ root, signed, pathPolicy, health: feed.health });
+```
+
+Almost all of that module is about what the Graph is NOT allowed to do. It is
+reached over the network, and a hostile one wants every payment routed through
+relays it runs. Three routes, three answers:
+
+| Attempt | Why it fails |
+|---|---|
+| Add its own relays | The adapter returns health for a directory entry and cannot produce one. Identity and keys come from the signed directory, verified against a pinned root before any relay is contacted. |
+| Remove honest relays by calling them unreliable | Reliability is clamped UP to the policy floor, so an answer can never push a relay below the threshold that excludes it. |
+| Remove honest relays by omitting them | An unmentioned relay keeps the uniform prior, not zero weight. |
+| Starve honest relays of weight | Occupancy is clamped to `MAX_OCCUPANCY`, bounding the ratio between the most and least favoured relay. It can express a preference; it cannot dictate a route. |
+
+A stale snapshot is treated as absent rather than as truth — a Graph frozen at
+one moment would otherwise pin selection to that moment forever, which is a
+standing circuit arrived at slowly. A Graph that is down leaves the pool intact.
+
+The cost is deliberate: a genuinely dead relay stays eligible, and some
+payments fail against it and retry. A Graph that can exclude relays can force a
+path; a Graph that cannot merely wastes an attempt.
+
 ## Deploying a relay
 
 `mesh/deploy/` holds the image and the compose file. The image builds and three

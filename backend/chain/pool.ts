@@ -112,7 +112,7 @@ export interface PoolClientOptions {
   readonly waitForBlocks?: (n: bigint) => Promise<void>;
 }
 
-const PROOF_MODES = ['RING_8', 'SINGLE_NOTE_PQ'] as const;
+const PROOF_MODES = ['RING_8', 'SINGLE_NOTE_PQ', 'ATTESTED_OFFCHAIN'] as const;
 
 /**
  * The ring as the contract wants it: eight commitments, or one for

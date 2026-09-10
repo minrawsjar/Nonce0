@@ -8,7 +8,7 @@
 # The previous revision violated it. See README.md, "The fundingSourceCluster
 # leak", for what changed and why.
 
-type RingMember @entity {
+type RingMember @entity(immutable: false) {
   "The note commitment (§6.6). Ring eligibility requires a real pool deposit."
   id: ID!
 
@@ -20,9 +20,6 @@ type RingMember @entity {
 
   "Aggregate count across all rings. Never which ring, never which payment."
   timesUsedInRing: Int!
-
-  "Null until first use. Feeds the §8.1 step-1 reuse-frequency threshold."
-  lastUsedAt: BigInt
 
   """
   How large a share of the pool this member's funding cluster holds, coarsely
@@ -41,51 +38,37 @@ type RingMember @entity {
   fundingConcentrationBucket: Int
 
   "Any on-chain activity besides enrollment/ring use. §8.1 step 3."
-  hasOtherActivity: Boolean!
+  hasOtherActivity: Boolean
 }
 
-type RingPool @entity {
+type RingPool @entity(immutable: false) {
   "`${poolId(scope)}-${denomination}` — per (chain, pool, denomination)."
   id: ID!
 
   poolSize: Int!
-  avgMemberAge: BigInt!
-
-  "Derived metric feeding §9.2's trigger condition."
-  freshnessScore: BigInt!
-
-  "Aggregate Sybil tell: how many distinct funding clusters back this pool."
-  distinctFundingClusters: Int!
-
-  "Share of the pool held by the single largest funding cluster, in bps."
-  topFundingClusterShareBps: Int!
-
-  "Version of the heuristics that produced the derived fields above."
-  heuristicsVersion: String!
-
   observedAt: BigInt!
 }
 
 # ── mesh (§8.2) ────────────────────────────────────────────────────────────
 
-type RelayNode @entity {
+type RelayNode @entity(immutable: false) {
   "nodeId, one of 6."
   id: ID!
 
   endpoint: String!
 
   """
-  Advisory copy of the hop-encryption key. §7.3: a Graph response can NEVER
-  replace a relay key. Clients pin keys out of band and drop any node this
-  subgraph reports that they have not pinned; a value here that disagrees with
-  the pinned one is treated as an attempted substitution (UNTRUSTED_DIRECTORY),
-  not as a rotation.
+  keccak256 of the hop-encryption key. Raw keys are never directory-discovered:
+  the client obtains them from its signed, pinned relay directory and checks
+  this commitment before accepting Graph's advisory health values.
   """
-  kemPublicKey: Bytes!
+  kemKeyCommitment: Bytes!
   keyEpoch: BigInt!
 
-  "Path diversity is per operator, not per node — three nodes run by one
-  operator are one hop's worth of protection."
+  """
+  Path diversity is per operator, not per node — three nodes run by one
+  operator are one hop's worth of protection.
+  """
   operatorId: String!
 
   "% of recent batch windows successfully served, in bps (0..10000)."
@@ -94,29 +77,19 @@ type RelayNode @entity {
   "Avg # of other messages batched alongside this node's traffic recently."
   batchOccupancy: BigInt!
 
-  "How often this node has been picked recently. Aggregate only — never which
-  path, never which message."
-  recentSelectionCount: Int!
+  """
+  How often this node has been picked recently. Aggregate only — never which
+  path, never which message.
+  """
+  recentSelectionCount: BigInt!
 
   lastSeenAt: BigInt!
 }
 
-type RelayDirectory @entity {
+type RelayDirectory @entity(immutable: false) {
   "Singleton."
   id: ID!
   version: String!
   nodeCount: Int!
-  observedAt: BigInt!
-}
-
-# ── privacy conditions (§9.2) ──────────────────────────────────────────────
-
-type PrivacyObservation @entity {
-  "`${poolId(scope)}-${denomination}` — same key as RingPool."
-  id: ID!
-  privacyScore: BigInt!
-  ringFreshnessScore: BigInt!
-  meshHealthScore: BigInt!
-  formulaVersion: String!
   observedAt: BigInt!
 }

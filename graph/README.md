@@ -2,8 +2,14 @@
 
 `schema.graphql` is the public data boundary. Index eligible note commitments and aggregate pool/relay metrics only. Never index a real signer position or payment-to-decoy mapping.
 
-Publish three frontend-facing queries:
+The public Graph boundary exposes only bucket-level observations. It never
+accepts a real commitment and never returns a ring or a payment path:
 
-- `selectRing(realCommitment, denomination)` returns an eight-member canonical ring and safe reasons.
-- `selectPath()` returns three distinct eligible relays drawn from the Markov policy.
-- `getPrivacyConditions()` returns the live privacy score used by CRE's threshold/deadline trigger.
+- `getRingSnapshot(scope)` returns the public denomination bucket; local code selects decoys.
+- `getRelaySnapshot()` returns advisory health only after it matches the signed, pinned directory.
+- `getPrivacyConditions(scope)` recomputes a versioned conservative readiness score locally.
+
+`bun run subgraph:render graph-config.json` renders a deployable manifest from
+the relay directory and each fixed-denomination pool. `scopeId` is the canonical
+`poolId(scope)` calculated by the deployment script; passing it as context keeps
+the mapping from accidentally reimplementing protocol hashing.

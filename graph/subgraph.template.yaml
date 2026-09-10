@@ -1,0 +1,28 @@
+specVersion: 1.3.0
+indexerHints:
+  prune: auto
+schema:
+  file: ./schema.graphql
+dataSources:
+  - kind: ethereum
+    name: RelayDirectory
+    network: arc-testnet
+    source:
+      address: "{{RELAY_DIRECTORY}}"
+      abi: RelayDirectory
+      startBlock: {{START_BLOCK}}
+    mapping:
+      kind: ethereum/events
+      apiVersion: 0.0.9
+      language: wasm/assemblyscript
+      entities: [RelayNode, RelayDirectory]
+      abis:
+        - name: RelayDirectory
+          file: ./abis/RelayDirectory.json
+      eventHandlers:
+        - event: RelayAnnounced(indexed bytes32,indexed address,string,bytes32,uint64)
+          handler: handleRelayAnnounced
+        - event: RelayHealth(indexed bytes32,uint16,uint16,uint32,uint64)
+          handler: handleRelayHealth
+      file: ./src/mapping.ts
+{{POOL_DATA_SOURCES}}

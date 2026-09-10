@@ -8,11 +8,14 @@
   "exports": { ".": "./src/index.ts" },
   "scripts": {
     "test": "node --test test/*.test.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "subgraph:render": "bun scripts/render-manifest.ts",
+    "subgraph:codegen": "graph codegen subgraph.yaml",
+    "subgraph:build": "graph build subgraph.yaml"
   },
   "dependencies": {
     "@noble/hashes": "^2.4.0",
     "@opaque/protocol-types": "file:../packages/protocol-types"
   },
-  "devDependencies": { "@types/node": "^22.15.0", "typescript": "^7.0.2" }
+  "devDependencies": { "@graphprotocol/graph-cli": "^0.98.1", "@graphprotocol/graph-ts": "^0.38.0", "@types/node": "^22.15.0", "typescript": "^7.0.2" }
 }
