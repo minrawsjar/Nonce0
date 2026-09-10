@@ -8,6 +8,35 @@
 
 Chain **5042002**. Explorer: [testnet.arcscan.app](https://testnet.arcscan.app).
 
+## The RING_8 path — the one to use
+
+Deployed after the §6.3 routing decision, by `script/DeployRingPool.s.sol`.
+
+| Contract | Address | Block |
+|---|---|---|
+| `AttestedRingVerifier` | `0xA06A0488D2ddfb267cC6F090b97Bfc2Bd9870612` | 61403357 |
+| `PrivatePool` (RING_8, 1 USDC) | `0x8B54Cc1B008eafA270740D847e45954f10DBf150` | 61403359 |
+| attester (account) | `0x8D47981aC51628FA19Bf8b32afDDa09f2d72d257` | registered 61403368 |
+
+Read back from the chain: `capabilities()` returns `RING_8`, ring size 8,
+`requiresCommitReveal` **false** — one transaction per spend, no two-block
+wait. The verifier trusts exactly the attester above, and that attester's FORS
+key is registered in `PQKeyRegistry` with `maxUses = 32`. **It must rotate
+before its 33rd attestation**; the registry refuses the 33rd rather than
+letting forgery odds climb.
+
+The attester registered from its own address, because the registry binds a
+key to `msg.sender` at registration — the only thing `msg.sender` ever
+authorises there. Its ECDSA key has had no power since. It is deliberately not
+the deployer.
+
+**Do not deposit a RING_8 note into the SINGLE_NOTE_PQ pool below, or the
+reverse.** A RING_8 commitment is AES-based; the single-note verifier recomputes
+a keccak one and will never match it. That deposit is locked for good.
+`poolFor()` requires the proof mode for exactly this reason.
+
+## The original deployment — SINGLE_NOTE_PQ
+
 | Contract | Address |
 |---|---|
 | `PQKeyRegistry` | `0x7FC11e0f5d224439b2d710BB1c141913F454eF17` |

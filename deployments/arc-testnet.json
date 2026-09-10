@@ -1,14 +1,16 @@
 {
-  "$comment": "THE source of truth for every public address and endpoint on Arc testnet. Public values only — never a private key, API key or MAC secret. `null` means NOT DEPLOYED, and the loader refuses it where a value is required; a zero address would instead fail silently on chain. Verified live by backend/chain/test/deployments.test.ts.",
-
+  "$comment": "THE source of truth for every public address and endpoint on Arc testnet. Public values only \u2014 never a private key, API key or MAC secret. `null` means NOT DEPLOYED, and the loader refuses it where a value is required; a zero address would instead fail silently on chain. Verified live by backend/chain/test/deployments.test.ts.",
   "network": {
     "name": "arc-testnet",
     "chainId": 5042002,
     "rpcUrl": "https://rpc.testnet.arc.io",
     "explorer": "https://testnet.arcscan.app",
-    "nativeCurrency": { "name": "USDC", "symbol": "USDC", "decimals": 18 }
+    "nativeCurrency": {
+      "name": "USDC",
+      "symbol": "USDC",
+      "decimals": 18
+    }
   },
-
   "tokens": {
     "usdc": {
       "$comment": "The ERC-20 interface: 6 decimals. The SAME asset is the 18-decimal native currency that pays gas. Confusing the two is a factor of 10^12.",
@@ -16,18 +18,29 @@
       "decimals": 6
     }
   },
-
   "contracts": {
-    "pqKeyRegistry":        { "address": "0x7fc11e0f5d224439b2d710bb1c141913f454ef17", "deployedAtBlock": 61282726 },
-    "singleNotePqVerifier": { "address": "0x8ad3c8f52f17b0f62a4da3c3a1905a04e114b015", "deployedAtBlock": 61282726 },
-    "attestedRingVerifier": null,
-    "relayDirectory":       null,
-    "crePolicyGate":        null,
-    "creBatchSettlement":   null,
-    "pqAccountFactory":     null,
-    "pqAccountValidator":   null
+    "pqKeyRegistry": {
+      "address": "0x7fc11e0f5d224439b2d710bb1c141913f454ef17",
+      "deployedAtBlock": 61282726
+    },
+    "singleNotePqVerifier": {
+      "address": "0x8ad3c8f52f17b0f62a4da3c3a1905a04e114b015",
+      "deployedAtBlock": 61282726
+    },
+    "attestedRingVerifier": {
+      "address": "0xa06a0488d2ddfb267cc6f090b97bfc2bd9870612",
+      "deployedAtBlock": 61403357
+    },
+    "relayDirectory": null,
+    "crePolicyGate": null,
+    "creBatchSettlement": null,
+    "pqAccountFactory": null,
+    "pqAccountValidator": null
   },
-
+  "accounts": {
+    "$comment": "Public identities, not contracts. The attester's authority is its FORS key registered in pqKeyRegistry; its ECDSA key did one thing \u2014 register \u2014 and has no power now.",
+    "attester": "0x8d47981ac51628fa19bf8b32afdda09f2d72d257"
+  },
   "pools": [
     {
       "$comment": "SINGLE_NOTE_PQ: post-quantum, NOT anonymous on chain. docs/settlement-paths.md.",
@@ -36,9 +49,16 @@
       "proofMode": "SINGLE_NOTE_PQ",
       "verifier": "singleNotePqVerifier",
       "deployedAtBlock": 61282726
+    },
+    {
+      "$comment": "RING_8: the recommended path. 8 commitments in calldata, each proven a real deposit; the ZKBoo proof is verified off-chain and attested under the attester's FORS key.",
+      "address": "0x8b54cc1b008eafa270740d847e45954f10dbf150",
+      "denomination": 1000000,
+      "proofMode": "RING_8",
+      "verifier": "attestedRingVerifier",
+      "deployedAtBlock": 61403359
     }
   ],
-
   "erc4337": {
     "$comment": "All three EntryPoints verified deployed on Arc testnet. The public RPC is NOT a bundler (eth_supportedEntryPoints: method not supported).",
     "entryPoints": {
@@ -50,7 +70,6 @@
     "bundlerUrl": "https://api.pimlico.io/v2/arc-testnet/rpc",
     "bundlerApiKeyEnv": "PIMLICO_API_KEY"
   },
-
   "services": {
     "$comment": "Endpoints, not keys. Each is null until that service is hosted.",
     "graphUrl": null,

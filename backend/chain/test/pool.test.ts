@@ -12,7 +12,7 @@ import { ARC_TESTNET, POOL_ABI, createPoolClient } from '../pool.ts';
 // really goes wrong between a contract and its client.
 // From deployments/arc-testnet.json, never a second copy: a test that pinned
 // its own address would keep passing against a pool nobody uses any more.
-const POOL = poolFor(1_000_000).address as Address;
+const POOL = poolFor(1_000_000, 'SINGLE_NOTE_PQ').address as Address;
 const VERIFIER = requireContract('singleNotePqVerifier') as Address;
 const USDC = deployment.tokens.usdc.address;
 

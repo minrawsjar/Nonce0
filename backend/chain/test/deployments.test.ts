@@ -34,9 +34,17 @@ for (const pool of deployment.pools) {
       'function denomination() view returns (uint256)',
       'function verifier() view returns (address)',
       'function token() view returns (address)',
+      'function capabilities() view returns ((uint8 proofMode, uint8 ringSize, bytes32 verifierId, uint256 denomination, bool requiresCommitReveal))',
     ]);
     const read = (functionName: 'denomination' | 'verifier' | 'token') =>
       client.readContract({ address: pool.address, abi, functionName });
+
+    // The mode is what decides whether a note can ever be spent here, so the
+    // config's claim is checked against what the pool itself reports.
+    const caps = await client.readContract({ address: pool.address, abi, functionName: 'capabilities' });
+    const MODES = ['RING_8', 'SINGLE_NOTE_PQ', 'ATTESTED_OFFCHAIN'] as const;
+    assert.equal(MODES[caps.proofMode], pool.proofMode, `the pool reports ${MODES[caps.proofMode]}`);
+    assert.equal(caps.ringSize, pool.proofMode === 'RING_8' ? 8 : 1, 'ring size follows the mode');
 
     assert.equal(await read('denomination'), BigInt(pool.denomination), 'denomination');
     assert.equal(String(await read('token')).toLowerCase(), deployment.tokens.usdc.address, 'token');
@@ -64,3 +72,25 @@ for (const [version, address] of Object.entries(deployment.erc4337.entryPoints))
     assert.ok(await hasCode(address), `EntryPoint ${version}: no code at ${address}`);
   });
 }
+
+test('the ring verifier trusts the attester the config names, and that attester is registered', async () => {
+  const verifier = deployment.contracts.attestedRingVerifier;
+  if (verifier === null) return; // not deployed: nothing to check
+  const attester = await client.readContract({
+    address: verifier.address,
+    abi: parseAbi(['function attester() view returns (address)']),
+    functionName: 'attester',
+  });
+  assert.equal(String(attester).toLowerCase(), deployment.accounts.attester, 'config and chain disagree on who attests');
+
+  // An attester with no registered key would make every spend revert with
+  // NotRegistered — a pool that accepts deposits and can never pay out.
+  const [pkCommitment, , useCount, maxUses] = await client.readContract({
+    address: deployment.contracts.pqKeyRegistry!.address,
+    abi: parseAbi(['function stateOf(address) view returns ((bytes32,bytes32,uint64,uint64,uint64,uint64))']),
+    functionName: 'stateOf',
+    args: [deployment.accounts.attester],
+  }) as unknown as readonly [string, string, bigint, bigint];
+  assert.notEqual(pkCommitment, `0x${'0'.repeat(64)}`, 'the attester has no registered FORS key');
+  assert.ok(useCount < maxUses, `the attester's few-time budget is spent (${useCount}/${maxUses}) — rotate it`);
+});

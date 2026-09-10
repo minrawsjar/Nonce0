@@ -47,6 +47,7 @@ export interface Deployment {
   };
   readonly tokens: { readonly usdc: { readonly address: Address; readonly decimals: number } };
   readonly contracts: Readonly<Record<ContractName, DeployedContract | null>>;
+  readonly accounts: { readonly attester: Address };
   readonly pools: readonly PoolDeployment[];
   readonly erc4337: {
     readonly entryPoints: Readonly<Record<'v0.6' | 'v0.7' | 'v0.8', Address>>;
@@ -85,6 +86,7 @@ function validate(d: typeof raw): Deployment {
     if (!(p.verifier in d.contracts)) bad(`pools[${i}].verifier`, `names no known contract (${p.verifier})`);
   });
   for (const [v, a] of Object.entries(d.erc4337.entryPoints)) address(a, `erc4337.entryPoints.${v}`);
+  address(d.accounts.attester, 'accounts.attester');
   return d as unknown as Deployment;
 }
 
@@ -108,11 +110,18 @@ export function requireService(name: ServiceName): string {
   return url;
 }
 
-/** The pool for a denomination, in the smallest unit (1 USDC = 1_000_000). */
-export function poolFor(denomination: number): PoolDeployment {
-  const pool = deployment.pools.find((p) => p.denomination === denomination);
+/**
+ * The pool for a denomination AND proof mode. Both are required: there can be
+ * two pools at one denomination, and they are not interchangeable — a note
+ * made for one can never be spent in the other. A RING_8 note has an AES
+ * commitment; a SINGLE_NOTE_PQ verifier recomputes a keccak one and will never
+ * match it, so a deposit into the wrong pool is USDC locked for good. Asking
+ * by denomination alone would pick one silently.
+ */
+export function poolFor(denomination: number, proofMode: PoolDeployment['proofMode']): PoolDeployment {
+  const pool = deployment.pools.find((p) => p.denomination === denomination && p.proofMode === proofMode);
   if (pool === undefined) {
-    throw new Error(`no ${denomination} pool is deployed on ${deployment.network.name}`);
+    throw new Error(`no ${proofMode} pool at ${denomination} is deployed on ${deployment.network.name}`);
   }
   return pool;
 }
