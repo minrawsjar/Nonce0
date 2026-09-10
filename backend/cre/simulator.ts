@@ -64,6 +64,13 @@ export interface CreSimulatorOptions {
   readonly nullifierSpent: (spend: PrivateSpend) => Promise<boolean>;
   /** Optional pre-deadline score. Absent: an intent fires at its deadline. */
   readonly readFreshScore?: () => Promise<{ score: PrivacyScore; observedAt: UnixSeconds } | null>;
+  /**
+   * Told when a pass fails for an intent that will be retried. Without it a
+   * payment stuck at READY_TO_RELEASE gave no signal at all — the retry is
+   * right, the silence was not. Receives the intent id and the error; never a
+   * recipient or a spend, so an operator can wire it to a log safely.
+   */
+  readonly onError?: (intentId: IntentId, error: unknown) => void;
   readonly now?: () => UnixSeconds;
 }
 
@@ -175,6 +182,7 @@ export function createCreSimulator(options: CreSimulatorOptions): CreSimulator {
             moved += 1;
           }
         } catch (error) {
+          options.onError?.(record.intentId, error);
           // Anything after authorize is recoverable: the outbox holds the ONE
           // release for this intent, so the next pass retries it rather than
           // minting another. Never FAILED on a lost acknowledgement.

@@ -30,6 +30,31 @@ key to `msg.sender` at registration — the only thing `msg.sender` ever
 authorises there. Its ECDSA key has had no power since. It is deliberately not
 the deployer.
 
+### First private settlement
+
+`backend/chain/e2e-ring-payment.ts`, run against the live pool:
+
+| | |
+|---|---|
+| Tx | `0x33e7378cbd43796fb5915b75289dce899e3c645487c0d77667fe2164e6a073da` |
+| Block | 61408497 — status 1 |
+| Calldata | **9,764 bytes.** The 1,127,638-byte ZKBoo proof was verified off chain and never touched it |
+| Gas | 555,988 |
+| Events | `PQKeyRegistry` consumed the attester's FORS signature → `PrivatePool` Spent → USDC transfer |
+| Recipient | +1.000000 USDC |
+| Attester index | 0 → 1 of 32 |
+
+The proof was sealed to 1,129,983 bytes, carried as ~35 chunks through six
+relays on fresh paths in 4.6 s, reassembled at the exit, and fired on the
+**privacy-timed branch** — a public-readiness score of 9000 against the 5000
+the intent asked for — rather than at its deadline. Its status was read back
+through the mesh as SETTLED.
+
+The pool was seeded with 8 decoy notes by `backend/chain/seed-ring.ts`, all
+from one address. That does not reveal which member a spend used — the proof
+is zero knowledge — but it is a test ring, not an anonymity set. Their secrets
+are in `backend/.env`.
+
 **Do not deposit a RING_8 note into the SINGLE_NOTE_PQ pool below, or the
 reverse.** A RING_8 commitment is AES-based; the single-note verifier recomputes
 a keccak one and will never match it. That deposit is locked for good.
