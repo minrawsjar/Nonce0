@@ -57,6 +57,7 @@ import {
   type ProtocolCapabilities,
   type TxHash,
 } from '@opaque/protocol-types';
+import { toHex } from '@opaque/protocol-types/codecs.js';
 
 /** Arc Testnet. Chain id verified live against rpc.testnet.arc.io. */
 export const ARC_TESTNET: Chain = {
@@ -277,7 +278,8 @@ export function createPoolClient(options: PoolClientOptions): OpaquePoolClient {
       // Fresh per spend, and never derived from the spend. A salt an observer
       // could recompute puts the commit back within reach of the front-runner
       // the two-phase flow exists to defeat.
-      const salt = `0x${Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString('hex')}` as Bytes32;
+      // toHex, not Buffer: this client runs in the wallet page too.
+      const salt = toHex(crypto.getRandomValues(new Uint8Array(32))) as Bytes32;
 
       const commitment = (await publicClient.readContract({
         address: getAddress(pool),

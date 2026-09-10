@@ -30,7 +30,10 @@
 // never stored, and never reused across queries — reuse would let the relay
 // that saw two drops know they were the same client.
 
-import { createCipheriv, createDecipheriv, hkdfSync, randomBytes } from 'node:crypto';
+import { gcm } from '@noble/ciphers/aes.js';
+import { concatBytes } from '@noble/ciphers/utils.js';
+import { hkdf } from '@noble/hashes/hkdf.js';
+import { sha256 } from '@noble/hashes/sha2.js';
 import { ml_kem768 } from '@noble/post-quantum/ml-kem.js';
 
 import { ProtocolFailure, type Hex, type RelayId } from '@opaque/protocol-types';
@@ -49,6 +52,8 @@ const HKDF_INFO = 'opaque/v1/mesh/return-key';
 const MAX_SEALED_BYTES = 256 * 1024;
 
 const utf8 = (s: string): Uint8Array => new TextEncoder().encode(s);
+/** OS randomness through the global — the client half of this file runs in a browser. */
+const osRandom = (n: number): Uint8Array => crypto.getRandomValues(new Uint8Array(n));
 
 /**
  * Salted with the KEM ciphertext, which is fresh for every seal. The reply is
@@ -56,8 +61,8 @@ const utf8 = (s: string): Uint8Array => new TextEncoder().encode(s);
  * derives a different key and the GCM tag fails, so a relay cannot graft one
  * client's encapsulation onto another's body.
  */
-const replyKey = (sharedSecret: Uint8Array, kemCiphertext: Uint8Array): Buffer =>
-  Buffer.from(hkdfSync('sha256', sharedSecret, kemCiphertext, utf8(HKDF_INFO), 32));
+const replyKey = (sharedSecret: Uint8Array, kemCiphertext: Uint8Array): Uint8Array =>
+  hkdf(sha256, sharedSecret, kemCiphertext, utf8(HKDF_INFO), 32);
 
 // ── the route ─────────────────────────────────────────────────────────────
 
@@ -103,16 +108,13 @@ export function seal(responseKey: Hex, body: Uint8Array): Hex {
     throw new ProtocolFailure('INVALID_INPUT', 'response key is not an ML-KEM-768 encapsulation key');
   }
   const { cipherText, sharedSecret } = ml_kem768.encapsulate(publicKey);
-  const nonce = randomBytes(NONCE_BYTES);
-  const cipher = createCipheriv('aes-256-gcm', replyKey(sharedSecret, cipherText), nonce);
-  cipher.setAAD(cipherText);
-  const sealed = Buffer.concat([
-    Buffer.from(cipherText),
+  const nonce = osRandom(NONCE_BYTES);
+  // kemCiphertext || nonce || ciphertext || tag — unchanged from node:crypto.
+  const sealed = concatBytes(
+    cipherText,
     nonce,
-    cipher.update(body),
-    cipher.final(),
-    cipher.getAuthTag(),
-  ]);
+    gcm(replyKey(sharedSecret, cipherText), nonce, cipherText).encrypt(body),
+  );
   return toHex(sealed);
 }
 
@@ -120,12 +122,12 @@ export function seal(responseKey: Hex, body: Uint8Array): Hex {
 
 export function createChannel(
   dropRelay: RelayId,
-  random: (n: number) => Uint8Array = (n) => randomBytes(n),
+  random: (n: number) => Uint8Array = osRandom,
 ): ResponseChannel {
   // ml_kem768 wants 64 bytes of seed. Injected so a test reproduces; a real
   // client leaves this defaulted to the OS.
   const { publicKey, secretKey } = ml_kem768.keygen(random(64));
-  const dropId = Buffer.from(random(DROP_ID_BYTES)).toString('hex');
+  const dropId = toHex(random(DROP_ID_BYTES)).slice(2);
 
   return {
     responseKey: toHex(publicKey),
@@ -139,19 +141,16 @@ export function createChannel(
       }
       const cipherText = bytes.subarray(0, KEM_CIPHERTEXT_BYTES);
       const nonce = bytes.subarray(KEM_CIPHERTEXT_BYTES, KEM_CIPHERTEXT_BYTES + NONCE_BYTES);
-      const tagAt = bytes.length - GCM_TAG_BYTES;
-      const body = bytes.subarray(KEM_CIPHERTEXT_BYTES + NONCE_BYTES, tagAt);
 
       // ML-KEM decapsulation is implicit-rejection: a corrupt ciphertext
       // yields a wrong-but-well-formed shared secret rather than an error, so
       // the GCM tag below is what actually rejects it. That is by design and
       // the reason this must never be "if decapsulate throws".
       const sharedSecret = ml_kem768.decapsulate(cipherText, secretKey);
-      const decipher = createDecipheriv('aes-256-gcm', replyKey(sharedSecret, cipherText), nonce);
-      decipher.setAAD(cipherText);
-      decipher.setAuthTag(bytes.subarray(tagAt));
+      // gcm wants ciphertext and tag together, which is exactly bytes[..].
+      const sealedBody = bytes.subarray(KEM_CIPHERTEXT_BYTES + NONCE_BYTES);
       try {
-        return Buffer.concat([decipher.update(body), decipher.final()]);
+        return gcm(replyKey(sharedSecret, cipherText), nonce, cipherText).decrypt(sealedBody);
       } catch {
         throw new ProtocolFailure('INVALID_INPUT', 'sealed reply does not authenticate');
       }

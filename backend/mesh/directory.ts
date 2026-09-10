@@ -121,8 +121,18 @@ function encodeEntry(entry: DirectoryEntry): Uint8Array {
   ]);
 }
 
+/**
+ * Byte-wise lexicographic order — what Buffer.compare did, without Buffer, so
+ * the client can verify a directory in the browser before it trusts a key.
+ */
+function compareBytes(a: Uint8Array, b: Uint8Array): number {
+  const n = Math.min(a.length, b.length);
+  for (let i = 0; i < n; i++) if (a[i] !== b[i]) return a[i]! - b[i]!;
+  return a.length - b.length;
+}
+
 export function canonicalBytes(directory: RelayDirectory): Uint8Array {
-  const entries = directory.entries.map(encodeEntry).sort(Buffer.compare);
+  const entries = directory.entries.map(encodeEntry).sort(compareBytes);
   return canonical([
     utf8(DIRECTORY_DOMAIN),
     // Binds the mesh wire version, so a v1 directory can never be replayed as

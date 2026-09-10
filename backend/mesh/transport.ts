@@ -25,8 +25,18 @@
 //
 // No X25519 and no ECDH anywhere in this path — V1 forbids an elliptic curve
 // in application relay encryption.
+//
+// Isomorphic on purpose. The CLIENT builds the onion, and the client is a
+// browser — so this file uses @noble for AES-256-GCM and HKDF and the global
+// `crypto` for randomness, never node:crypto or Buffer. It used to, which meant
+// a browser could not build a single layer. test/crypto-parity.test.ts pins
+// @noble against node:crypto byte for byte, so relays built from the earlier
+// image still open what browsers seal now.
 
-import { createCipheriv, createDecipheriv, hkdfSync, randomBytes, timingSafeEqual } from 'node:crypto';
+import { gcm } from '@noble/ciphers/aes.js';
+import { equalBytes } from '@noble/ciphers/utils.js';
+import { hkdf } from '@noble/hashes/hkdf.js';
+import { sha256 } from '@noble/hashes/sha2.js';
 import { ml_kem768 } from '@noble/post-quantum/ml-kem.js';
 
 import { ProtocolFailure, type Hex, type RelayId } from '@opaque/protocol-types';
@@ -124,6 +134,11 @@ export function generateRelayKeypair(keyEpoch = 1n): RelayKeypair {
 // ── framing ───────────────────────────────────────────────────────────────
 
 const utf8 = (s: string): Uint8Array => new TextEncoder().encode(s);
+const text = (b: Uint8Array): string => new TextDecoder().decode(b);
+/** OS randomness, through the global every browser and Node >=19 provides. */
+const random = (n: number): Uint8Array => crypto.getRandomValues(new Uint8Array(n));
+/** Unprefixed hex — the form hopLocalId has always travelled in. */
+const bareHex = (b: Uint8Array): string => toHex(b).slice(2);
 
 function frameHeaderBytes(h: {
   hopLocalId: string;
@@ -166,9 +181,9 @@ export function decodeFrame(bytes: Uint8Array): MeshEnvelope {
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   if (bytes[0] !== 1) throw new ProtocolFailure('UNSUPPORTED_VERSION', 'unknown mesh frame version');
 
-  const hopLocalId = Buffer.from(bytes.slice(1, 1 + HOP_LOCAL_ID_BYTES)).toString('hex');
+  const hopLocalId = bareHex(bytes.slice(1, 1 + HOP_LOCAL_ID_BYTES));
   const hopIdRaw = bytes.slice(1 + HOP_LOCAL_ID_BYTES, 1 + HOP_LOCAL_ID_BYTES + HOP_ID_BYTES);
-  const hopId = Buffer.from(hopIdRaw).toString('utf8').replace(/\0+$/, '') as RelayId;
+  const hopId = text(hopIdRaw).replace(/\0+$/, '') as RelayId;
 
   const keyEpoch = view.getBigUint64(1 + HOP_LOCAL_ID_BYTES + HOP_ID_BYTES, false);
   const expiresAt = view.getBigUint64(1 + HOP_LOCAL_ID_BYTES + HOP_ID_BYTES + 8, false);
@@ -191,18 +206,20 @@ export function decodeFrame(bytes: Uint8Array): MeshEnvelope {
   };
 }
 
-function hopKey(sharedSecret: Uint8Array, hopLocalId: string): Buffer {
+function hopKey(sharedSecret: Uint8Array, hopLocalId: string): Uint8Array {
   // The hop-local id is the salt, so two layers that happened to share a
-  // shared secret still derive different AEAD keys.
-  return Buffer.from(hkdfSync('sha256', sharedSecret, utf8(hopLocalId), utf8(HKDF_INFO), 32));
+  // shared secret still derive different AEAD keys. NOTE the salt is the UTF-8
+  // of the HEX STRING, not its 16 raw bytes — that is what every deployed relay
+  // derives, and the parity test pins it.
+  return hkdf(sha256, sharedSecret, utf8(hopLocalId), utf8(HKDF_INFO), 32);
 }
 
 function seal(hop: PathHop, plaintext: Uint8Array, expiresAt: bigint): MeshEnvelope {
   const { cipherText, sharedSecret } = ml_kem768.encapsulate(fromHex(hop.kemPublicKey));
 
   // Independent per hop — property 1. Tied to nothing else in the message.
-  const hopLocalId = randomBytes(HOP_LOCAL_ID_BYTES).toString('hex');
-  const nonce = randomBytes(NONCE_BYTES);
+  const hopLocalId = bareHex(random(HOP_LOCAL_ID_BYTES));
+  const nonce = random(NONCE_BYTES);
 
   const header = {
     hopLocalId,
@@ -212,9 +229,8 @@ function seal(hop: PathHop, plaintext: Uint8Array, expiresAt: bigint): MeshEnvel
     ciphertextLength: plaintext.length + GCM_TAG_BYTES,
   };
 
-  const cipher = createCipheriv('aes-256-gcm', hopKey(sharedSecret, hopLocalId), nonce);
-  cipher.setAAD(headerAad(header));
-  const body = Buffer.concat([cipher.update(plaintext), cipher.final(), cipher.getAuthTag()]);
+  // ciphertext || 16-byte tag — the same layout node:crypto produced.
+  const body = gcm(hopKey(sharedSecret, hopLocalId), nonce, headerAad(header)).encrypt(plaintext);
 
   return {
     version: MESH_VERSION,
@@ -244,11 +260,9 @@ function open(envelope: MeshEnvelope, secretKey: Hex): Uint8Array {
   // actually rejects it, one line below.
   const sharedSecret = ml_kem768.decapsulate(kem, fromHex(secretKey));
 
-  const decipher = createDecipheriv('aes-256-gcm', hopKey(sharedSecret, envelope.hopLocalId), nonce);
-  decipher.setAAD(headerAad({ ...envelope, ciphertextLength: sealed.length }));
-  decipher.setAuthTag(sealed.slice(sealed.length - GCM_TAG_BYTES));
+  const aad = headerAad({ ...envelope, ciphertextLength: sealed.length });
   try {
-    return Buffer.concat([decipher.update(sealed.slice(0, sealed.length - GCM_TAG_BYTES)), decipher.final()]);
+    return gcm(hopKey(sharedSecret, envelope.hopLocalId), nonce, aad).decrypt(sealed);
   } catch {
     throw new ProtocolFailure('INVALID_INPUT', 'envelope failed authentication');
   }
@@ -389,7 +403,7 @@ export function peelLayer(input: {
   const bodyLength = new DataView(plaintext.buffer, plaintext.byteOffset, plaintext.byteLength).getUint32(0, false);
   if (bodyLength + 4 > plaintext.length) throw new ProtocolFailure('INVALID_INPUT', 'padded frame declares a bad length');
 
-  const parsed: unknown = JSON.parse(Buffer.from(plaintext.slice(4, 4 + bodyLength)).toString('utf8'));
+  const parsed: unknown = JSON.parse(text(plaintext.slice(4, 4 + bodyLength)));
   if (typeof parsed !== 'object' || parsed === null) {
     throw new ProtocolFailure('INVALID_INPUT', 'layer plaintext is not an object');
   }
@@ -425,5 +439,5 @@ export function safeEqualHex(a: Hex, b: Hex): boolean {
   const left = fromHex(a);
   const right = fromHex(b);
   if (left.length !== right.length) return false;
-  return timingSafeEqual(left, right);
+  return equalBytes(left, right);
 }
