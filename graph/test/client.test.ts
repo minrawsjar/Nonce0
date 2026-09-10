@@ -10,9 +10,10 @@ test('Graph client requests only the public pool denomination bucket', async () 
   let body = '';
   const client = new GraphHttpClient({
     endpoint: 'https://example.invalid/graphql',
+    now: () => 1_000n,
     fetch: async (_url, init) => {
       body = String(init?.body);
-      return new Response(JSON.stringify({ data: { _meta: { hasIndexingErrors: false, block: { number: '12' } }, ringPool: null, ringMembers: [] } }), { status: 200 });
+      return new Response(JSON.stringify({ data: { _meta: { hasIndexingErrors: false, block: { number: '12', timestamp: 990 } }, ringMembers: [] } }), { status: 200 });
     },
   });
   await client.getRingSnapshot(
@@ -20,6 +21,22 @@ test('Graph client requests only the public pool denomination bucket', async () 
   );
   assert.match(body, /20000000/);
   assert.doesNotMatch(body, /realCommitment|exclude/);
+});
+
+test('a funding bucket reaches selection as a share, and a lagging index is refused', async () => {
+  const member = (id: string, bucket: number | null) => ({ id: `0x${id.repeat(64)}`, enrolledAt: '1', timesUsedInRing: 2, fundingConcentrationBucket: bucket, hasOtherActivity: null });
+  const at = (timestamp: number) => new GraphHttpClient({
+    endpoint: 'https://example.invalid/graphql', now: () => 1_000n,
+    fetch: async () => new Response(JSON.stringify({ data: {
+      _meta: { hasIndexingErrors: false, block: { number: 12, timestamp } }, // as graph-node sends it
+      ringMembers: [member('a', null), member('b', 1), member('c', 2), member('d', 3)],
+    } }), { status: 200 }),
+  });
+  const scope = { chainId: asChainId(5_042_002n), pool: `0x${'11'.repeat(20)}` as Address, denomination: 1_000_000 as never };
+  const snapshot = await at(990).getRingSnapshot(scope);
+  assert.deepEqual(snapshot.candidates.map((c) => c.fundingCluster), [null, null, 'concentrated', 'concentrated']);
+  assert.equal(snapshot.candidates[0]?.timesUsedInRing, 2);
+  await assert.rejects(at(1).getRingSnapshot(scope), (error: unknown) => error instanceof ProtocolFailure && error.code === 'STALE_OBSERVATION');
 });
 
 test('Graph relay health cannot replace a pinned KEM key', async () => {

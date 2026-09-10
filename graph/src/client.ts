@@ -62,14 +62,17 @@ export class GraphHttpClient implements GraphSelectionClient {
     this.#maxAge = options.maxObservationAgeSeconds ?? 300n;
     this.#now = options.now ?? (() => BigInt(Math.floor(Date.now() / 1000)));
   }
-  async #query<T>(query: string, variables: Record<string, unknown>): Promise<{ data: T; block: bigint }> {
+  async #query<T>(query: string, variables: Record<string, unknown>): Promise<{ data: T; block: bigint; blockTime: unknown }> {
     const response = await this.#fetch(this.#endpoint, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ query, variables }) });
     if (!response.ok) throw new ProtocolFailure('GRAPH_UNAVAILABLE', `Graph returned HTTP ${response.status}`, true);
-    const body = await response.json() as { data?: T & { _meta?: { hasIndexingErrors?: unknown; block?: { number?: unknown } } }; errors?: unknown[] };
+    const body = await response.json() as { data?: T & { _meta?: { hasIndexingErrors?: unknown; block?: { number?: unknown; timestamp?: unknown } } }; errors?: unknown[] };
     if (body.errors !== undefined || body.data === undefined) throw new ProtocolFailure('GRAPH_UNAVAILABLE', 'Graph returned an invalid response', true);
     const meta = body.data._meta;
     if (meta?.hasIndexingErrors !== false || meta.block?.number === undefined) throw new ProtocolFailure('STALE_OBSERVATION', 'Graph indexing metadata is unavailable or unhealthy', true);
-    return { data: body.data, block: decodeBigint(meta.block.number, 'indexed block') };
+    // graph-node sends _meta's Int fields as JSON numbers; block heights and
+    // seconds fit safely, so they are taken as decimal strings here.
+    const decimal = (v: unknown): unknown => (Number.isSafeInteger(v) ? String(v) : v);
+    return { data: body.data, block: decodeBigint(decimal(meta.block.number), 'indexed block'), blockTime: decimal(meta.block.timestamp) };
   }
   #fresh(observedAt: unknown, label: string) {
     const at = asUnixSeconds(observedAt);
@@ -81,18 +84,22 @@ export class GraphHttpClient implements GraphSelectionClient {
   async getRingSnapshot(scope: PoolScope): Promise<RingSnapshot> {
     const safe = asPoolScope(scope);
     const result = await this.#query<{ ringPool: Record<string, unknown> | null; ringMembers: Array<Record<string, unknown>> }>(
-      'query Ring($pool: String!, $denomination: BigInt!) { _meta { hasIndexingErrors block { number } } ringPool(id: $pool) { observedAt } ringMembers(where: { pool: $pool, denomination: $denomination }) { id enrolledAt timesUsedInRing fundingConcentrationBucket hasOtherActivity } }',
+      'query Ring($pool: String!, $denomination: BigInt!) { _meta { hasIndexingErrors block { number timestamp } } ringMembers(first: 1000, where: { pool: $pool, denomination: $denomination }) { id enrolledAt timesUsedInRing fundingConcentrationBucket hasOtherActivity } }',
       { pool: `${poolId(safe)}-${safe.denomination}`, denomination: String(safe.denomination) },
     );
-    const data = result.data;
-    const observedAt = data.ringPool === null
-      ? asUnixSeconds(this.#now()) // an empty bucket cannot satisfy a readiness threshold anyway
-      : this.#fresh(data.ringPool.observedAt, 'ring pool');
-    return { scope: safe, candidates: data.ringMembers.map((m) => ({
+    // Fresh = the INDEX is current, not the pool busy: a quiet pool's last
+    // event can be days old while every member count is still exact.
+    const observedAt = this.#fresh(result.blockTime, 'ring index');
+    return { scope: safe, candidates: result.data.ringMembers.map((m) => ({
       commitment: asNoteCommitment(m.id), enrolledAtBlock: decodeBigint(m.enrolledAt, 'enrolledAt'),
-      // The on-chain verifier intentionally never emits the selected member.
-      // A public "usage" value would be invented data, so the mapping fixes it to 0.
-      timesUsedInRing: Number(m.timesUsedInRing), fundingCluster: m.fundingConcentrationBucket === null ? null : String(m.fundingConcentrationBucket),
+      // Counted from PrivatePool's RingUsed, which names every member of a
+      // ring and never which one signed.
+      timesUsedInRing: Number(m.timesUsedInRing),
+      // selectDecoys groups members by EQUAL fundingCluster and penalises a
+      // group over its share limit (20%). A bucket is a share, not a funder:
+      // only buckets 2–3 (a funder over 25% of the pool) form that group.
+      // 0–1 are known-small, which selection treats exactly like unknown.
+      fundingCluster: m.fundingConcentrationBucket !== null && Number(m.fundingConcentrationBucket) >= 2 ? 'concentrated' : null,
       hasOtherActivity: m.hasOtherActivity === null ? null : Boolean(m.hasOtherActivity),
     })), indexedThroughBlock: result.block, observedAt, policyVersion: 'opaque-privacy-v1' };
   }
@@ -109,7 +116,9 @@ export class GraphHttpClient implements GraphSelectionClient {
       if (pin === undefined) throw new ProtocolFailure('UNTRUSTED_DIRECTORY', `Graph returned unpinned relay ${id}`);
       const commitment = asBytes32(n.kemKeyCommitment);
       const expected = asBytes32(toHex(keccak_256(fromHex(pin.kemPublicKey))));
-      if (commitment !== expected || String(n.endpoint) !== pin.endpoint || decodeBigint(n.keyEpoch, 'keyEpoch') !== pin.keyEpoch || String(n.operatorId) !== pin.operatorId) {
+      // operatorId is not compared: on chain it is the announcing account, in
+      // the directory a label, and the pinned one is what is returned anyway.
+      if (commitment !== expected || String(n.endpoint) !== pin.endpoint || decodeBigint(n.keyEpoch, 'keyEpoch') !== pin.keyEpoch) {
         throw new ProtocolFailure('UNTRUSTED_DIRECTORY', `Graph relay metadata disagrees with pinned relay ${id}`);
       }
       return {

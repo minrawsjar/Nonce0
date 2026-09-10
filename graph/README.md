@@ -13,3 +13,19 @@ accepts a real commitment and never returns a ring or a payment path:
 the relay directory and each fixed-denomination pool. `scopeId` is the canonical
 `poolId(scope)` calculated by the deployment script; passing it as context keeps
 the mapping from accidentally reimplementing protocol hashing.
+
+## Deployed
+
+Subgraph Studio, network `arc-testnet`, slug `opaque`:
+`https://api.studio.thegraph.com/query/1760100/opaque/v0.1.0` (also
+`services.graphUrl` in `deployments/arc-testnet.json`). To ship a new version:
+
+```bash
+node scripts/render-manifest.ts && npx graph codegen subgraph.yaml && npx graph build subgraph.yaml
+npx graph auth <deploy key>          # once, in your own terminal
+npx graph deploy opaque subgraph.yaml --version-label v0.1.1
+```
+
+Then point `services.graphUrl` at the new version. Only the backend's mesh
+exit queries it (`backend/stack.ts`). A wallet reaches it through the mesh and
+never directly (§7.5).

@@ -90,14 +90,16 @@
 
 <dialog id="receive-dialog">
   <form method="dialog" class="dialog-head"><div><p class="eyebrow">Receive on Arc</p><h2>Your Opaque account</h2></div><button value="close" aria-label="Close">×</button></form>
-  <p>Share this address to receive assets on Arc testnet. Private USDC notes are created with Deposit.</p>
+  <p>Your PQ account on Arc testnet: only this browser's post-quantum key can move what it holds. USDC sent here funds deposits once the account is activated. Private USDC notes are created with Deposit.</p>
   <div class="address"><span class="identicon"><i></i></span><code id="receive-address">Starting…</code></div>
   <div class="dialog-actions"><button class="secondary" id="copy-address" type="button">Copy address</button><a class="primary" id="open-explorer" href="https://testnet.arcscan.app" target="_blank" rel="noopener">View on explorer</a></div>
 </dialog>
 <dialog id="account-dialog">
   <form method="dialog" class="dialog-head"><div><p class="eyebrow">Account details</p><h2>Opaque account</h2></div><button value="close" aria-label="Close">×</button></form>
   <div class="detail"><span>Account address</span><code id="account-address">Starting…</code></div>
+  <div class="detail"><span>Account</span><strong id="account-state">—</strong></div>
   <div class="detail"><span>Funding wallet</span><strong id="funding-state">Not connected</strong></div>
+  <button class="secondary" id="activate" type="button" hidden>Activate account</button>
   <button class="primary" id="connect-wallet" type="button">Connect funding wallet</button><p class="status" id="wallet-status" role="status"></p>
 </dialog>
 <script type="module" src="/src/app.ts"></script>

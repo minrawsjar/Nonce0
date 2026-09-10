@@ -164,7 +164,28 @@ async function renderBudget(): Promise<void> {
   note.replaceChildren();
   const code = document.createElement('code');
   code.textContent = state.pkCommitment.slice(0, 18) + '…';
-  note.append('Account key ', code, ' — FORS+C, few-time. Ring payments are authorised by the proof, not by this key.');
+  note.append('Account key ', code, ' — FORS+C, few-time, kept in this browser only. It signs deposits from the account; ring payments are authorised by the proof.');
+
+  const held = await rt.accountBalance(opaqueAddress as `0x${string}`).catch(() => undefined);
+  const balance = held === undefined ? '' : ` · ${held.toFixed(2)} USDC`;
+  el('account-state').textContent = state.active
+    ? `Active${balance} · deposits are signed by its PQ key`
+    : `Not activated${balance} · deposits come from your funding wallet`;
+  el('activate').hidden = state.active;
+}
+
+async function onActivate(): Promise<void> {
+  const button = el<HTMLButtonElement>('activate');
+  if (!await connectFundingWallet()) return;
+  button.disabled = true;
+  setStatus('wallet-status', 'Confirm in your funding wallet: it pays to deploy the account, and gets no power over it…');
+  try {
+    await rt.app.registerWallet();
+    setStatus('wallet-status', 'Activated. Send USDC to the account address, and deposits come from it.');
+    await renderBudget();
+  } catch (error) {
+    setStatus('wallet-status', isRejected(error) ? '' : `Could not activate: ${(error as Error).message}`);
+  } finally { button.disabled = false; }
 }
 
 // ── notes ─────────────────────────────────────────────────────────────────
@@ -182,20 +203,26 @@ async function refreshNotes(): Promise<void> {
 async function onDeposit(): Promise<void> {
   const button = el<HTMLButtonElement>('deposit');
   const status = el('deposit-status');
-  if (!rt.hasWallet) {
-    await connectFundingWallet();
-    return;
+  // An activated account deposits by itself; only the funding-wallet path needs one connected.
+  const fromAccount = (await rt.app.walletState().catch(() => undefined))?.active === true;
+  if (!fromAccount) {
+    if (!rt.hasWallet) {
+      await connectFundingWallet();
+      return;
+    }
+    // This also verifies/switches the chain when an account was already exposed.
+    if (!await connectFundingWallet()) return;
   }
-  // This also verifies/switches the chain when an account was already exposed.
-  if (!await connectFundingWallet()) return;
   button.disabled = true;
-  status.textContent = 'Approve exactly 1 USDC, then confirm the deposit in your funding wallet…';
+  status.textContent = fromAccount
+    ? 'Signing the deposit with your account\'s PQ key; a public bundler submits it…'
+    : 'Approve exactly 1 USDC, then confirm the deposit in your funding wallet…';
   try {
     const note = await rt.app.deposit(rt.scope);
     status.textContent = note.state === 'AVAILABLE'
       ? 'Deposited. The note is on chain and spendable.'
       : `Deposit sent; the note is ${note.state} until the chain confirms it.`;
-    await refreshNotes();
+    await Promise.all([refreshNotes(), renderBudget().catch(() => undefined)]);
   } catch (error) {
     status.textContent = isRejected(error) ? '' : `Deposit failed: ${(error as Error).message}`;
   } finally {
@@ -414,6 +441,7 @@ async function init(): Promise<void> {
   el('copy-address').addEventListener('click', (event) => void copyText(opaqueAddress, event.currentTarget as HTMLButtonElement));
   el('refresh-balance').addEventListener('click', () => void refreshNotes());
   el('connect-wallet').addEventListener('click', () => void connectFundingWallet());
+  el('activate').addEventListener('click', () => void onActivate());
   el('network-button').addEventListener('click', () => void connectFundingWallet());
   document.querySelectorAll<HTMLElement>('[data-back]').forEach((node) => node.addEventListener('click', () => showView('home')));
   renderRingSvg();

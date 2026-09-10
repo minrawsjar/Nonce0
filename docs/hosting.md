@@ -16,10 +16,11 @@ railway login
 railway init --name opaque
 railway add --service opaque-stack
 
-# The two secrets, over stdin, so no value lands in argv or shell history.
+# The secrets, over stdin, so no value lands in argv or shell history.
 set -a; . backend/.env; set +a
 printf %s "$EGRESS_PRIVATE_KEY" | railway variable set EGRESS_PRIVATE_KEY --stdin --skip-deploys
-printf %s "$ATTESTER_FORS_SEED" | railway variable set ATTESTER_FORS_SEED --stdin --skip-deploys
+printf %s "$ATTESTER_FORS_MASTER" | railway variable set ATTESTER_FORS_MASTER --stdin --skip-deploys
+printf %s "$RELAY_OPERATOR_KEY" | railway variable set RELAY_OPERATOR_KEY --stdin --skip-deploys
 
 # Railway ignored railway.json for a CLI-made service; this variable it honours.
 railway variable set RAILWAY_DOCKERFILE_PATH=backend/deploy/stack.Dockerfile --skip-deploys
@@ -36,11 +37,23 @@ The service is not connected to GitHub, so a push does not redeploy it:
 Check it: `https://opaque-stack-production.up.railway.app/stack.json` returns
 the config, and `POST /v1/release` (the egress) returns 404.
 
+What the three secrets do:
+
+- `EGRESS_PRIVATE_KEY` pays for settlements and for the attester's rotations.
+- `ATTESTER_FORS_MASTER` derives every generation of the attester's FORS key
+  (`backend/cre/attester-keys.ts`); the stack rotates it when 4 signatures are
+  left.
+- `RELAY_OPERATOR_KEY` announces the six relays to `RelayDirectory` and
+  reports their aggregate health every 3 minutes, so the subgraph has health
+  to index (§8.2). It holds about 10 USDC of gas and has no other power. It is
+  used only when `PUBLIC_URL` is set: a laptop's loopback relays are never
+  announced.
+
 Things to know:
 
 - **Each redeploy is a new mesh.** You get new relay keys, a new CRE key and a
-  new directory. Payments still in flight are lost; a wallet picks up the new
-  config on reload.
+  new directory, announced on chain under a new key epoch. Payments still in
+  flight are lost; a wallet picks up the new config on reload.
 - **The directory lasts 7 days**, so redeploy at least weekly.
 - **Keep it at one replica.** There is one attester key, and two copies of
   the stack could sign with it at the same index.

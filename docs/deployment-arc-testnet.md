@@ -8,52 +8,107 @@
 
 Chain **5042002**. Explorer: [testnet.arcscan.app](https://testnet.arcscan.app).
 
-## The RING_8 path — the one to use
+## The current stack — the one to use
 
-Deployed after the §6.3 routing decision, by `script/DeployRingPool.s.sol`.
+Deployed by `script/DeployPQStack.s.sol`, then `script/DeployRingPool.s.sol`.
+The registry, the ring verifier and the pool were redeployed together with the
+PQ accounts, so that an attester key that runs out hands over to its
+pre-committed successor instead of locking the pool (see *The attester* below).
 
 | Contract | Address | Block |
 |---|---|---|
-| `AttestedRingVerifier` | `0xA06A0488D2ddfb267cC6F090b97Bfc2Bd9870612` | 61403357 |
-| `PrivatePool` (RING_8, 1 USDC) | `0x8B54Cc1B008eafA270740D847e45954f10DBf150` | 61403359 |
-| attester (account) | `0x8D47981aC51628FA19Bf8b32afDDa09f2d72d257` | registered 61403368 |
+| `PQKeyRegistry` | `0x6eb5b42373191121d31dfc4b5c8571c4eaf58e8f` | 61450879 |
+| `PQValidator` (ERC-7579 validator) | `0xfad5b4149489eaf9bbe402eca4b26f9284046ea2` | 61450879 |
+| `PQAccount` (implementation; accounts are EIP-1167 clones) | `0xeccec6b1e6a2e5367902675c49e577633f705012` | 61450879 |
+| `PQAccountFactory` (1 USDC staked in EntryPoint v0.7) | `0x13beaec42922e3f63fa0dbe5bba270edf46ab214` | 61450880 |
+| `RelayDirectory` | `0xcf588b5b8ab2fa11ccf28a5c0631da4269a36653` | 61450880 |
+| `AttestedRingVerifier` | `0x1b501bbcb3bd32645da3508f7779f8c196a28c85` | 61451611 |
+| `PrivatePool` (RING_8, 1 USDC) | `0x7e01b8a883b4dacc9063326a2e7d3eef0d679b63` | 61451614 |
+| attester (account) | `0x8d47981ac51628fa19bf8b32afdda09f2d72d257` | registered in the registry above |
+
+| Service | Where |
+|---|---|
+| Subgraph (Subgraph Studio, `arc-testnet`) | `https://api.studio.thegraph.com/query/1760100/opaque/v0.1.0` |
+| Stack: six relays, exit, CRE stand-in, egress | `https://opaque-stack-production.up.railway.app` ([hosting.md](hosting.md)) |
+| Bundler (EntryPoint v0.7) | Pimlico's keyless public endpoint, `https://public.pimlico.io/v2/5042002/rpc` |
+| Relay operator (announces and reports health) | `0x07b31f4c273a2b034a57ab6c563d546cb2b56d20` |
 
 Read back from the chain: `capabilities()` returns `RING_8`, ring size 8,
-`requiresCommitReveal` **false** — one transaction per spend, no two-block
-wait. The verifier trusts exactly the attester above, and that attester's FORS
-key is registered in `PQKeyRegistry` with `maxUses = 32`. **It must rotate
-before its 33rd attestation**; the registry refuses the 33rd rather than
-letting forgery odds climb.
+`requiresCommitReveal` **false**: one transaction per spend, and no two-block
+wait.
+
+### The attester
+
+The verifier trusts exactly the attester above, whose FORS key is registered
+with `maxUses = 32`. The stack keeps it alive (`backend/cre/attester-keys.ts`):
+
+- Every generation derives from one master secret.
+- When 4 signatures are left, it rotates to the pre-committed next key.
+- If a key is ever exhausted anyway, for example by a crash at the wrong
+  moment, `PQKeyRegistry.takeover` lets the next key take the account over.
+
+The attester's address is immutable in the verifier, so this is what stands
+between a busy pool and a locked one.
 
 The attester registered from its own address, because the registry binds a
-key to `msg.sender` at registration — the only thing `msg.sender` ever
-authorises there. Its ECDSA key has had no power since. It is deliberately not
-the deployer.
+key to `msg.sender` at registration, and that is the only thing `msg.sender`
+ever authorises there. Its ECDSA key has had no power since, and it is
+deliberately not the deployer.
 
-### First private settlement
+### PQ accounts
 
-`backend/chain/e2e-ring-payment.ts`, run against the live pool:
+A wallet's account is a clone at a CREATE2 address that commits to its FORS
+key commitments. Its keys never leave the browser, and anyone may deploy the
+account, since it comes out the same whoever does. `PQValidator` checks
+`registry.consume` against the whole v0.7 `userOpHash`; a bad signature
+returns `SIG_VALIDATION_FAILED` instead of reverting, and burns nothing. The
+registry reads `block.timestamp` only while a disable is pending, so ordinary
+operations pass ERC-7562's opcode rules at a public bundler.
 
-| | |
-|---|---|
-| Tx | `0x33e7378cbd43796fb5915b75289dce899e3c645487c0d77667fe2164e6a073da` |
-| Block | 61408497 — status 1 |
-| Calldata | **9,764 bytes.** The 1,127,638-byte ZKBoo proof was verified off chain and never touched it |
-| Gas | 555,988 |
-| Events | `PQKeyRegistry` consumed the attester's FORS signature → `PrivatePool` Spent → USDC transfer |
-| Recipient | +1.000000 USDC |
-| Attester index | 0 → 1 of 32 |
+### The Graph and the relay directory (§8)
 
-The proof was sealed to 1,129,983 bytes, carried as ~35 chunks through six
-relays on fresh paths in 4.6 s, reassembled at the exit, and fired on the
-**privacy-timed branch** — a public-readiness score of 9000 against the 5000
-the intent asked for — rather than at its deadline. Its status was read back
-through the mesh as SETTLED.
+The stack announces its six relays to `RelayDirectory`. Each announcement
+carries:
+
+- the id, which is the directory's id right-padded to 32 bytes;
+- `keccak256` of the relay's KEM key;
+- a key epoch that only moves forward.
+
+After that it reports aggregate health every 3 minutes: the share of messages
+handed on, messages per batch, and how often the relay was picked.
+
+The subgraph indexes that feed, plus the pools: deposits, `RingUsed` (the
+whole ring, never the signer) and `DepositFrom`. `DepositFrom` is published
+only as a 0–3 funding-concentration bucket, and only once 5 notes share a
+funder.
+
+At the exit:
+
+- Ring **membership** comes from the chain, and the Graph's use counts and
+  buckets weigh it.
+- Relay **keys** come from the signed directory. Graph health only weighs
+  them, clamped so it cannot exclude a relay.
+
+### Settled on this stack
+
+| | Tx | |
+|---|---|---|
+| Private payment, from opaque.credit | `0xf83b2cf4e750b2dab07922b79449635f69a5ee98b7945268ff72087dee821170` | block 61452895, 559,566 gas, 9,764 bytes of calldata; `RingUsed` names all 8 members |
+| PQ account deposit (`backend/chain/e2e-pq-account.ts`) | `0x7d5e9cbd35535018000f09193a3c07a8387f95ada94b857650fe44d510a5ea64` | a UserOperation signed by the account's FORS key alone, bundled by Pimlico, 666,729 gas paid by the account; key use 0 → 1 of 32 |
 
 The pool was seeded with 8 decoy notes by `backend/chain/seed-ring.ts`, all
-from one address. That does not reveal which member a spend used — the proof
-is zero knowledge — but it is a test ring, not an anonymity set. Their secrets
-are in `backend/.env`.
+from one address. That does not reveal which member a spend used, because the
+proof is zero knowledge. But it is a test ring, not an anonymity set. Their
+secrets are in `backend/.env`.
+
+### Retired
+
+The first RING_8 pool, `0x8B54Cc1B008eafA270740D847e45954f10DBf150`, and its
+verifier, `0xA06A0488D2ddfb267cC6F090b97Bfc2Bd9870612`, trusted the same
+attester under the first registry. That registry had no way out of an
+exhausted key. Their first private settlement was
+`0x33e7378cbd43796fb5915b75289dce899e3c645487c0d77667fe2164e6a073da`
+(555,988 gas). The 5 unspent decoys there are kept, not reused.
 
 **Do not deposit a RING_8 note into the SINGLE_NOTE_PQ pool below, or the
 reverse.** A RING_8 commitment is AES-based; the single-note verifier recomputes
@@ -64,7 +119,7 @@ a keccak one and will never match it. That deposit is locked for good.
 
 | Contract | Address |
 |---|---|
-| `PQKeyRegistry` | `0x7FC11e0f5d224439b2d710BB1c141913F454eF17` |
+| `PQKeyRegistry` (the first one; this pool keeps it) | `0x7FC11e0f5d224439b2d710BB1c141913F454eF17` |
 | `SingleNotePqVerifier` | `0x8ad3c8f52F17B0F62a4dA3c3A1905a04E114B015` |
 | `PrivatePool` | `0x4cfa5843453E782924Bfa7cE6a9E3dAd713Da995` |
 

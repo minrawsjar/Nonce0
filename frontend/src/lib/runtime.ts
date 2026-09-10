@@ -5,11 +5,16 @@
 //
 //   relay keys   the SIGNED directory, verified against a pinned root before a
 //                single relay is contacted. Never a network response.
-//   ring         a mesh query, answered at the exit from the pool's own events.
+//   ring         a mesh query, answered at the exit: members from the pool's
+//                own events, their §8.1 weights from the subgraph.
+//   relay health a mesh query too (the subgraph, via the exit), clamped.
 //   proof        built HERE, in the page: the note secret never leaves it.
 //   intent       sealed here to the CRE key, then chunked across the mesh.
 //   status       a mesh query. The page never opens a connection to the exit.
-//   deposit      the user's own wallet (MetaMask). Attributable by design.
+//   account      LIVE on Arc: FORS keys in IndexedDB, the account deployed by
+//                PQAccountFactory. The funding wallet only pays for that.
+//   deposit      from the account once activated (a UserOperation its PQ key
+//                signs), from the funding wallet before. Attributable either way.
 
 import type {
   CredentialHandle,
@@ -18,17 +23,20 @@ import type {
   PoolScope,
   PrivacyConditions,
   RelayPath,
+  RelaySnapshot,
   RingSnapshot,
   StatusHandle,
 } from '@opaque/protocol-types';
 
 import { createMeshBootstrap } from '../../../backend/mesh/bootstrap.ts';
+import { createGraphHealth } from '../../../backend/mesh/graph-health.ts';
 import type { DirectoryTrustRoot, SignedDirectory } from '../../../backend/mesh/contracts.ts';
 import { createIntentSealer } from '../../../backend/cre/seal-client.ts';
-import { createBrowserPool, createChainObserver } from '../../../backend/chain/wallet-chain.ts';
+import { ARC_AUTHORITY, createAccountPool, createLivePqWallet } from '../../../backend/chain/pq-wallet-chain.ts';
+import { browserPayer, createBrowserPool, createChainObserver } from '../../../backend/chain/wallet-chain.ts';
 import { MarkovPathPolicy } from '../../../graph/src/path-policy.ts';
 import { createNoteVault, createRingClient } from '../../../packages/ring-client/src/index.ts';
-import { createMockPqWallet } from '../../../packages/pq-wallet/src/index.ts';
+import { IndexedDbSignerStore } from '../../../packages/pq-wallet/src/indexeddb-store.ts';
 import { deployment } from '../../../deployments/index.ts';
 import { createPaymentApplication, type AdapterPorts } from './protocol/index.ts';
 import { localNoteStorage } from './note-storage.ts';
@@ -68,6 +76,8 @@ export interface WalletRuntime {
   readRing(): Promise<RingSnapshot>;
   readPrivacy(): Promise<PrivacyConditions>;
   readStatus(handle: StatusHandle): Promise<IntentStatus>;
+  /** The account's USDC (Arc's native balance, 18 decimals, is the same money). */
+  accountBalance(address: `0x${string}`): Promise<number>;
   hasWallet: boolean;
 }
 
@@ -79,18 +89,44 @@ export async function startWallet(config?: StackConfig): Promise<WalletRuntime> 
     denomination: cfg.pool.denomination as PoolScope['denomination'],
   };
 
+  // §8.2 health from the Graph, asked through the mesh (the exit queries the
+  // subgraph) and clamped: it weighs the directory's relays, never adds one.
+  const relayHealth = createGraphHealth({
+    fetchSnapshot: async () => (await query<RelaySnapshot>({ kind: 'RELAY_SNAPSHOT' })).value,
+  });
+
   // VERIFY FIRST: throws before any relay is contacted if the directory does
   // not chain to the pinned root.
   const bootstrap = createMeshBootstrap({
     root: cfg.trustRoot,
     signed: cfg.signedDirectory,
     pathPolicy: new MarkovPathPolicy(),
+    health: relayHealth.health,
     // Big uploads (a ring intent is ~35 chunks) outlast the default poll.
     client: { pollIntervalMs: 250, pollTimeoutMs: 120_000 },
   });
 
   const provider = (globalThis as { ethereum?: unknown }).ethereum as never;
-  const pool = createBrowserPool(provider, cfg.capabilities);
+  const browserPool = createBrowserPool(provider, cfg.capabilities);
+  // The account's FORS keys, encrypted under a non-extractable key, in this
+  // browser and nowhere else. Clearing site data loses the account.
+  const keys = new IndexedDbSignerStore('opaque-pq-account-v1');
+  const wallet = createLivePqWallet({
+    signerStore: keys, walletStore: keys, publicClient: browserPool.publicClient, payer: browserPayer(provider),
+  });
+  const pool: typeof browserPool = {
+    ...browserPool,
+    // Until the account is activated, the funding wallet deposits directly, as
+    // before. After, deposits come from the account: a UserOperation its PQ
+    // key signs, and no wallet popup.
+    async deposit(input) {
+      const state = await wallet.getState();
+      if (!state.active) return browserPool.deposit(input);
+      return createAccountPool({
+        base: browserPool, publicClient: browserPool.publicClient, wallet, account: state.accountAddress, authority: ARC_AUTHORITY,
+      }).deposit(input);
+    },
+  };
   const poolEntry = deployment.pools.find((p) => p.address.toLowerCase() === scope.pool);
   const vault = createNoteVault({
     storage: localNoteStorage(),
@@ -111,9 +147,13 @@ export async function startWallet(config?: StackConfig): Promise<WalletRuntime> 
 
   const query = async <T>(request: Parameters<typeof bootstrap.transport.query>[0]) =>
     (await bootstrap.transport.query(request, await bootstrap.pathFor())) as unknown as { value: T };
+  // Until the first answer, every relay weighs the same. The polls double as
+  // cover traffic (§7.5).
+  void relayHealth.refresh();
+  setInterval(() => void relayHealth.refresh(), 120_000);
 
   const ports: AdapterPorts = {
-    wallet: createMockPqWallet(),
+    wallet,
     ring,
     pool,
     // Keys from the verified directory — the rule on AdapterPorts.graph.
@@ -151,5 +191,6 @@ export async function startWallet(config?: StackConfig): Promise<WalletRuntime> 
     readRing: async () => (await query<RingSnapshot>({ kind: 'RING_SNAPSHOT', scope })).value,
     readPrivacy: async () => (await query<PrivacyConditions>({ kind: 'PRIVACY_CONDITIONS', scope })).value,
     readStatus: async (handle) => (await query<IntentStatus>({ kind: 'INTENT_STATUS', handle })).value,
+    accountBalance: async (address) => Number(await browserPool.publicClient.getBalance({ address })) / 1e18,
   };
 }

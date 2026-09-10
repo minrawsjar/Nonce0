@@ -21,7 +21,9 @@
 // the page. It pays 1 USDC and gas; the note it makes is the one spent.
 // E2E_PROFILE=<dir> keeps the browser profile, so a run that stops after its
 // deposit leaves the note there and the next run spends it instead of paying
-// for another.
+// for another. E2E_PQ=1 deposits from the page's PQ account instead: the
+// funding wallet activates it, Node funds it (standing in for a transfer to
+// the Receive address), and the deposit is a UserOperation its FORS key signs.
 //
 // Uses the Playwright already installed for the wallet SDK's browser test, and
 // the machine's own Chrome (channel: 'chrome') rather than a downloaded build.
@@ -30,7 +32,7 @@
 // THE BROWSER and read `document`, and giving backend the DOM lib to allow them
 // would let server code touch `window` and `document` too.
 import { chromium } from '../../packages/pq-wallet/node_modules/playwright/index.mjs';
-import { createPublicClient, createWalletClient, http, parseAbiItem } from 'viem';
+import { createPublicClient, createWalletClient, http, parseAbiItem, parseEther } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import { asChainId, fromHex } from '@opaque/protocol-types/codecs.js';
 import { deployment, poolFor } from '../../deployments/index.ts';
@@ -64,9 +66,10 @@ if (WALLET_KEY === undefined) {
   await page.addInitScript(([n]) => {
     if (!localStorage.getItem('opaque:notes:v1')) localStorage.setItem('opaque:notes:v1', JSON.stringify({ [n.id]: n }));
   }, [note]);
-} else {
-  const account = privateKeyToAccount(WALLET_KEY);
-  const signer = createWalletClient({ account, chain: ARC_TESTNET, transport: http() });
+}
+const signer = WALLET_KEY === undefined ? undefined : createWalletClient({ account: privateKeyToAccount(WALLET_KEY), chain: ARC_TESTNET, transport: http() });
+if (signer !== undefined) {
+  const account = signer.account;
   await page.exposeFunction('__e2eWallet', async (method: string, params: readonly any[]) => {
     switch (method) {
       case 'eth_accounts': case 'eth_requestAccounts': return [account.address];
@@ -98,7 +101,24 @@ await page.waitForFunction(() => /RING_8/.test(document.getElementById('caps')?.
 step(`capabilities (read from the pool on chain): ${await page.textContent('#caps')}`);
 step(`private balance: ${await page.textContent('#balance')} USDC in ${await page.textContent('#note-count')}`);
 
-if (WALLET_KEY !== undefined && (await page.textContent('#balance')) === '0.00') {
+if (signer !== undefined && process.env['E2E_PQ'] === '1') {
+  await page.click('#account-button');
+  await page.waitForFunction(() => /Active|Not activated/.test(document.getElementById('account-state')?.textContent ?? ''), null, { timeout: 60_000 });
+  if (/Not activated/.test((await page.textContent('#account-state')) ?? '')) {
+    await page.click('#activate');
+    await page.waitForFunction(() => /Activated|Could not activate/.test(document.getElementById('wallet-status')?.textContent ?? ''), null, { timeout: 180_000 });
+    step(`activate (funding wallet pays PQAccountFactory): ${await page.textContent('#wallet-status')}`);
+  }
+  const address = (await page.textContent('#account-address')) as `0x${string}`;
+  if ((await pc.getBalance({ address })) < parseEther('1.1')) {
+    const hash = await signer.sendTransaction({ to: address, value: parseEther('1.2') });
+    await pc.waitForTransactionReceipt({ hash });
+  }
+  step(`PQ account ${address}: ${await page.textContent('#account-state')}`);
+  await page.keyboard.press('Escape');
+}
+
+if (signer !== undefined && (await page.textContent('#balance')) === '0.00') {
   await page.click('#deposit');
   await page.waitForFunction(() => /Deposited|Deposit sent|Deposit failed/.test(document.getElementById('deposit-status')?.textContent ?? ''), null, { timeout: 300_000 });
   step(`deposit (through the page's own button): ${await page.textContent('#deposit-status')}`);

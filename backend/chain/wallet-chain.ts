@@ -12,8 +12,8 @@
 //                            is a known leak in this build, kept visible
 //                            rather than buried: it should cross the mesh.
 
-import type { EIP1193Provider, PublicClient } from 'viem';
-import { parseAbi, parseAbiItem } from 'viem';
+import type { EIP1193Provider, PublicClient, WalletClient } from 'viem';
+import { createWalletClient, custom, parseAbi, parseAbiItem } from 'viem';
 
 import type {
   NoteCommitment,
@@ -23,7 +23,13 @@ import type {
   ProtocolCapabilities,
 } from '@opaque/protocol-types';
 
-import { createPoolClient } from './pool.ts';
+import { ARC_TESTNET, createPoolClient } from './pool.ts';
+
+/** The funding wallet as the PQ account's payer: it pays, and signs nothing for the account. */
+export const browserPayer = (provider: EIP1193Provider | undefined) => async (): Promise<WalletClient> => {
+  if (provider === undefined) throw new Error('no wallet: install MetaMask (or any EIP-1193 wallet) to pay for this');
+  return createWalletClient({ chain: ARC_TESTNET, transport: custom(provider) });
+};
 
 const POOL = parseAbi([
   'function isCommitmentKnown(bytes32) view returns (bool)',

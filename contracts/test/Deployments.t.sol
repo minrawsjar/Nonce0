@@ -22,16 +22,16 @@ contract DeploymentsTest is Test {
 
     function test_readsTheDeployedAddresses() public view {
         assertEq(d.usdc(), 0x3600000000000000000000000000000000000000, "usdc");
-        assertEq(d.contractAddress("pqKeyRegistry"), 0x7FC11e0f5d224439b2d710BB1c141913F454eF17, "registry");
+        assertEq(d.contractAddress("pqKeyRegistry"), 0x6eb5b42373191121d31DFC4B5c8571C4EAf58e8f, "registry");
         assertEq(d.chainId(), 5042002, "chain");
     }
 
     /// null means NOT DEPLOYED, and a script that needs it must stop — with a
     /// message that says which file to edit, not a bare JSON parse failure.
     ///
-    /// The ERC-4337 account factory is the example because it does not exist
-    /// yet — it has not even been written. (This used attestedRingVerifier until
-    /// that was deployed, which is the point: null is a state, not a constant.)
+    /// The CRE policy gate is the example because it waits on Chainlink deploy
+    /// access. (This used attestedRingVerifier, then the account factory, until
+    /// each was deployed, which is the point: null is a state, not a constant.)
     function test_anUndeployedContractIsRefusedByName() public {
         vm.expectRevert(bytes("crePolicyGate is not deployed: set it in ../deployments/arc-testnet.json"));
         d.contractAddress("crePolicyGate");

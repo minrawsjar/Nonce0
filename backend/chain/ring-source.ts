@@ -1,16 +1,14 @@
-// A ring source read straight from the pool's Deposited events.
+// The exit's ring: MEMBERSHIP from the pool's own Deposited events, and the
+// §8.1 weights — use counts, funding buckets — from the subgraph.
 //
-// The subgraph is not deployed, and a ring has to be REAL deposits: a decoy
-// the pool has never seen makes spend() revert with UnknownCommitment. The
-// pool's own events are exactly what the subgraph would index, so this reads
-// the same facts from the same source, just without the index in between.
+// Membership never comes from the Graph. A ring has to be real deposits (a
+// decoy the pool has never seen makes spend() revert with UnknownCommitment),
+// and an index that could add members could hand a wallet seven decoys it
+// owns, or leave honest ones out. So the Graph only annotates members the
+// chain already named; one it names that the chain does not is dropped.
 //
-// What it cannot know, and says so rather than guessing:
-//   - timesUsedInRing is 0 for every member. A Spent event names a nullifier
-//     and never a ring member — deliberately, since an event that tied the two
-//     together would undo the ring from the indexing side. Reuse is not
-//     observable on chain; that is the privacy property, not a gap.
-//   - fundingCluster and hasOtherActivity are null: unknown, never zero.
+// Without a (fresh) Graph the annotations are unknown, never zero:
+// timesUsedInRing 0, fundingCluster and hasOtherActivity null.
 //
 // Arc serves getLogs windows of 20,000 blocks and refuses 50,000, so the scan
 // pages in 10,000-block windows and only ever re-reads what is new.
@@ -40,6 +38,8 @@ export interface ChainRingSourceOptions {
   readonly deployedAtBlock: bigint;
   /** Relay health for privacy conditions. Keys never come from here. */
   readonly relaySnapshot: () => RelaySnapshot | Promise<RelaySnapshot>;
+  /** The subgraph's view of the same pool. Weights only; see the header. */
+  readonly indexed?: (scope: PoolScope) => Promise<RingSnapshot>;
   readonly now?: () => UnixSeconds;
 }
 
@@ -78,13 +78,21 @@ export function createChainRingSource(options: ChainRingSourceOptions): GraphSel
     if (!sameScope(requested)) {
       throw new ProtocolFailure('INVALID_INPUT', 'this ring source serves a different pool');
     }
-    const head = await refresh();
+    const [head, indexed] = await Promise.all([
+      refresh(),
+      // Down or stale is not fatal: the ring is still the chain's.
+      options.indexed?.(requested).catch(() => undefined),
+    ]);
+    const weights = new Map(indexed?.candidates.map((c) => [c.commitment.toLowerCase(), c]));
     return {
       scope,
-      candidates: [...candidates],
+      candidates: candidates.map((c) => {
+        const w = weights.get(c.commitment);
+        return w === undefined ? c : { ...c, timesUsedInRing: w.timesUsedInRing, fundingCluster: w.fundingCluster, hasOtherActivity: w.hasOtherActivity };
+      }),
       indexedThroughBlock: head,
       observedAt: now(),
-      policyVersion: 'chain-deposited-v1',
+      policyVersion: indexed === undefined ? 'chain-deposited-v1' : 'chain-deposited+graph-v1',
     };
   }
 

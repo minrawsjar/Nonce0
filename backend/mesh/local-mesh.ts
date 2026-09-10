@@ -78,7 +78,9 @@ export function buildLocalMesh(
   for (let i = 1; i <= MIN_POOL_RELAYS; i++) {
     const id = `R${i}` as RelayId;
     const port = basePort + i - 1;
-    const keypair = generateRelayKeypair(1n);
+    // Fresh keys every build, so a fresh epoch: RelayDirectory refuses to
+    // announce a key under an epoch that does not move forward.
+    const keypair = generateRelayKeypair(now);
     secretKeys.set(id, keypair.secretKey);
     ports.set(id, port);
     entries.push({

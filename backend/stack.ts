@@ -9,7 +9,9 @@
 //   PUBLIC_URL=… MESH_CONFIG=mesh/deploy/config node stack.ts    six elsewhere
 //
 // Six relays, the mesh exit (executor + query answering + the CRE stand-in),
-// the release egress, and a test credential authority. Writes the wallet's
+// the release egress, and a test credential authority. The exit reads the
+// subgraph (§8); on a public box the relays announce themselves and report
+// health to RelayDirectory, which is what the subgraph indexes. Writes the wallet's
 // public config to frontend/public/stack.json — the signed relay directory,
 // its trust root, the CRE's public key — so `npm run dev` in frontend/ talks to
 // this and nothing else.
@@ -31,16 +33,18 @@ import { createServer, type RequestListener } from 'node:http';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { createPublicClient, http, parseAbi, parseEventLogs } from 'viem';
+import { createPublicClient, http, nonceManager, parseAbi, parseEventLogs } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 
-import type { ApprovedRelease, PrivacyScore, RelaySnapshot, TxHash, UnixSeconds } from '@opaque/protocol-types';
+import type { ApprovedRelease, RelaySnapshot, RingSnapshot, TxHash, UnixSeconds } from '@opaque/protocol-types';
 import { asChainId, fromHex, spendHash, toHex } from '@opaque/protocol-types/codecs.js';
 
-import { deployment, poolFor, requireContract } from '../deployments/index.ts';
+import { deployment, poolFor, requireContract, requireService } from '../deployments/index.ts';
+import { GraphHttpClient } from '../graph/src/client.ts';
 import { evaluatePublicReadiness } from '../graph/src/privacy-score.ts';
 import { registryAttesterKeys } from './chain/attester-registry.ts';
 import { ARC_TESTNET, createPoolClient, poolSubmitter } from './chain/pool.ts';
+import { relayDirectoryReporter } from './chain/relay-directory.ts';
 import { createChainRingSource } from './chain/ring-source.ts';
 import { issueCredential } from './cre/credential.ts';
 import { createExecutorServer } from './cre/executor-server.ts';
@@ -49,6 +53,7 @@ import { createCreSimulator } from './cre/simulator.ts';
 import { createEgress } from './mesh/egress.ts';
 import type { DirectoryTrustRoot, SignedDirectory } from './mesh/contracts.ts';
 import { verify } from './mesh/directory.ts';
+import { createGraphHealth } from './mesh/graph-health.ts';
 import { buildLocalMesh, serveLocalMesh } from './mesh/local-mesh.ts';
 import type { MeshMessageKind } from './mesh/transport.ts';
 
@@ -117,18 +122,33 @@ const mesh = MESH_CONFIG === undefined
   : { signed: readConfig<SignedDirectory>('directory.json'), root: readConfig<DirectoryTrustRoot>('trust-root.json') };
 // At boot, not at the first payment: an expired directory (7 days) stops here.
 verify(mesh.signed, mesh.root, nowS());
+
+// ── the Graph (§8), asked here at the exit and nowhere else ──────────────
+// The subgraph indexes RelayDirectory and the pool. Keys and ring membership
+// still come from the signed directory and the chain; the Graph weighs them.
+const graph = new GraphHttpClient({ endpoint: requireService('graphUrl'), pinnedRelays: mesh.signed.directory.entries });
+// Clamped, so a hostile index can steer load but never exclude a relay.
+const relayHealth = createGraphHealth({ fetchSnapshot: () => graph.getRelaySnapshot() });
+void relayHealth.refresh();
+setInterval(() => void relayHealth.refresh(), 90_000).unref();
 const relaySnapshot = (): RelaySnapshot => ({
-  // Keys from the SIGNED directory. Health is a flat prior until a Graph feed
-  // is wired: this is what the wallet's path policy weighs, not a measurement.
   nodes: mesh.signed.directory.entries.map((e) => ({
     id: e.id, endpoint: e.endpoint, kemPublicKey: e.kemPublicKey, keyEpoch: e.keyEpoch, operatorId: e.operatorId,
-    reliabilityScore: 9_000 as PrivacyScore, batchOccupancy: 1, recentSelectionCount: 0, lastSeenAt: nowS(),
+    ...relayHealth.health(e), lastSeenAt: nowS(),
   })),
   directoryVersion: mesh.signed.directory.version.toString(),
   observedAt: nowS(),
 });
+// Studio's query endpoint is rate-limited, and the stand-in asks for a score
+// every 3 s per waiting intent.
+let indexedAt = 0;
+let indexedRing: Promise<RingSnapshot> | undefined;
 const ringSource = createChainRingSource({
   publicClient: publicClient as never, scope, deployedAtBlock: BigInt(ring8.deployedAtBlock), relaySnapshot,
+  indexed: (s) => {
+    if (indexedRing === undefined || Date.now() - indexedAt > 30_000) [indexedAt, indexedRing] = [Date.now(), graph.getRingSnapshot(s)];
+    return indexedRing;
+  },
 });
 
 // ── egress, exit, stand-in ───────────────────────────────────────────────
@@ -136,7 +156,7 @@ const egress = createEgress({
   secret: credentialMac,
   submitter: poolSubmitter(createPoolClient({
     account: privateKeyToAccount(env('EGRESS_PRIVATE_KEY') as `0x${string}`),
-    offChain: { pqWallet: 'MOCK', graph: 'LIVE', confidentialExecution: 'SIMULATED', policyScope: 'CRE_WORKFLOW_ONLY' },
+    offChain: { pqWallet: 'LIVE', graph: 'LIVE', confidentialExecution: 'SIMULATED', policyScope: 'CRE_WORKFLOW_ONLY' },
   })),
 });
 await egress.listen(PORTS.egress, LOOPBACK);
@@ -197,6 +217,28 @@ const relays = !('secretKeys' in mesh) ? [] : await serveLocalMesh(mesh, new Map
   ['QUERY', `http://127.0.0.1:${PORTS.exit}/v1/mesh/query`],
 ]), LOOPBACK);
 
+// ── §8.2: this box's relays, announced and reported on chain ─────────────
+// Public deployments only: a loopback endpoint on a public chain would
+// overwrite the hosted relays' entries with addresses nobody can reach.
+const RELAY_OPERATOR_KEY = process.env['RELAY_OPERATOR_KEY'];
+if (PUBLIC_URL !== undefined && RELAY_OPERATOR_KEY !== undefined && relays.length > 0) {
+  const reporter = relayDirectoryReporter({
+    publicClient: publicClient as never,
+    operator: privateKeyToAccount(RELAY_OPERATOR_KEY as `0x${string}`, { nonceManager }),
+    directory: requireContract('relayDirectory') as never,
+    entries: mesh.signed.directory.entries,
+    relays,
+  });
+  // In the background: the wallet can use the mesh before the Graph sees it.
+  void reporter.announce().then(reporter.report).then(
+    () => {
+      log('  relays announced to RelayDirectory; reporting health every 3 min');
+      setInterval(() => void reporter.report().catch((e: Error) => log(`  ! relay report failed: ${e.message}`)), 180_000).unref();
+    },
+    (e: Error) => log(`  ! relay announce failed, no health will be reported: ${e.message}`),
+  );
+}
+
 // ── test credential authority ────────────────────────────────────────────
 // Issues for ANY recipient: a stand-in for a real policy authority, which the
 // wallet asks once, out of band, before paying — never during a payment.
@@ -232,7 +274,7 @@ const walletConfig = JSON.stringify({
   cre: { publicKey: intentKeys.publicKey, encryptionKeyId: KEY_ID, policyVersion: POLICY },
   credentialUrl: `${PUBLIC_URL ?? `http://${LOOPBACK}:${PORTS.credentials}`}/v1/credential`,
   pool: { address: ring8.address, denomination: ring8.denomination, proofMode: ring8.proofMode },
-  capabilities: { pqWallet: 'MOCK', graph: 'LIVE', confidentialExecution: 'SIMULATED', policyScope: 'CRE_WORKFLOW_ONLY' },
+  capabilities: { pqWallet: 'LIVE', graph: 'LIVE', confidentialExecution: 'SIMULATED', policyScope: 'CRE_WORKFLOW_ONLY' },
 }, bigintReplacer, 2);
 mkdirSync(dirname(OUT), { recursive: true });
 writeFileSync(OUT, walletConfig);

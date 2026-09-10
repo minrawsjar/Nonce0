@@ -105,6 +105,14 @@ export interface Relay {
    * which message it was.
    */
   readonly undelivered: number;
+  /**
+   * The rest of §8.2's health, as counts: frames accepted, messages a drain
+   * handed on or failed to (`released` includes `undelivered`), and drains
+   * that moved anything. Aggregates, like `undelivered`, and nothing else.
+   */
+  readonly accepted: number;
+  readonly released: number;
+  readonly batches: number;
   /** `host` unset binds every interface; a public box passes 127.0.0.1 and fronts it. */
   listen(port: number, host?: string): Promise<Server>;
   close(): Promise<void>;
@@ -212,6 +220,9 @@ export function createRelay(options: RelayOptions): Relay {
   // layer this relay just consumed, so it introduces no new identifier.
   const peeled = new Map<string, PeelResult>();
   let undelivered = 0;
+  let accepted = 0;
+  let released = 0;
+  let batches = 0;
 
   const endpointOf = (id: RelayId): string => {
     const entry = directory.entries.find((e) => e.id === id);
@@ -261,6 +272,8 @@ export function createRelay(options: RelayOptions): Relay {
       }),
     );
     undelivered += outcomes.filter((o) => o.status === 'rejected').length;
+    released += due.length;
+    if (due.length > 0) batches++;
     return due.length;
   }
 
@@ -285,6 +298,7 @@ export function createRelay(options: RelayOptions): Relay {
       peeled.delete(inner.hopLocalId);
       throw new ProtocolFailure('MESH_UNAVAILABLE', 'relay queue is full', true);
     }
+    accepted++;
     // A bare acknowledgement. No id: anything returned here is something the
     // caller and this relay both hold, which is a correlation handle.
     send(res, 202, { status: 'ACCEPTED' });
@@ -355,6 +369,15 @@ export function createRelay(options: RelayOptions): Relay {
     },
     get undelivered() {
       return undelivered;
+    },
+    get accepted() {
+      return accepted;
+    },
+    get released() {
+      return released;
+    },
+    get batches() {
+      return batches;
     },
     listen(port: number, host?: string): Promise<Server> {
       server = createServer(handler);
