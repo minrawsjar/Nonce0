@@ -126,9 +126,12 @@ verify(mesh.signed, mesh.root, nowS());
 // ── the Graph (§8), asked here at the exit and nowhere else ──────────────
 // The subgraph indexes RelayDirectory and the pool. Keys and ring membership
 // still come from the signed directory and the chain; the Graph weighs them.
-const graph = new GraphHttpClient({ endpoint: requireService('graphUrl'), pinnedRelays: mesh.signed.directory.entries });
+// Relays report every 10 minutes (each report is a transaction), so a health
+// observation is fresh for 15: one missed report plus indexing lag.
+const HEALTH_MAX_AGE = 900n;
+const graph = new GraphHttpClient({ endpoint: requireService('graphUrl'), pinnedRelays: mesh.signed.directory.entries, maxObservationAgeSeconds: HEALTH_MAX_AGE });
 // Clamped, so a hostile index can steer load but never exclude a relay.
-const relayHealth = createGraphHealth({ fetchSnapshot: () => graph.getRelaySnapshot() });
+const relayHealth = createGraphHealth({ fetchSnapshot: () => graph.getRelaySnapshot(), maxAgeSeconds: HEALTH_MAX_AGE });
 void relayHealth.refresh();
 setInterval(() => void relayHealth.refresh(), 90_000).unref();
 const relaySnapshot = (): RelaySnapshot => ({
@@ -232,8 +235,9 @@ if (PUBLIC_URL !== undefined && RELAY_OPERATOR_KEY !== undefined && relays.lengt
   // In the background: the wallet can use the mesh before the Graph sees it.
   void reporter.announce().then(reporter.report).then(
     () => {
-      log('  relays announced to RelayDirectory; reporting health every 3 min');
-      setInterval(() => void reporter.report().catch((e: Error) => log(`  ! relay report failed: ${e.message}`)), 180_000).unref();
+      log('  relays announced to RelayDirectory; reporting health every 10 min');
+      // ~0.0018 USDC a report: about 0.26 USDC a day at this cadence.
+      setInterval(() => void reporter.report().catch((e: Error) => log(`  ! relay report failed: ${e.message}`)), 600_000).unref();
     },
     (e: Error) => log(`  ! relay announce failed, no health will be reported: ${e.message}`),
   );

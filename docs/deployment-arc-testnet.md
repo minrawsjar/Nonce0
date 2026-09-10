@@ -74,7 +74,7 @@ carries:
 - `keccak256` of the relay's KEM key;
 - a key epoch that only moves forward.
 
-After that it reports aggregate health every 3 minutes: the share of messages
+After that it reports aggregate health every 10 minutes: the share of messages
 handed on, messages per batch, and how often the relay was picked.
 
 The subgraph indexes that feed, plus the pools: deposits, `RingUsed` (the

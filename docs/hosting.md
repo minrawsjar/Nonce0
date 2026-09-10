@@ -44,8 +44,10 @@ What the three secrets do:
   (`backend/cre/attester-keys.ts`); the stack rotates it when 4 signatures are
   left.
 - `RELAY_OPERATOR_KEY` announces the six relays to `RelayDirectory` and
-  reports their aggregate health every 3 minutes, so the subgraph has health
-  to index (§8.2). It holds about 10 USDC of gas and has no other power. It is
+  reports their aggregate health every 10 minutes, so the subgraph has health
+  to index (§8.2). Each report costs about 0.0018 USDC, roughly 0.26 USDC a
+  day, so the 10 USDC it was funded with lasts about five weeks. It has no
+  other power. It is
   used only when `PUBLIC_URL` is set: a laptop's loopback relays are never
   announced.
 
