@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Opaque post-quantum wallet. A local browser demo with real signatures and a simulated network.">
+  <title>Opaque · PQ Wallet</title><link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header><a class="brand" href="/" aria-label="Opaque wallet"><span class="mark">O</span> OPAQUE <span class="brand-sub">/ WALLET</span></a><span class="network"><i></i> Local demo network</span></header>
+  <main>
+    <div class="heading"><div><p class="eyebrow">YOUR BROWSER. YOUR KEYS.</p><h1>Your PQ wallet<span>.</span></h1></div><p class="intro">Create a wallet and try post-quantum signatures.<br>Real signatures. Simulated transactions. No real funds.</p></div>
+    <div id="notice" role="status" aria-live="polite" hidden></div>
+    <div class="workspace">
+      <section class="wallet-card" aria-labelledby="wallet-title">
+        <div class="card-top"><h2 id="wallet-title">Wallet overview</h2><span id="status" class="pill">Not created</span></div>
+        <div id="empty"><div class="empty-symbol" aria-hidden="true">↗</div><h3>A new kind of signing key.</h3><p>Your keys are generated and stored in this browser. Start by creating your local wallet.</p><button id="create" class="primary" data-action="create" disabled>Create wallet <span>↗</span></button></div>
+        <div id="wallet" hidden>
+          <p class="label">ACCOUNT ADDRESS <button id="copy" class="text-button">Copy</button></p><code id="address" class="address"></code>
+          <div class="capacity"><span id="available">6</span><div>actions available<p>before reserving capacity for key changes</p></div></div>
+          <div id="budget" class="budget" aria-label="Signing capacity"></div>
+          <div class="legend"><span><i class="used"></i> Used</span><span><i></i> Available</span><span><i class="reserved"></i> Reserved for key changes</span></div>
+          <div class="stats"><div><span>Current key</span><strong id="epoch">01</strong></div><div><span>Signatures issued</span><strong id="local-count">0 / 8</strong></div><div><span>Accepted on network</span><strong id="chain-count">0</strong></div></div>
+          <button id="register" class="primary" data-action="register" hidden>Activate on demo network <span>↗</span></button>
+        </div>
+        <div class="card-foot"><span aria-hidden="true">◈</span> Keys stay local. Signatures prove the action.</div>
+      </section>
+      <section class="action-card" aria-labelledby="action-title"><div class="card-top"><h2 id="action-title">Sign an action</h2><span class="step">01 → 02</span></div><p class="helper">A signature approves these exact words. Changing the action needs a new signature.</p>
+        <label for="message">Demo action</label><textarea id="message" maxlength="500" rows="3">Approve a demo deposit</textarea>
+        <button id="sign" class="primary dark" data-action="sign" disabled>Sign action <span>↗</span></button>
+        <div id="signed" class="signed" hidden><div class="signed-title">✓ Action signed <span id="signature-size">9,251 bytes</span></div><p class="label">ACTION FINGERPRINT</p><code id="digest"></code><p>A signature uses capacity even before it is submitted.</p><button id="submit" class="secondary" data-action="submit">Submit to demo network →</button></div>
+        <p id="sign-help" class="caption">Create and activate a wallet to sign your first action.</p>
+      </section>
+      <section class="key-card" aria-labelledby="keys-title"><div class="card-top"><h2 id="keys-title">Manage your key</h2><span class="step">LIFECYCLE</span></div>
+        <div class="key-row"><div><h3>Rotate signing key</h3><p>Move to a fresh key, approved by your current key.</p></div><button id="rotate" class="secondary" data-action="rotate" disabled>Rotate ↗</button></div>
+        <div class="key-row"><div><h3>Schedule key disable</h3><p>Start a 30-day waiting period before this key is disabled.</p></div><button id="disable" class="secondary danger" disabled>Disable</button></div>
+        <div id="timelock" class="timelock" hidden><p id="timelock-text"></p><button id="advance" class="text-button" data-action="advance">Advance demo clock by 30 days →</button></div>
+      </section>
+      <section class="activity-card" aria-labelledby="activity-title"><div class="card-top"><h2 id="activity-title">Recent activity</h2><span class="step">THIS BROWSER</span></div><ol id="activity"><li class="no-activity">Your demo transactions will appear here.</li></ol></section>
+    </div>
+    <footer><p><strong>Local proof of concept.</strong> The wallet is saved in this browser. Clearing browser storage loses its keys. Live Arc integration is not connected.</p><span>FORS+C · POST-QUANTUM SIGNATURES</span></footer>
+  </main>
+  <dialog id="disable-dialog"><form method="dialog"><p class="eyebrow">KEY MANAGEMENT</p><h2>Schedule this key for disabling?</h2><p>Your current key will authorize a 30-day waiting period on the demo network. After that, this demo cannot use or recover the disabled key.</p><div class="dialog-actions"><button value="cancel" class="secondary">Cancel</button><button id="confirm-disable" type="button" class="primary dark">Schedule disable</button></div></form></dialog>
+  <script type="module" src="/app.js"></script>
+</body>
+</html>

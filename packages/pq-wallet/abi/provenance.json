@@ -1,0 +1,10 @@
+{
+  "source": "contracts/src/opaque/wallet/PQKeyRegistry.sol",
+  "sourceSha256": "21cfa8f6330f05ba0fdaef3757a1e7f8f68ecc6fa0fc43595d22f669d05fde02",
+  "compiler": "0.8.26",
+  "optimizerRuns": 200,
+  "viaIR": true,
+  "evmVersion": "cancun",
+  "forgeStdCommit": "bf647bd6046f2f7da30d0c2bf435e5c76a780c1b",
+  "note": "Snapshot of the existing original six-field registry. No validator ABI or deployment is claimed."
+}

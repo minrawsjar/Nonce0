@@ -1,0 +1,44 @@
+{
+  "measuredAt": "2026-09-09T12:45:30.532Z",
+  "environment": {
+    "runtime": "v24.10.0",
+    "platform": "linux",
+    "arch": "x64"
+  },
+  "mode": "LOCAL_NODE",
+  "schemeId": "FORS+C/keccak256/k=32,a=8",
+  "parameters": {
+    "k": 32,
+    "a": 8
+  },
+  "iterations": 5,
+  "signatureBytes": 9251,
+  "milliseconds": {
+    "keyGenMedian": 129.440427,
+    "signMedian": 140.45054700000003,
+    "verifyMedian": 2.7181439999999384,
+    "keyGenSamples": [
+      148.840892,
+      120.27138400000001,
+      129.440427,
+      129.94446099999993,
+      127.84382800000003
+    ],
+    "signSamples": [
+      156.51269,
+      142.85589099999999,
+      140.45054700000003,
+      134.478924,
+      126.25889699999993
+    ],
+    "verifySamples": [
+      2.86350699999997,
+      2.7360720000000356,
+      2.565105000000017,
+      2.7181439999999384,
+      2.032956000000013
+    ]
+  },
+  "g2Passed": false,
+  "note": "Node measurements only. No browser, gas, security-level, or live PQ-authority claim."
+}

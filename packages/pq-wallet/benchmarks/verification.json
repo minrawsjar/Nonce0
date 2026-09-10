@@ -1,0 +1,47 @@
+{
+  "recordedAt": "2026-09-09T15:52:38.840743+00:00",
+  "scope": "Local SDK/browser checks and unchanged registry/verifier Solidity tests; no live chain evidence",
+  "typescriptSourceSha256": "2f57ded9a7ba54ade90acb02eb38b20d72219de1868983e224a122f9456d5377",
+  "checks": [
+    {
+      "command": "npx tsc --noEmit",
+      "result": "PASS"
+    },
+    {
+      "command": "node --test test/*.test.ts",
+      "result": "PASS",
+      "note": "Default run has the real-browser case opt-in; complete no-skip run is listed separately."
+    },
+    {
+      "command": "PQ_BROWSER_TESTS=1 PQ_CHROMIUM_EXECUTABLE=/home/manan/.cache/ms-playwright/chromium-1228/chrome-linux64/chrome node --test --test-isolation=none test/*.test.ts",
+      "result": "PASS",
+      "passed": 72,
+      "failed": 0,
+      "skipped": 0
+    },
+    {
+      "command": "forge test --offline --remappings forge-std/=/tmp/opaque-forge-std-check/src/ --match-path test/PQKeyRegistry.t.sol",
+      "cwd": "/tmp/opaque-contract-verification",
+      "result": "PASS",
+      "passed": 13
+    },
+    {
+      "command": "forge test --offline --remappings forge-std/=/tmp/opaque-forge-std-check/src/ --match-path test/ForsVerifier.t.sol",
+      "cwd": "/tmp/opaque-contract-verification",
+      "result": "PASS",
+      "passed": 16
+    },
+    {
+      "command": "git diff --check",
+      "result": "PASS"
+    }
+  ],
+  "forgeStdCommit": "bf647bd6046f2f7da30d0c2bf435e5c76a780c1b",
+  "g2Passed": false,
+  "remaining": [
+    "Approved epoch/payload/deadline/takeover decisions",
+    "LIVE validator/account/factory and deployed configuration",
+    "Actual Arc bundler/EntryPoint compatibility and verification receipts",
+    "Browser memory measurement and independent scheme security review"
+  ]
+}
