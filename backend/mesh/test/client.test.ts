@@ -151,7 +151,9 @@ test('a submitted intent returns the ref the executor issued', async () => {
   }));
   try {
     const transport = createMeshTransport({ pollIntervalMs: 50 });
-    const ref = await transport.submitIntent({ spendHash: '0xaa' } as any, mesh.path);
+    // A realistic intent: submitIntent reads encryptedPayload's size to
+    // decide between one message and a chunked upload.
+    const ref = await transport.submitIntent({ spendHash: '0xaa', encryptedPayload: '0x00' } as any, mesh.path);
     assert.deepEqual(ref, { intentId: 'intent-1', statusHandle: 'handle-1' });
   } finally {
     await mesh.close();
@@ -163,7 +165,7 @@ test('an executor answer with no usable ref is refused, not returned half-built'
   try {
     const transport = createMeshTransport({ pollIntervalMs: 50 });
     await assert.rejects(
-      transport.submitIntent({} as any, mesh.path),
+      transport.submitIntent({ encryptedPayload: '0x00' } as any, mesh.path),
       (error: unknown) => error instanceof ProtocolFailure && error.code === 'MESH_UNAVAILABLE',
     );
   } finally {

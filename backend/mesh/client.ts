@@ -34,12 +34,16 @@ import {
   type PrivacyTransport,
   type RelayPath,
 } from '@opaque/protocol-types';
-import { asMeshQueryResult, encodeBigint, toHex } from '@opaque/protocol-types/codecs.js';
+import { asMeshQueryResult, encodeBigint, fromHex, toHex } from '@opaque/protocol-types/codecs.js';
 
+import { CHUNK_THRESHOLD_BYTES, encodeChunkFrame, payloadHash, splitPayload } from './chunks.ts';
 import { createChannel } from './return-path.ts';
 import { buildOnion, encodeFrame, type FinalPayload, type MeshMessageKind } from './transport.ts';
 
 const utf8 = (s: string): Uint8Array => new TextEncoder().encode(s);
+/** Chunks in flight at once, and how many times a commit may ask again. */
+const CHUNK_CONCURRENCY = 4;
+const COMMIT_ATTEMPTS = 8;
 const text = (b: Uint8Array): string => new TextDecoder().decode(b);
 
 /**
@@ -137,6 +141,87 @@ export function createMeshTransport(options: MeshClientOptions = {}): PrivacyTra
     throw new ProtocolFailure('MESH_UNAVAILABLE', 'no answer arrived before the deadline', true);
   }
 
+  /**
+   * Fire-and-forget: no return channel, so no drop and no poll. The relay's
+   * final hop hands it to egress and discards the answer — which is exactly a
+   * PAYMENT with nothing to report back, and what a chunk is.
+   */
+  async function oneWay(kind: MeshMessageKind, body: Hex, path: RelayPath): Promise<void> {
+    const frame = encodeFrame(
+      buildOnion({
+        path: path.map((n) => ({ id: n.id, kemPublicKey: n.kemPublicKey, keyEpoch: n.keyEpoch })) as never,
+        payload: { kind, body },
+        expiresAt: now() + ttlSeconds,
+      }),
+    );
+    const accepted = await fetchImpl(path[0].endpoint, {
+      method: 'POST',
+      redirect: 'error',
+      headers: { 'content-type': 'application/octet-stream' },
+      body: frame,
+    });
+    if (accepted.status !== 202) {
+      throw new ProtocolFailure('MESH_UNAVAILABLE', `hop 1 answered ${accepted.status}`, true);
+    }
+  }
+
+  const refFrom = (answer: Uint8Array): IntentRef => {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(text(answer));
+    } catch {
+      throw new ProtocolFailure('MESH_UNAVAILABLE', 'the executor returned an unreadable answer');
+    }
+    const ref = parsed as Partial<IntentRef>;
+    if (typeof ref.intentId !== 'string' || typeof ref.statusHandle !== 'string') {
+      throw new ProtocolFailure('MESH_UNAVAILABLE', 'the executor returned no usable intent ref');
+    }
+    return { intentId: ref.intentId, statusHandle: ref.statusHandle } as IntentRef;
+  };
+
+  /**
+   * A sealed intent too large for one message — a RING_8 spend, whose proof is
+   * 1.1 MiB against a 64 KiB mesh. See chunks.ts for what each party sees.
+   */
+  async function submitChunked(input: EncryptedIntent, payload: Uint8Array, path: RelayPath): Promise<IntentRef> {
+    const uploadId = crypto.getRandomValues(new Uint8Array(16));
+    const chunks = splitPayload(payload);
+    const total = chunks.length;
+    // A fresh path per message, so no single entry relay sees the burst.
+    const fresh = async (): Promise<RelayPath> => (pathFor === undefined ? path : pathFor());
+
+    const send = async (indices: readonly number[]): Promise<void> => {
+      // Bounded concurrency. All 35 at once is one burst on the client's own
+      // link; a few at a time spreads it without making the upload slow.
+      for (let i = 0; i < indices.length; i += CHUNK_CONCURRENCY) {
+        await Promise.all(indices.slice(i, i + CHUNK_CONCURRENCY).map(async (index) =>
+          oneWay('PAYMENT', toHex(encodeChunkFrame({ uploadId, index, total, data: chunks[index]! })), await fresh()),
+        ));
+      }
+    };
+
+    // Everything but the payload travels in the commit; the payload is what
+    // was chunked, and its hash is what the exit checks the reassembly against.
+    const { encryptedPayload: _payload, ...header } = input;
+    const commitBody = toHex(utf8(wire({
+      commit: { uploadId: toHex(uploadId), total, payloadHash: payloadHash(payload), intent: header },
+    })));
+
+    await send(chunks.map((_, i) => i));
+    const seen = new Map<number, number>();
+    for (let attempt = 0; attempt < COMMIT_ATTEMPTS; attempt++) {
+      const answer = JSON.parse(text(await roundTrip('PAYMENT', commitBody, await fresh()))) as { missing?: number[] };
+      if (!Array.isArray(answer.missing)) return refFrom(utf8(JSON.stringify(answer)));
+      // Relays delay on purpose, so a chunk reported missing on the first ask
+      // is usually still in flight. Resend only what is missing TWICE running.
+      const resend = answer.missing.filter((i) => (seen.get(i) ?? 0) >= 1);
+      for (const i of answer.missing) seen.set(i, (seen.get(i) ?? 0) + 1);
+      if (resend.length > 0) await send(resend);
+      await new Promise((resolve) => setTimeout(resolve, pollIntervalMs * (attempt + 2)));
+    }
+    throw new ProtocolFailure('MESH_UNAVAILABLE', 'the upload did not complete at the exit', true);
+  }
+
   return {
     async query(request: MeshQuery, path: RelayPath): Promise<MeshQueryResult> {
       const answer = await roundTrip('QUERY', toHex(utf8(wire(request))), path);
@@ -154,18 +239,10 @@ export function createMeshTransport(options: MeshClientOptions = {}): PrivacyTra
     },
 
     async submitIntent(input: EncryptedIntent, path: RelayPath): Promise<IntentRef> {
-      const answer = await roundTrip('PAYMENT', toHex(utf8(wire(input))), path);
-      let parsed: unknown;
-      try {
-        parsed = JSON.parse(text(answer));
-      } catch {
-        throw new ProtocolFailure('MESH_UNAVAILABLE', 'the executor returned an unreadable answer');
-      }
-      const ref = parsed as Partial<IntentRef>;
-      if (typeof ref.intentId !== 'string' || typeof ref.statusHandle !== 'string') {
-        throw new ProtocolFailure('MESH_UNAVAILABLE', 'the executor returned no usable intent ref');
-      }
-      return { intentId: ref.intentId, statusHandle: ref.statusHandle } as IntentRef;
+      const payload = fromHex(input.encryptedPayload);
+      // One message, as it always was, unless it cannot fit one.
+      if (payload.length > CHUNK_THRESHOLD_BYTES) return submitChunked(input, payload, path);
+      return refFrom(await roundTrip('PAYMENT', toHex(utf8(wire(input))), path));
     },
 
     subscribe(handle: MessageHandle, listener: (event: MeshStatusEvent) => void): () => void {

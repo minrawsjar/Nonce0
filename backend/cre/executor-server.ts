@@ -36,8 +36,9 @@ import {
   type TxHash,
   type UnixSeconds,
 } from '@opaque/protocol-types';
-import { assertHex, fromHex } from '@opaque/protocol-types/codecs.js';
+import { assertHex, fromHex, toHex } from '@opaque/protocol-types/codecs.js';
 
+import { ChunkStore, decodeChunkFrame, isChunkFrame, uploadIdFromHex } from '../mesh/chunks.ts';
 import { createQueryAnswerer, decodeMeshQuery, encodeAnswer } from '../mesh/queries.ts';
 import { createExecutor, type OpaqueExecutor } from './executor.ts';
 
@@ -136,7 +137,7 @@ function reviveIntent(raw: unknown): EncryptedIntent {
  * refused — the mesh-to-executor hop had never once delivered anything. The
  * local-mesh test used a stub egress that recorded bytes, so it never tried.
  */
-function unwrapMesh(raw: unknown, expected: 'PAYMENT' | 'QUERY'): unknown {
+function meshBody(raw: unknown, expected: 'PAYMENT' | 'QUERY'): Uint8Array {
   if (typeof raw !== 'object' || raw === null) {
     throw new ProtocolFailure('INVALID_INPUT', 'a mesh delivery must be an object');
   }
@@ -146,12 +147,16 @@ function unwrapMesh(raw: unknown, expected: 'PAYMENT' | 'QUERY'): unknown {
   }
   const body = envelope['body'];
   assertHex(body, 'mesh body');
+  return fromHex(body);
+}
+
+const jsonOf = (bytes: Uint8Array): unknown => {
   try {
-    return JSON.parse(new TextDecoder().decode(fromHex(body)));
+    return JSON.parse(new TextDecoder().decode(bytes));
   } catch {
     throw new ProtocolFailure('INVALID_INPUT', 'mesh body is not JSON');
   }
-}
+};
 
 export function createExecutorServer(options: ExecutorServerOptions = {}): ExecutorServer {
   const executor = options.executor ?? createExecutor(options.now === undefined ? {} : { now: options.now });
@@ -201,16 +206,45 @@ export function createExecutorServer(options: ExecutorServerOptions = {}): Execu
         ...(options.receipt === undefined ? {} : { receipt: options.receipt }),
       });
 
+  // Reassembles intents too large for one mesh message. See mesh/chunks.ts.
+  const chunks = new ChunkStore();
+
   async function meshPayment(req: IncomingMessage, res: ServerResponse): Promise<void> {
-    const ref = await submitIntent(reviveIntent(unwrapMesh(JSON.parse(await readBody(req)), 'PAYMENT')));
-    send(res, 200, ref);
+    const body = meshBody(JSON.parse(await readBody(req)), 'PAYMENT');
+
+    // A chunk: stored, acknowledged. The relay discards the ack — chunks are
+    // one-way — so there is nothing to say beyond "accepted".
+    if (isChunkFrame(body)) {
+      chunks.put(decodeChunkFrame(body));
+      return send(res, 200, { status: 'CHUNK_ACCEPTED' });
+    }
+
+    const message = jsonOf(body) as Record<string, unknown>;
+    const commit = message['commit'];
+    if (typeof commit === 'object' && commit !== null) {
+      const c = commit as Record<string, unknown>;
+      if (typeof c['uploadId'] !== 'string' || typeof c['total'] !== 'number' || typeof c['payloadHash'] !== 'string') {
+        throw new ProtocolFailure('INVALID_INPUT', 'a commit needs uploadId, total and payloadHash');
+      }
+      const done = chunks.take(uploadIdFromHex(c['uploadId']), c['total'], c['payloadHash'] as never);
+      // Not yet: tell the client which to resend. 200 rather than an error,
+      // because an incomplete upload is a normal state of a chunked send.
+      if (done.kind === 'MISSING') return send(res, 200, { missing: done.missing });
+      // The hash already matched inside take(). The intent is the committed
+      // header plus the reassembled ciphertext, revived like any other.
+      const intent = reviveIntent({ ...(c['intent'] as object), encryptedPayload: toHex(done.payload) });
+      return send(res, 200, await submitIntent(intent));
+    }
+
+    // A single-message intent, exactly as before chunking existed.
+    send(res, 200, await submitIntent(reviveIntent(message)));
   }
 
   async function meshQuery(req: IncomingMessage, res: ServerResponse): Promise<void> {
     if (answer === undefined) {
       throw new ProtocolFailure('MESH_UNAVAILABLE', 'this exit answers no queries: no graph configured', true);
     }
-    const query = decodeMeshQuery(unwrapMesh(JSON.parse(await readBody(req)), 'QUERY'));
+    const query = decodeMeshQuery(jsonOf(meshBody(JSON.parse(await readBody(req)), 'QUERY')));
     const bytes = encodeAnswer(await answer(query));
     res.writeHead(200, {
       'content-type': 'application/json',

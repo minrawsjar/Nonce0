@@ -1,6 +1,49 @@
 # Getting a ring proof to the attester
 
-**Status: open. Blocks every RING_8 payment.** Found while wiring the wallet.
+**Status: resolved — option 1, chunking through the mesh.** A real RING_8
+payment now crosses six real relays and settles; `backend/mesh/test/ring-over-mesh.test.ts`
+does it end to end in about ten seconds.
+
+## What was built
+
+| | Before | After |
+|---|---|---|
+| Proof inside the sealed intent | hex in JSON — 2,202 KiB | raw bytes after the JSON — 1,101 KiB |
+| Sealed-intent cap | 128 KiB | 1.25 MiB |
+| A ring intent over the mesh | impossible (64 KiB max) | ~35 chunks, reassembled at the exit |
+
+- **The plaintext container** (`cre/sealed-intent.ts`): a version byte, a
+  length, the JSON, then the proof as bytes. JSON begins with `{`, so the old
+  all-JSON form still reads. The real CRE workflow compiles and simulates
+  against it.
+- **The chunk protocol** (`mesh/chunks.ts`): each chunk is a one-way message
+  of ~32 KiB; one commit asks the exit for the result and gets the intent ref
+  or the missing indices. The payload hash in the commit is what stops a
+  complete-but-wrong reassembly from being submitted.
+- **A fresh path per chunk.** No single entry relay sees the burst: the test
+  asserts the upload used several entries and that none saw every chunk, and
+  fails if every chunk is sent down one path.
+- **A bounded store at the exit.** The exit cannot rate-limit by source — it
+  never sees one — so bounded memory is its only DoS defence: a cap on
+  concurrent uploads, on bytes per upload and in total, and a TTL.
+
+## Still open
+
+- **The enclave.** The local stand-in verifies a 1.1 MiB proof in about two
+  seconds in V8. CRE runs Javy/QuickJS, where that is unmeasured, and its HTTP
+  trigger has its own payload limit. Measure both with `cre workflow simulate`
+  before relying on the real workflow for ring payments — and if QuickJS
+  cannot keep up, that argues for option 3 regardless of transport.
+- **Traffic shape.** Chunks go four at a time on fresh paths. That spreads
+  them across entries, but the client's own link still carries ~35 messages
+  in a short window. Scheduler-level pacing or cover traffic would flatten it.
+- **Option 3 remains the real fix.** A proof several times smaller removes
+  most of this machinery.
+
+---
+
+*The original analysis follows, kept because the reasoning is still the reason.*
+
 
 ## The problem
 
