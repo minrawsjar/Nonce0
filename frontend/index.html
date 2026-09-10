@@ -3,231 +3,235 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>opaque — private payments that are still private after quantum</title>
-<meta name="description" content="A ring signature hides which of eight signed. A relay mesh hides where it came from. Neither breaks under Shor. Post-quantum private payments on Ethereum, settling in USDC over Arc.">
-<link rel="stylesheet" href="styles.css">
+<title>opaque — even an opaque wall can be broken tomorrow. But never your wallet.</title>
+<meta name="description" content="Building the infrastructure for a post-quantum internet — secure, open, and built for what's next.">
+<meta name="theme-color" content="#07060a">
+<!-- The opening frame is the largest paint on the page and the whole of the
+     first screen. Preloading it starts the fetch before the stylesheet has been
+     parsed, which is most of the difference in how fast the hero arrives. -->
+<link rel="preload" as="image" href="media/hero-01.webp" fetchpriority="high">
+<link rel="stylesheet" href="landing.css">
 </head>
 <body>
-<div style="max-width:100%;overflow-x:hidden;font-family:var(--font-body);background:var(--color-bg);color:var(--color-text)">
 
-  <header class="nav">
-    <div class="wrap nav-inner">
-      <span class="mark">opaque</span>
-      <nav class="nav-links">
-        <a href="#how" class="n0-link">How it works</a>
-        <a href="#why" class="n0-link">Why it doesn't exist</a>
-        <a href="#threat" class="n0-link">Threat model</a>
-        <a href="#build" class="n0-link">Built on</a>
-      </nav>
-      <a href="app.html" class="btn btn-primary" style="font-size:13px">Open the wallet</a>
-    </div>
-  </header>
-
-  <div class="wrap">
-    <section class="hero">
-      <div>
-        <p class="eyebrow">Post-quantum · network-level · settlement</p>
-        <h1>Private payments that are still private after quantum.</h1>
-        <p class="lede">A ring signature hides which of eight signed. A relay mesh hides where it came from. Neither of them breaks under Shor.</p>
-        <p style="margin:var(--space-6) 0 0;font-size:16px;line-height:1.7;max-width:48ch">
-          Every private payment tool on Ethereum today hides <em>what</em> happened. None of them hide
-          <em>who connected to make it happen</em> — and every one is signed with cryptography a quantum
-          computer is already known how to break.
-        </p>
-        <div style="display:flex;gap:var(--space-4);margin-top:calc(var(--space-8) * 1.1);flex-wrap:wrap;align-items:center">
-          <a href="app.html" class="btn btn-primary" style="font-size:15px;padding:var(--space-3) var(--space-6)">Open the wallet</a>
-          <a href="#why" class="n0-link" style="font-size:15px;border-bottom:1px solid var(--color-accent-600);padding-bottom:2px">Why nothing like this exists</a>
-        </div>
-        <p class="text-muted" style="margin:var(--space-6) 0 0;font-size:13px;font-family:ui-monospace,Menlo,monospace">ring size 8 · proof of concept · testnet</p>
-      </div>
-      <img class="hero-photo" src="media/ring-of-eight.svg"
-           alt="A ring of eight identical signers around a centre marked with a question mark"
-           width="460" height="460" loading="eager">
-    </section>
-  </div>
-
-  <div class="wrap" id="how">
-    <figure class="figure-wide" style="margin-top:0">
-      <img src="media/flow.svg" alt="Wallet, ring-signed payment, relay mesh, confidential policy check, USDC settlement" width="980" height="240" loading="lazy">
-      <figcaption>Not three tools stitched together. One flow, in which each stage denies a different observer a different fact.</figcaption>
-    </figure>
-  </div>
-
-  <div class="wrap">
-    <section style="padding:calc(var(--space-8) * 2) 0">
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(290px,100%),1fr));gap:calc(var(--space-8) * 1.1)">
-
-        <div>
-          <p class="sec-n" data-n="01" style="margin:0 0 var(--space-3)">Quantum-secure</p>
-          <h3 style="font-weight:400;font-size:23px;line-height:1.2;margin:0 0 var(--space-3)">Signed with lattice math, not elliptic curves.</h3>
-          <p style="font-size:15px;line-height:1.7;margin:0;color:var(--color-neutral-700)">
-            Every payment is authorised by a post-quantum ring signature — the sender proves they are one
-            of a small group without revealing which one, on the same class of hard problem NIST
-            standardised against quantum attack. There is no “upgrade later”, because it was never
-            breakable that way.
-          </p>
-        </div>
-
-        <div>
-          <p class="sec-n" data-n="02" style="margin:0 0 var(--space-3)">Network-level</p>
-          <h3 style="font-weight:400;font-size:23px;line-height:1.2;margin:0 0 var(--space-3)">Hiding the payment is not hiding the person.</h3>
-          <p style="font-size:15px;line-height:1.7;margin:0;color:var(--color-neutral-700)">
-            Encrypting a transaction still leaves an IP address behind. Every payment is routed through a
-            relay mesh — three hops, batched, randomly delayed — so the moment your wallet connects is
-            never linkable to the moment your transaction lands.
-          </p>
-        </div>
-
-        <div>
-          <p class="sec-n" data-n="03" style="margin:0 0 var(--space-3)">Settlement</p>
-          <h3 style="font-weight:400;font-size:23px;line-height:1.2;margin:0 0 var(--space-3)">Trustless by construction, not by policy.</h3>
-          <p style="font-size:15px;line-height:1.7;margin:0;color:var(--color-neutral-700)">
-            The signature is verified entirely on-chain — no relay, operator or enclave anyone has to
-            trust for a payment to be valid. Funds settle in USDC over Arc, built for exactly this kind
-            of conditional, multi-step flow.
-          </p>
-        </div>
-
-      </div>
-    </section>
-  </div>
-
-  <figure class="band">
-    <img class="photo" src="media/quantum-system.jpg"
-         alt="Engineers installing a quantum computer" width="2200" height="1466" loading="lazy" decoding="async">
-    <figcaption>
-      <b>The machine does not have to exist yet to matter.</b>
-      Harvest now, decrypt later: a signature broadcast today is archived forever, and read the day
-      hardware like this reaches scale. Every private payment made on elliptic curves is on that clock.
-    </figcaption>
-  </figure>
-
-  <div class="inventory">
-    <div class="wrap">
-      <p class="sec-n" data-n="00" style="margin:0 0 var(--space-4)">What survives a quantum computer</p>
-      <div class="inventory-grid">
-        <span>secp256k1 <i>broken</i></span><span>Ed25519 <i>broken</i></span>
-        <span>BLS12-381 <i>broken</i></span><span>bn254 pairing <i>broken</i></span>
-        <span>Groth16 SNARK <i>broken</i></span><span>Pedersen hiding <i>broken</i></span>
-        <span>Ring-LWE <i>holds</i></span><span>Module-SIS <i>holds</i></span>
-      </div>
-      <p class="text-muted" style="margin:var(--space-4) 0 0;font-size:12.5px">
-        Shor breaks discrete-log outright; Grover halves hash strength, which 256-bit output already
-        absorbs. Every shielded-payment protocol in production today sits in the top two rows.
-      </p>
-    </div>
-  </div>
-
-  <div class="wrap" id="why">
-    <section style="padding:calc(var(--space-8) * 2) 0">
-      <h2 style="font-weight:400;font-size:clamp(28px,4vw,46px);line-height:1.08;margin:0 0 var(--space-8);max-width:24ch">Why nothing like this exists yet.</h2>
-      <div style="display:grid;grid-template-columns:1.25fr 1fr;gap:calc(var(--space-8) * 1.4);align-items:start">
-        <div style="display:grid;gap:var(--space-6)">
-          <div style="border-top:1px solid var(--color-divider);padding-top:var(--space-4)">
-            <p style="margin:0;font-size:15px;line-height:1.7"><b>Railgun, Aztec, Privacy Pools</b> hide the payment — sender, amount, recipient — with elliptic-curve cryptography a quantum computer breaks. None of them touch network-origin privacy.</p>
-          </div>
-          <div style="border-top:1px solid var(--color-divider);padding-top:var(--space-4)">
-            <p style="margin:0;font-size:15px;line-height:1.7"><b>Monero</b> is the closest existing shape — ring signatures plus network-layer obfuscation — but with pre-quantum cryptography, on a chain with no smart contracts.</p>
-          </div>
-          <div style="border-top:1px solid var(--color-divider);padding-top:var(--space-4)">
-            <p style="margin:0;font-size:15px;line-height:1.7"><b>Flashbots and private RPC</b> hide a transaction from the public mempool, not from the RPC provider. A different problem, and the one most often mistaken for this one.</p>
-          </div>
-          <div style="border-top:1px solid var(--color-accent-600);padding-top:var(--space-4)">
-            <p style="margin:0;font-size:15px;line-height:1.7;color:var(--color-neutral-900)">Nobody surveyed composes quantum-secure payment privacy with network-origin privacy, on Ethereum. <b>That composition is the claim</b> — not any single piece of it.</p>
-          </div>
-        </div>
-        <figure style="margin:0">
-          <div class="plate"><img class="photo photo-cut" src="media/quantum-chip.jpg" alt="A wire-bonded superconducting quantum processor" width="2200" height="1903" loading="lazy" decoding="async"></div>
-          <figcaption style="font-size:13px;line-height:1.65;color:var(--color-neutral-600);margin-top:var(--space-3)">
-            Six transmons on a wire-bonded die. Shor needs many thousands of stable logical qubits before
-            it recovers a key — which is why the honest question is not “when”, but “what did you sign
-            that is still readable then”.
-          </figcaption>
-        </figure>
-      </div>
-    </section>
-  </div>
-
-  <div class="wrap" id="threat">
-    <section style="padding:0 0 calc(var(--space-8) * 2)">
-      <p class="sec-n" data-n="04" style="margin:0 0 var(--space-4)">Threat model</p>
-      <h2 style="font-weight:400;font-size:clamp(26px,3.4vw,38px);line-height:1.1;margin:0 0 var(--space-8);max-width:28ch">Said plainly, including what it does not do.</h2>
-      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(300px,100%),1fr));gap:var(--space-6)">
-        <div style="border:1px solid var(--color-divider);border-radius:var(--radius-md);padding:var(--space-6)">
-          <p style="font-family:var(--font-heading);font-size:17px;margin:0 0 var(--space-4);color:var(--color-accent-400)">What it hides</p>
-          <ul style="margin:0;padding-left:18px;font-size:14.5px;line-height:1.8;color:var(--color-neutral-700)">
-            <li>Which ring member signed a payment</li>
-            <li>The payment amount</li>
-            <li>The sender's network origin</li>
-            <li>The input evaluated by the policy check</li>
-          </ul>
-        </div>
-        <div style="border:1px solid var(--color-divider);border-radius:var(--radius-md);padding:var(--space-6)">
-          <p style="font-family:var(--font-heading);font-size:17px;margin:0 0 var(--space-4);color:var(--color-accent-2-500)">What it does not claim</p>
-          <ul style="margin:0;padding-left:18px;font-size:14.5px;line-height:1.8;color:var(--color-neutral-700)">
-            <li>Defence against a global passive network adversary</li>
-            <li>Defence if every relay hop is compromised at once</li>
-            <li>Protection from your own timing and amount patterns</li>
-            <li>Ring size 8 is a proof of concept, not a production anonymity set</li>
-          </ul>
-        </div>
-        <div style="border:1px solid var(--color-divider);border-radius:var(--radius-md);padding:var(--space-6)">
-          <p style="font-family:var(--font-heading);font-size:17px;margin:0 0 var(--space-4);color:var(--color-neutral-800)">What you trust</p>
-          <p style="margin:0;font-size:14.5px;line-height:1.8;color:var(--color-neutral-700)">
-            Nothing, for payment validity — the ring signature is verified on-chain by the contract
-            itself. The relay mesh is trusted only for network-origin privacy, and never for whether a
-            payment is valid.
-          </p>
-        </div>
-      </div>
-    </section>
-  </div>
-
-  <div class="wrap" id="build">
-    <section style="padding:0 0 calc(var(--space-8) * 2);display:grid;grid-template-columns:1fr 1.15fr;gap:calc(var(--space-8) * 1.4);align-items:center">
-      <img class="photo" src="media/quantum-tower.jpg" alt="The gold-plated dilution refrigerator of a quantum computer" width="1656" height="2200" loading="lazy" decoding="async" style="max-width:300px;border-radius:var(--radius-md)">
-      <div>
-        <p class="sec-n" data-n="05" style="margin:0 0 var(--space-4)">Built on what's real</p>
-        <div style="display:grid;gap:var(--space-6)">
-          <div>
-            <p style="font-family:ui-monospace,Menlo,monospace;font-size:13px;color:var(--color-accent-400);margin:0 0 4px">ChipmunkRing (2025)</p>
-            <p style="margin:0;font-size:14.5px;line-height:1.7;color:var(--color-neutral-700)">A published lattice-based ring signature with working reference code. Not a hackathon invention.</p>
-          </div>
-          <div>
-            <p style="font-family:ui-monospace,Menlo,monospace;font-size:13px;color:var(--color-accent-400);margin:0 0 4px">MatRiCT / MatRiCT+</p>
-            <p style="margin:0;font-size:14.5px;line-height:1.7;color:var(--color-neutral-700)">Post-quantum ring-confidential-transaction design, already running in production on Hcash.</p>
-          </div>
-          <div>
-            <p style="font-family:ui-monospace,Menlo,monospace;font-size:13px;color:var(--color-accent-400);margin:0 0 4px">Ethereum's own roadmap</p>
-            <p style="margin:0;font-size:14.5px;line-height:1.7;color:var(--color-neutral-700)">Privacy and quantum-resistance are both live Ethereum Foundation workstreams. This maps onto both.</p>
-          </div>
-        </div>
-      </div>
-    </section>
-  </div>
-
-  <div class="wrap">
-    <section style="border-top:1px solid var(--color-divider);padding:calc(var(--space-8) * 1.6) 0">
-      <h2 style="font-weight:400;font-size:clamp(26px,3.6vw,42px);line-height:1.1;margin:0;max-width:26ch">Private payments should not need a rewrite the day quantum computers arrive.</h2>
-      <p style="font-family:var(--font-heading);font-size:22px;color:var(--color-accent-400);margin:var(--space-4) 0 0">opaque is already there.</p>
-      <div style="display:flex;gap:var(--space-3);margin-top:calc(var(--space-8) * 1.2);flex-wrap:wrap">
-        <span class="pill-tag">Chainlink CRE</span><span class="pill-tag">Arc / USDC</span><span class="pill-tag">ETHOnline 2026</span>
-      </div>
-    </section>
-  </div>
-
-  <div class="wrap" style="border-top:1px solid var(--color-divider);padding:var(--space-6) 0 calc(var(--space-8) * 1.4)">
-    <p class="credits" style="margin:0">
-      Photography &mdash;
-      <a href="https://commons.wikimedia.org/wiki/File:IBM_Quantum_System_One.jpg">IBM Quantum System One</a>
-      and <a href="https://commons.wikimedia.org/wiki/File:Wire_Bonded_Superconducting_Quantum_Chip_with_6_Transmons_003.png">Wire Bonded Superconducting Quantum Chip</a>
-      by OJB Quantum, <a href="https://creativecommons.org/licenses/by/4.0/">CC&nbsp;BY&nbsp;4.0</a>;
-      <a href="https://commons.wikimedia.org/wiki/File:IBM_Q_System_One_(Fraunhofer)_installation.jpg">IBM Q System One installation</a>
-      by IBM Research, <a href="https://creativecommons.org/licenses/by/2.0/">CC&nbsp;BY&nbsp;2.0</a>.
-      Diagrams are original work. opaque is not affiliated with IBM.
-    </p>
-  </div>
-
+<!-- Held over the page until every layer has decoded. A rig of twenty-odd
+     cut-outs is unforgiving of a half-loaded sequence: scroll in early and
+     chunks fly out of a wall that has not arrived. Removed by landing.ts, and
+     never shown at all without JavaScript. -->
+<div class="boot" data-boot hidden>
+  <span class="boot__bar"><i data-boot-bar></i></span>
 </div>
+
+<!-- No header over the sequence — landing.ts hides it for the length of the
+     hero and brings it back once the shield has closed. This stays. -->
+<button class="fs" type="button" data-fs aria-label="Enter full screen">
+  <svg viewBox="0 0 24 24" aria-hidden="true" class="fs__in">
+    <path d="M3 9V3h6M21 9V3h-6M3 15v6h6M21 15v6h-6"/>
+  </svg>
+  <svg viewBox="0 0 24 24" aria-hidden="true" class="fs__out">
+    <path d="M9 3v6H3M15 3v6h6M9 21v-6H3M15 21v-6h6"/>
+  </svg>
+</button>
+
+<header class="nav">
+  <div class="wrap nav__inner">
+    <a href="#top" aria-label="opaque — home">
+      <span class="wordmark">
+        <span class="wordmark__name">opaque</span>
+        <span class="wordmark__sub" aria-hidden="true"><i></i>post<i></i>quantum<i></i></span>
+      </span>
+    </a>
+    <nav class="nav__links" aria-label="Primary">
+      <a href="#product">Product</a>
+      <a href="#developers">Developers</a>
+      <a href="#docs">Docs</a>
+      <a href="#about">About</a>
+    </nav>
+    <a href="app.html" class="btn btn--outline">Get Started</a>
+  </div>
+</header>
+
+<main id="top">
+
+  <!-- ══ The hero ═══════════════════════════════════════════════════════
+       Seventeen plates on one dissolve chain, wall through to wallet — there is no
+       separate ending any more.
+
+       The first six share a camera exactly; the inscription does not move a
+       pixel across them, so the wall lighting up, cracking and shedding its
+       first chunks is five dissolves with nothing but the stone changing. The
+       rest carry their own camera move and land inside the push, which keeps
+       them reading as one move rather than as cuts.
+
+       How long each plate holds is set by how much actually changes at that
+       point in the break, not by dividing the scroll evenly — see WALL_CUTS in
+       landing.ts. That, far more than the number of plates, is what makes this
+       feel continuous.
+
+       The shard rig flies over the middle of it, so the dissolves through the
+       heaviest part of the break always have real motion on top of them. -->
+  <section class="hero">
+    <div class="hero__pin">
+
+      <img class="plate" data-wide src="media/hero-01.webp"
+           alt="The words “The future breaks everything.” cut into a wall of black stone"
+           decoding="async" fetchpriority="high">
+      <img class="plate" data-wide src="media/hero-02.webp" alt="" aria-hidden="true" decoding="async">
+      <!-- Ordered by how far the break has got, NOT by filename. The names do
+           not run in sequence — hero-i1 belongs between hero-ii2 and hero-ii3,
+           and the wallet materialises 07 -> 10 -> 08 -> 09, from a faint
+           outline to a solid object. Both orders were measured, not guessed:
+           the mean pixel change between every candidate pair was compared and
+           the path with the smallest jumps chosen. Sorting any of this
+           alphabetically would run the sequence backwards in two places. This
+           order is deliberate; do not "tidy" it. (hero-i2 exists in media/ and is
+           deliberately not in the chain.) -->
+      <img class="plate" data-wide src="media/hero-ii1.webp" alt="" aria-hidden="true" decoding="async">
+      <img class="plate" data-wide src="media/hero-ii2.webp" alt="" aria-hidden="true" decoding="async">
+      <img class="plate" data-wide src="media/hero-i1.webp" alt="" aria-hidden="true" decoding="async">
+      <img class="plate" data-wide src="media/hero-ii3.webp" alt="" aria-hidden="true" decoding="async">
+      <img class="plate" data-wide src="media/hero-2.1.webp" alt="" aria-hidden="true" decoding="async">
+      <img class="plate" data-wide src="media/hero-03.webp" alt="" aria-hidden="true" decoding="async">
+      <img class="plate" data-wide src="media/hero-04.webp" alt="" aria-hidden="true" decoding="async">
+      <img class="plate" data-wide src="media/hero-05.webp" alt="" aria-hidden="true" decoding="async">
+      <img class="plate" data-wide src="media/hero-06.webp" alt="" aria-hidden="true" decoding="async">
+      <img class="plate" data-wide src="media/hero-i3.webp" alt="" aria-hidden="true" decoding="async">
+      <img class="plate" data-wide src="media/hero-i4.webp" alt="" aria-hidden="true" decoding="async">
+      <img class="plate" data-wide src="media/hero-07.webp" alt="" aria-hidden="true" decoding="async">
+      <img class="plate" data-wide src="media/hero-10.webp" alt="" aria-hidden="true" decoding="async">
+      <img class="plate" data-wide src="media/hero-08.webp" alt="" aria-hidden="true" decoding="async">
+      <img class="plate" data-wide src="media/hero-09.webp"
+           alt="An opaque wallet held inside a sphere of orange light" decoding="async">
+
+      <!-- Base positions are percentages of the rig box. Deliberately oversized:
+           the box is scaled about its own centre, so a composition that only
+           just fitted would pull its own canvas edges into frame the moment the
+           camera moved. -->
+      <div class="rig" data-rig>
+        <img class="rig__dust" data-dust src="media/rig/dust-medium.webp"
+             alt="" aria-hidden="true" decoding="async" style="left:42%; top:32%; width:40%">
+        <img class="rig__dust" data-dust src="media/rig/dust-large.webp"
+             alt="" aria-hidden="true" decoding="async" style="left:46%; top:54%; width:50%">
+        <img class="rig__dust" data-dust src="media/rig/dust-small.webp"
+             alt="" aria-hidden="true" decoding="async" style="left:56%; top:74%; width:38%">
+        <img class="rig__debris" data-debris src="media/rig/debris.webp"
+             alt="" aria-hidden="true" decoding="async">
+        <!-- Shards are built from the trajectory table in landing.ts. -->
+        <div class="rig__shards" data-shards></div>
+      </div>
+
+      <!-- The headline is carved into the stone, so it exists for the eye and
+           for nothing else. This carries the same words — off-screen, but there
+           for search, for screen readers, and if the images never arrive. -->
+      <h1 class="sr-only">The future breaks everything. But never your wallet.</h1>
+
+      <p class="label label--bright hero__note" data-note>Same internet.<br>A more private<br>tomorrow.</p>
+
+      <p class="hero__line" data-line>Even an opaque wall can be broken tomorrow.<br>But never your wallet.</p>
+
+      <div class="rail" aria-hidden="true">
+        <span class="rail__hint">Scroll</span>
+        <span class="rail__dot"></span>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ══ The resolution ═════════════════════════════════════════════════ -->
+  <section class="dawn" id="product">
+    <!-- preserveAspectRatio="none": these are abstract silhouettes, and letting
+         them stretch to the viewport keeps both ridges and the gap between them
+         in frame at every width. "slice" would crop the ridges off entirely on
+         a narrow screen and leave two dark slabs. -->
+    <svg class="dawn__scape" viewBox="0 0 1600 900" preserveAspectRatio="none" aria-hidden="true">
+      <defs>
+        <linearGradient id="ridgeFar" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#2a1a12"/>
+          <stop offset="100%" stop-color="#150d0a"/>
+        </linearGradient>
+        <linearGradient id="ridgeNear" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#140c09"/>
+          <stop offset="100%" stop-color="#080607"/>
+        </linearGradient>
+        <linearGradient id="sunbeam" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#ffcb92" stop-opacity=".55"/>
+          <stop offset="55%" stop-color="#ff9a3c" stop-opacity=".22"/>
+          <stop offset="100%" stop-color="#ff9a3c" stop-opacity="0"/>
+        </linearGradient>
+        <filter id="beamBlur" x="-80%" y="-20%" width="260%" height="140%">
+          <feGaussianBlur stdDeviation="26"/>
+        </filter>
+      </defs>
+
+      <path d="M0 900 V520 l86 44 l70 -58 l88 52 l74 -40 l96 66 l112 48 l140 40 V900 Z" fill="url(#ridgeFar)"/>
+      <path d="M1600 900 V506 l-92 50 l-76 -56 l-90 60 l-82 -38 l-104 70 l-118 50 l-146 34 V900 Z" fill="url(#ridgeFar)"/>
+      <path d="M0 900 V624 l120 36 l104 -28 l132 40 l150 26 V900 Z" fill="url(#ridgeNear)"/>
+      <path d="M1600 900 V612 l-128 40 l-112 -26 l-140 44 l-158 30 V900 Z" fill="url(#ridgeNear)"/>
+
+      <!-- The sun's reflection running toward the viewer across the plain. It
+           has to spread as it comes forward — a straight-sided rectangle reads
+           as a bar of colour sitting on top of the picture. -->
+      <path d="M772 636 L828 636 L906 900 L694 900 Z" fill="url(#sunbeam)" filter="url(#beamBlur)"/>
+    </svg>
+    <div class="dawn__ring" aria-hidden="true"></div>
+    <div class="dawn__grain" aria-hidden="true"></div>
+
+    <div class="wrap dawn__inner">
+      <span class="wordmark">
+        <span class="wordmark__name">opaque</span>
+        <span class="wordmark__sub" aria-hidden="true"><i></i>post<i></i>quantum<i></i></span>
+      </span>
+      <p class="dawn__lede">Even an opaque wall can be broken tomorrow.<br>But never your wallet.</p>
+      <p class="dawn__sub">Building the infrastructure for a post-quantum internet — secure, open, and built for what's next.</p>
+      <div class="dawn__cta">
+        <a href="app.html" class="btn btn--solid">Get Started <span aria-hidden="true">&rarr;</span></a>
+        <a href="#docs" class="btn btn--quiet">Learn More</a>
+      </div>
+    </div>
+
+    <p class="label label--dim dawn__corner dawn__corner--l">Privacy<br>that lasts.</p>
+    <p class="label label--dim dawn__corner dawn__corner--r">Built<br>for a more<br>private tomorrow.</p>
+  </section>
+
+</main>
+
+<footer class="foot">
+  <div class="wrap">
+    <div class="foot__top">
+      <a href="#top" aria-label="opaque — home">
+        <span class="wordmark">
+          <span class="wordmark__name">opaque</span>
+          <span class="wordmark__sub" aria-hidden="true"><i></i>post<i></i>quantum<i></i></span>
+        </span>
+      </a>
+      <nav class="foot__links" aria-label="Footer">
+        <a href="#product">Product</a>
+        <a href="#developers">Developers</a>
+        <a href="#docs">Docs</a>
+        <a href="#about">About</a>
+      </nav>
+      <div class="foot__social">
+        <a href="https://github.com" aria-label="opaque on GitHub" rel="noreferrer">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg>
+        </a>
+        <a href="https://x.com" aria-label="opaque on X" rel="noreferrer">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18.901 1.153h3.68l-8.04 9.19L24 22.846h-7.406l-5.8-7.584-6.638 7.584H.474l8.6-9.83L0 1.154h7.594l5.243 6.932ZM17.61 20.644h2.039L6.486 3.24H4.298Z"/></svg>
+        </a>
+        <a href="https://linkedin.com" aria-label="opaque on LinkedIn" rel="noreferrer">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 01-2.063-2.065 2.064 2.064 0 112.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/></svg>
+        </a>
+        <a href="https://discord.com" aria-label="opaque on Discord" rel="noreferrer">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.317 4.3698a19.7913 19.7913 0 00-4.8851-1.5152.0741.0741 0 00-.0785.0371c-.211.3753-.4447.8648-.6083 1.2495-1.8447-.2762-3.68-.2762-5.4868 0-.1636-.3933-.4058-.8742-.6177-1.2495a.077.077 0 00-.0785-.037 19.7363 19.7363 0 00-4.8852 1.515.0699.0699 0 00-.0321.0277C.5334 9.0458-.319 13.5799.0992 18.0578a.0824.0824 0 00.0312.0561c2.0528 1.5076 4.0413 2.4228 5.9929 3.0294a.0777.0777 0 00.0842-.0276c.4616-.6304.8731-1.2952 1.226-1.9942a.076.076 0 00-.0416-.1057c-.6528-.2476-1.2743-.5495-1.8722-.8923a.077.077 0 01-.0076-.1277c.1258-.0943.2517-.1923.3718-.2914a.0743.0743 0 01.0776-.0105c3.9278 1.7933 8.18 1.7933 12.0614 0a.0739.0739 0 01.0785.0095c.1202.099.246.1981.3728.2924a.077.077 0 01-.0066.1276 12.2986 12.2986 0 01-1.873.8914.0766.0766 0 00-.0407.1067c.3604.6987.7719 1.3636 1.225 1.9932a.076.076 0 00.0842.0286c1.961-.6067 3.9495-1.5219 6.0023-3.0294a.077.077 0 00.0313-.0552c.5004-5.177-.8382-9.6739-3.5485-13.6604a.061.061 0 00-.0312-.0286zM8.02 15.3312c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9555-2.4189 2.157-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.9555 2.4189-2.1569 2.4189zm7.9748 0c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9554-2.4189 2.1569-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.946 2.4189-2.1568 2.4189Z"/></svg>
+        </a>
+      </div>
+    </div>
+    <div class="foot__base">
+      <p>&copy; 2026 opaque. All rights reserved.</p>
+      <p>Same possibilities. A safer tomorrow.</p>
+    </div>
+  </div>
+</footer>
+
+<script type="module" src="./src/landing.ts"></script>
 </body>
 </html>

@@ -33,3 +33,8 @@ backend/node_modules/
 .agents/
 skills-lock.json
 .claude/skills/
+
+# hero source renders. The page only ever loads the .webp beside each of
+# these; the PNGs are the masters kept for re-encoding at another size or
+# quality. ~70 MB, and git keeps blobs forever, so they stay out of history.
+frontend/media/**/*.png
