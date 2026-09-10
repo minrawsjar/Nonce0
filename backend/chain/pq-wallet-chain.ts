@@ -29,7 +29,7 @@ import {
   type PublicClient,
   type WalletClient,
 } from 'viem';
-import { formatUserOperationRequest, toPackedUserOperation } from 'viem/account-abstraction';
+import { toPackedUserOperation } from 'viem/account-abstraction';
 
 import { ProtocolFailure, type Address, type Bytes32, type Hex, type NoteCommitment, type PoolScope, type PqWallet, type TxHash } from '@opaque/protocol-types';
 import { asAddress, asBytes32, asChainId } from '@opaque/protocol-types/codecs.js';
@@ -46,7 +46,7 @@ import type { WalletStateStore } from '../../packages/pq-wallet/src/wallet-state
 
 import { accountSalt, predictAccount, userOperationPayload } from './pq-account.ts';
 import { ERC20_ABI } from './pool.ts';
-import { bundlerCall, readOne, readState, STATE_ABI, type WalletRpcSend } from './wallet-rpc.ts';
+import { bundlerCall, readOne, readState, STATE_ABI, userOperationCall, type WalletRpcSend } from './wallet-rpc.ts';
 
 /** The deployed account stack, as the SDK pins it. Changing any field is a different wallet. */
 export const ARC_AUTHORITY: AuthorityConfig = Object.freeze({
@@ -282,7 +282,7 @@ export function createPqAccountOps(options: {
       maxFeePerGas: BigInt(quote.standard.maxFeePerGas), maxPriorityFeePerGas: BigInt(quote.standard.maxPriorityFeePerGas),
       callGasLimit: 0n, verificationGasLimit: 0n, preVerificationGas: 0n, signature: stubSignature(),
     };
-    const gas = await bundle('eth_estimateUserOperationGas', [formatUserOperationRequest(base as never), authority.entryPoint]) as Record<string, Hex>;
+    const gas = await userOperationCall(send, 'eth_estimateUserOperationGas', base as never, authority.entryPoint) as Record<string, Hex>;
     return {
       ...base,
       callGasLimit: BigInt(gas['callGasLimit']!),
@@ -295,7 +295,7 @@ export function createPqAccountOps(options: {
   async function submit(op: Op): Promise<TxHash> {
     const packed = toPackedUserOperation({ ...op, signature: '0x' } as never);
     const signed = await wallet.signUserOperation(encodeAbiParameters(PACKED, [packed as never]) as Hex);
-    const hash = await bundle('eth_sendUserOperation', [formatUserOperationRequest({ ...op, signature: signed.signature } as never), authority.entryPoint]);
+    const hash = await userOperationCall(send, 'eth_sendUserOperation', { ...op, signature: signed.signature } as never, authority.entryPoint);
     for (const deadline = Date.now() + 180_000; Date.now() < deadline;) {
       const found = await bundle('eth_getUserOperationReceipt', [hash]) as { success: boolean; receipt: { transactionHash: TxHash } } | null;
       if (found !== null) {

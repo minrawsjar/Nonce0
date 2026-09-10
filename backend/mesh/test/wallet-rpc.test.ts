@@ -6,7 +6,9 @@ import { encodeFunctionData } from 'viem';
 import type { Address, Hex } from '@opaque/protocol-types';
 import { fromHex, toHex } from '@opaque/protocol-types/codecs.js';
 
-import { createWalletRpcAnswerer, readOne, STATE_ABI, walletRpcAllowlist } from '../../chain/wallet-rpc.ts';
+import { encodeSignature, keyGen, sign } from '@opaque/pq-wallet';
+
+import { createWalletRpcAnswerer, readOne, STATE_ABI, userOperationCall, walletRpcAllowlist } from '../../chain/wallet-rpc.ts';
 import { deployment, entryPoint, requireContract } from '../../../deployments/index.ts';
 
 const implementation = `0x${'ab'.repeat(20)}` as Address;
@@ -61,4 +63,42 @@ test('bundler calls are relayed for PQ accounts on the pinned EntryPoint only', 
   assert.match((await ask('ESTIMATE', { method: 'eth_sendRawTransaction', params: ['0x00'] })).error.message, /does not relay/);
   assert.match((await ask('WALLET_RPC_ANYTHING', {})).error.message, /unknown operation/);
   assert.deepEqual(relayed, ['eth_sendUserOperation'], 'only the one legitimate call left the exit');
+});
+
+test('a signed UserOperation fits the largest mesh size class', async () => {
+  let captured = '' as Hex;
+  const send = async (_operation: unknown, encoded: Hex) => {
+    captured = encoded;
+    return toHex(new TextEncoder().encode(JSON.stringify({ result: '0x01' }))) as Hex;
+  };
+  const key = keyGen();
+  const signature = encodeSignature(key.publicKey, sign(key.secretKey, `0x${'00'.repeat(32)}` as never));
+  await userOperationCall(send as never, 'eth_sendUserOperation', {
+    sender: pqAccount as Address, nonce: 2n ** 70n, callData: `0x${'ab'.repeat(600)}`,
+    callGasLimit: 10n ** 6n, verificationGasLimit: 2n * 10n ** 6n, preVerificationGas: 10n ** 6n,
+    maxFeePerGas: 10n ** 11n, maxPriorityFeePerGas: 10n ** 10n, signature,
+  } as never, entryPoint() as Address);
+  // As the mesh carries it: the query as JSON, as hex, inside the onion's payload.
+  const body = toHex(new TextEncoder().encode(JSON.stringify({ kind: 'WALLET_RPC', operation: 'SUBMIT_USER_OPERATION', encodedRequest: captured })));
+  assert.ok(body.length + 2_048 < 65_536, `a ${body.length}-byte query leaves too little room`);
+});
+
+test('an ABI UserOperation reaches the bundler as the same operation', async () => {
+  let forwarded: { method: string; params: [Record<string, string>, string] } | undefined;
+  const publicClient = { getCode: async () => cloneCode };
+  const send = createWalletRpcAnswerer({
+    publicClient: publicClient as never, bundlerUrl: 'https://bundler.invalid', entryPoint: entryPoint() as Address, accountImplementation: implementation,
+    fetch: (async (_url: string, init: { body: string }) => { forwarded = JSON.parse(init.body); return new Response(JSON.stringify({ result: '0xfeed' })); }) as never,
+  });
+  const signature = `0x${'cd'.repeat(9_251)}` as Hex;
+  const hash = await userOperationCall(send, 'eth_sendUserOperation', {
+    sender: pqAccount as Address, nonce: 5n, callData: '0x1234', callGasLimit: 11n, verificationGasLimit: 22n,
+    preVerificationGas: 33n, maxFeePerGas: 44n, maxPriorityFeePerGas: 55n, signature,
+  } as never, entryPoint() as Address);
+  assert.equal(hash, '0xfeed');
+  const [op, entry] = forwarded!.params;
+  assert.equal(forwarded!.method, 'eth_sendUserOperation');
+  assert.equal(entry.toLowerCase(), entryPoint().toLowerCase());
+  assert.deepEqual([op['sender']!.toLowerCase(), op['nonce'], op['callGasLimit'], op['verificationGasLimit'], op['preVerificationGas'], op['maxFeePerGas'], op['maxPriorityFeePerGas'], op['signature']],
+    [pqAccount, '0x5', '0xb', '0x16', '0x21', '0x2c', '0x37', signature]);
 });

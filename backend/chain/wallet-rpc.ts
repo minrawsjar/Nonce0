@@ -18,7 +18,8 @@
 // A query that fails at the exit leaves nothing at the drop, and the wallet
 // would wait out its deadline to learn nothing.
 
-import { decodeFunctionResult, encodeFunctionData, parseAbi, toFunctionSelector, type PublicClient } from 'viem';
+import { decodeAbiParameters, decodeFunctionResult, encodeAbiParameters, encodeFunctionData, parseAbi, parseAbiParameters, toFunctionSelector, type PublicClient } from 'viem';
+import { formatUserOperationRequest, toPackedUserOperation } from 'viem/account-abstraction';
 
 import { ProtocolFailure, type Address, type Hex, type WalletRpcOperation } from '@opaque/protocol-types';
 import { fromHex, toHex } from '@opaque/protocol-types/codecs.js';
@@ -56,6 +57,13 @@ export function walletRpcAllowlist(): ReadonlyMap<string, ReadonlySet<string>> {
   add(entryPoint(), 'balanceOf(address)', 'getNonce(address,uint192)');
   return allow;
 }
+
+/**
+ * A UserOperation request, ABI-encoded rather than JSON. Its FORS signature is
+ * 9 KB; as hex in JSON in hex on the mesh it came to 82 KB, past the largest
+ * size class, and as ABI it is about half that.
+ */
+const USER_OPERATION_REQUEST = parseAbiParameters('string method, address entryPoint, (address sender, uint256 nonce, bytes initCode, bytes callData, bytes32 accountGasLimits, uint256 preVerificationGas, bytes32 gasFees, bytes paymasterAndData, bytes signature) op');
 
 const MAX_CALLS = 8;
 const MAX_REQUEST_BYTES = 60_000;
@@ -126,7 +134,31 @@ export function createWalletRpcAnswerer(options: {
     });
     const body = await response.json() as { result?: unknown; error?: { message?: string; code?: number } };
     if (body.error !== undefined) throw new ProtocolFailure('SETTLEMENT_REVERTED', `bundler: ${body.error.message ?? 'refused'}`);
+    if (method === 'eth_getUserOperationReceipt' && body.result) {
+      // What the wallet uses, and no more: a full receipt's logs would outgrow the answer.
+      const r = body.result as { success: boolean; actualGasUsed: Hex; receipt: { transactionHash: Hex; blockNumber: Hex } };
+      return { success: r.success, actualGasUsed: r.actualGasUsed, receipt: { transactionHash: r.receipt.transactionHash, blockNumber: r.receipt.blockNumber } };
+    }
     return body.result ?? null;
+  }
+
+  /** An ABI UserOperation request, as the bundler's JSON-RPC params. */
+  function unpack(encoded: Hex): { method: string; params: unknown[] } {
+    const [method, entry, op] = decodeAbiParameters(USER_OPERATION_REQUEST, encoded);
+    // Accounts are deployed by the funding wallet and pay their own gas: an
+    // operation with initCode or a paymaster is not one this route carries.
+    if (op.initCode !== '0x' || op.paymasterAndData !== '0x') refuse('no initCode or paymaster on this route');
+    const high = (word: Hex) => BigInt(`0x${word.slice(2, 34)}`);
+    const low = (word: Hex) => BigInt(`0x${word.slice(34)}`);
+    return {
+      method,
+      params: [formatUserOperationRequest({
+        sender: op.sender, nonce: op.nonce, callData: op.callData, signature: op.signature,
+        verificationGasLimit: high(op.accountGasLimits), callGasLimit: low(op.accountGasLimits),
+        preVerificationGas: op.preVerificationGas,
+        maxPriorityFeePerGas: high(op.gasFees), maxFeePerGas: low(op.gasFees),
+      } as never), entry],
+    };
   }
 
   return async (operation, encodedRequest) => {
@@ -134,7 +166,8 @@ export function createWalletRpcAnswerer(options: {
       if (!WALLET_RPC_OPERATIONS.includes(operation)) refuse(`unknown operation ${operation}`);
       const bytes = fromHex(encodedRequest);
       if (bytes.length > MAX_REQUEST_BYTES) refuse('request too large');
-      const request = JSON.parse(new TextDecoder().decode(bytes)) as Record<string, unknown>;
+      // JSON starts with '{'; anything else is an ABI UserOperation request.
+      const request: Record<string, unknown> = bytes[0] === 0x7b ? JSON.parse(new TextDecoder().decode(bytes)) as Record<string, unknown> : unpack(encodedRequest);
       const result = operation === 'STATE' ? await state(request) : await bundler(operation, request);
       return json({ result });
     } catch (error) {
@@ -148,11 +181,27 @@ export function createWalletRpcAnswerer(options: {
 // ── the wallet's side ─────────────────────────────────────────────────────
 
 async function call(send: WalletRpcSend, operation: WalletRpcOperation, request: unknown): Promise<unknown> {
-  const answer = JSON.parse(new TextDecoder().decode(fromHex(await send(operation, json(request))))) as {
+  return answerOf(await send(operation, json(request)));
+}
+
+function answerOf(hex: Hex): unknown {
+  const answer = JSON.parse(new TextDecoder().decode(fromHex(hex))) as {
     result?: unknown; error?: { code: string; message: string; retryable: boolean };
   };
   if (answer.error !== undefined) throw new ProtocolFailure(answer.error.code as never, answer.error.message, answer.error.retryable);
   return answer.result;
+}
+
+/** eth_estimateUserOperationGas or eth_sendUserOperation, with the operation ABI-encoded. */
+export async function userOperationCall(
+  send: WalletRpcSend,
+  method: 'eth_estimateUserOperationGas' | 'eth_sendUserOperation',
+  op: Parameters<typeof toPackedUserOperation>[0],
+  entryPoint: Address,
+): Promise<unknown> {
+  const packed = toPackedUserOperation(op);
+  const operation: WalletRpcOperation = method === 'eth_sendUserOperation' ? 'SUBMIT_USER_OPERATION' : 'ESTIMATE';
+  return answerOf(await send(operation, encodeAbiParameters(USER_OPERATION_REQUEST, [method, entryPoint, packed as never]) as Hex));
 }
 
 export interface StateRead { readonly blockNumber: bigint; readonly timestamp: bigint; readonly results: readonly Hex[] }

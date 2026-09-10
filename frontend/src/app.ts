@@ -185,7 +185,9 @@ async function onRotate(): Promise<void> {
   button.disabled = true;
   setStatus('rotate-status', 'Signing the rotation with the current key; your funding wallet submits it…');
   try {
+    const before = (await rt.app.walletState()).pkCommitment;
     await rt.app.rotateWallet();
+    await settle(async () => (await rt.app.walletState()).pkCommitment !== before);
     setStatus('rotate-status', 'Rotated. The next key is active, with a fresh budget, and another is committed behind it.');
     await renderBudget();
   } catch (error) {
@@ -240,6 +242,16 @@ async function onBackupImport(file: File): Promise<void> {
   }
 }
 
+/**
+ * Mined is not yet visible: the exit reads a load-balanced RPC whose next
+ * answer can be a block behind the one that mined it. Look a few times.
+ */
+async function settle(done: () => Promise<boolean>): Promise<void> {
+  for (let attempt = 0; attempt < 10 && !await done().catch(() => false); attempt++) {
+    await new Promise((resolve) => setTimeout(resolve, 2_000));
+  }
+}
+
 async function onActivate(): Promise<void> {
   const button = el<HTMLButtonElement>('activate');
   if (!await connectFundingWallet()) return;
@@ -247,6 +259,7 @@ async function onActivate(): Promise<void> {
   setStatus('wallet-status', 'Confirm in your funding wallet: it pays to deploy the account, and gets no power over it…');
   try {
     await rt.app.registerWallet();
+    await settle(async () => (await rt.app.walletState()).active);
     setStatus('wallet-status', 'Activated. Send USDC to the account address, and deposits come from it.');
     await renderBudget();
   } catch (error) {
