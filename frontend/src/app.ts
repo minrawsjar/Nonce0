@@ -61,6 +61,13 @@ async function renderBudget(): Promise<void> {
 
   el('sig-left').textContent = String(left);
   el('sig-max').textContent = `of ${max}`;
+  // How far through the key we are, 0 → 1. The panel draws a fracture across
+  // itself from this: the landing page's argument is that everything breaks
+  // eventually, and for a few-time key that is not a metaphor — it is the
+  // number above. Spent budget is literally how far the crack has got.
+  const spent = max === 0 ? 1 : (max - left) / max;
+  el('budget').style.setProperty('--spent', spent.toFixed(3));
+
   // One cell per signature, not a percentage bar. With a few-time scheme the
   // count is small enough to be countable, and "2 left" versus "3 left"
   // matters far more than twelve percent of a bar does.

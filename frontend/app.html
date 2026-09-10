@@ -5,7 +5,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>opaque — wallet</title>
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
-<link rel="stylesheet" href="styles.css">
+<!-- app.css is self-contained. It used to sit on top of styles.css, the
+     Classical system the first build was made in; the wallet now shares the
+     landing page's instrument instead — near-black, ember, Poppins — and two
+     conflicting :root token sets on one document is how a colour ends up
+     depending on link order. -->
 <link rel="stylesheet" href="app.css">
 </head>
 <body>
@@ -14,18 +18,37 @@
      forbids both, and keeping the rule here means these exact bytes load as
      the extension popup and as the hosted page with no fork. -->
 
-<main class="app">
+<!-- Ember bloom and film grain, the same two layers the landing page sits on.
+     Fixed and inert, so the popup and the hosted page get the same ground. -->
+<div class="bg" aria-hidden="true"></div>
+
+<!-- The shell the wallet sits inside — the same shield the hero closes on. It
+     turns slowly and never stops, which is the point: the thing protecting the
+     wallet is doing work. -->
+<main class="app" data-shield>
 
   <header class="app-top">
-    <div class="app-mark">opaque</div>
-    <div class="app-net">Arc <b id="net">testnet</b></div>
+    <img class="app-mark" src="media/logo.webp" alt="opaque" width="600" height="127" decoding="async">
+    <div class="app-net"><i class="app-net__dot" aria-hidden="true"></i>Arc <b id="net">testnet</b></div>
   </header>
 
   <!-- The signature budget. FORS+C is a FEW-time scheme: the key has a finite
        number of signatures and spending past maxUses is a break, not a warning.
        That makes this the most load-bearing number in the wallet, so it sits
        above the tabs and is visible in every view. -->
-  <section class="budget">
+  <section class="budget" id="budget">
+    <!-- The crack that spreads as the budget is spent. Two copies of one path:
+         a dark fissure and an ember core inside it, both revealed by
+         stroke-dashoffset so the break grows rather than fades in. app.ts sets
+         --spent on the panel; everything else here is geometry. -->
+    <svg class="fracture" viewBox="0 0 380 150" preserveAspectRatio="none" aria-hidden="true">
+      <path class="fracture__dark" d="M14 8 L58 34 L44 58 L96 74 L78 96 L132 108 L118 132 L176 142
+                                      M96 74 L142 52 L188 66 M78 96 L36 118 M132 108 L184 96 L232 116
+                                      M188 66 L246 44 L300 62 M232 116 L286 104 L340 126 M300 62 L352 40"/>
+      <path class="fracture__lit"  d="M14 8 L58 34 L44 58 L96 74 L78 96 L132 108 L118 132 L176 142
+                                      M96 74 L142 52 L188 66 M78 96 L36 118 M132 108 L184 96 L232 116
+                                      M188 66 L246 44 L300 62 M232 116 L286 104 L340 126 M300 62 L352 40"/>
+    </svg>
     <div class="budget-row">
       <span class="budget-label">Signatures remaining</span>
       <span class="budget-count"><b id="sig-left">—</b> <span id="sig-max"></span></span>

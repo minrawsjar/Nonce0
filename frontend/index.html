@@ -116,7 +116,7 @@
        over unchanged and re-set in the dark instrument — the words were the
        part that was working. -->
 
-  <div class="wrap slab" id="how" data-fig="01">
+  <div class="wrap slab" id="how">
     <p class="sec-n" data-reveal data-n="01">Post-quantum · network-private · conditional</p>
     <h2 class="h2" data-reveal>Private payments built for the quantum era.</h2>
     <p class="lede">An eight-note ring hides which note was spent. A three-hop relay mesh hides where
@@ -128,7 +128,7 @@
     </p>
   </div>
 
-  <div class="wrap slab" data-fig="02">
+  <div class="wrap slab">
     <div class="pillars">
       <div class="pillar" data-reveal>
         <p class="sec-n" data-reveal data-n="02">Quantum-safe keys</p>
@@ -170,7 +170,7 @@
     </figcaption>
   </figure>
 
-  <div class="wrap slab slab--tight" data-fig="05">
+  <div class="wrap slab slab--tight">
     <p class="sec-n" data-reveal data-n="05">What survives a quantum computer</p>
     <div class="ledger">
       <span data-reveal>secp256k1 <i>at risk</i></span><span>Ed25519 <i>at risk</i></span>
@@ -184,7 +184,7 @@
     </p>
   </div>
 
-  <div class="wrap slab" id="why" data-fig="06">
+  <div class="wrap slab" id="why">
     <p class="sec-n" data-reveal data-n="06">The gap</p>
     <h2 class="h2" data-reveal>Why nothing like this exists yet.</h2>
     <div class="compare">
@@ -226,7 +226,7 @@
     </div>
   </div>
 
-  <div class="wrap slab" id="threat" data-fig="07">
+  <div class="wrap slab" id="threat">
     <p class="sec-n" data-reveal data-n="07">Threat model</p>
     <h2 class="h2" data-reveal>Said plainly, including what it does not do.</h2>
     <div class="cards">
@@ -261,7 +261,7 @@
     </div>
   </div>
 
-  <div class="wrap slab" id="build" data-fig="08">
+  <div class="wrap slab" id="build">
     <div class="built">
       <div class="tilt" data-tilt>
         <div class="tilt__glow" aria-hidden="true"></div>
@@ -299,108 +299,68 @@
 
 
   <!-- ══ The resolution ═════════════════════════════════════════════════ -->
-  <section class="dawn" id="product">
-    <!-- preserveAspectRatio="none": these are abstract silhouettes, and letting
-         them stretch to the viewport keeps both ridges and the gap between them
-         in frame at every width. "slice" would crop the ridges off entirely on
-         a narrow screen and leave two dark slabs. -->
-    <svg class="dawn__scape" viewBox="0 0 1600 900" preserveAspectRatio="none" aria-hidden="true">
-      <defs>
-        <linearGradient id="ridgeFar" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stop-color="#2a1a12"/>
-          <stop offset="100%" stop-color="#150d0a"/>
-        </linearGradient>
-        <linearGradient id="ridgeNear" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stop-color="#140c09"/>
-          <stop offset="100%" stop-color="#080607"/>
-        </linearGradient>
-        <linearGradient id="sunbeam" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stop-color="#ffcb92" stop-opacity=".55"/>
-          <stop offset="55%" stop-color="#ff9a3c" stop-opacity=".22"/>
-          <stop offset="100%" stop-color="#ff9a3c" stop-opacity="0"/>
-        </linearGradient>
-        <filter id="beamBlur" x="-80%" y="-20%" width="260%" height="140%">
-          <feGaussianBlur stdDeviation="26"/>
-        </filter>
-      </defs>
-
-      <path d="M0 900 V520 l86 44 l70 -58 l88 52 l74 -40 l96 66 l112 48 l140 40 V900 Z" fill="url(#ridgeFar)"/>
-      <path d="M1600 900 V506 l-92 50 l-76 -56 l-90 60 l-82 -38 l-104 70 l-118 50 l-146 34 V900 Z" fill="url(#ridgeFar)"/>
-      <path d="M0 900 V624 l120 36 l104 -28 l132 40 l150 26 V900 Z" fill="url(#ridgeNear)"/>
-      <path d="M1600 900 V612 l-128 40 l-112 -26 l-140 44 l-158 30 V900 Z" fill="url(#ridgeNear)"/>
-
-      <!-- The sun's reflection running toward the viewer across the plain. It
-           has to spread as it comes forward — a straight-sided rectangle reads
-           as a bar of colour sitting on top of the picture. -->
-      <path d="M772 636 L828 636 L906 900 L694 900 Z" fill="url(#sunbeam)" filter="url(#beamBlur)"/>
-    </svg>
-    <div class="dawn__ring" aria-hidden="true"></div>
-    <div class="dawn__grain" aria-hidden="true"></div>
-
-    <div class="wrap dawn__inner">
-      <span class="wordmark">
-        <span class="wordmark__name">opaque</span>
-        <span class="wordmark__sub" aria-hidden="true"><i></i>post<i></i>quantum<i></i></span>
-      </span>
-      <p class="dawn__lede">Even an opaque wall can be broken tomorrow.<br>But never your wallet.</p>
-      <p class="dawn__sub">Building the infrastructure for a post-quantum internet — secure, open, and built for what's next.</p>
-      <div class="dawn__cta">
-        <a href="app.html" class="btn btn--solid">Get Started <span aria-hidden="true">&rarr;</span></a>
-        <a href="#how" class="btn btn--quiet">Learn More</a>
-      </div>
-    </div>
-
-    <p class="label label--dim dawn__corner dawn__corner--l">Privacy<br>that lasts.</p>
-    <p class="label label--dim dawn__corner dawn__corner--r">Built<br>for a more<br>private tomorrow.</p>
-  </section>
 
 
-  <div class="wrap credits">
-    Photography &mdash;
-    <a href="https://commons.wikimedia.org/wiki/File:IBM_Quantum_System_One.jpg">IBM Quantum System One</a>
-    by OJB Quantum, <a href="https://creativecommons.org/licenses/by/4.0/">CC&nbsp;BY&nbsp;4.0</a>;
-    <a href="https://commons.wikimedia.org/wiki/File:IBM_Q_System_One_(Fraunhofer)_installation.jpg">IBM Q System One installation</a>
-    by IBM Research, <a href="https://creativecommons.org/licenses/by/2.0/">CC&nbsp;BY&nbsp;2.0</a>;
-    <a href="https://commons.wikimedia.org/wiki/File:Wire_Bonded_Superconducting_Quantum_Chip_with_6_Transmons_003.png">wire-bonded quantum chip</a>
-    by OJB Quantum, <a href="https://creativecommons.org/licenses/by/4.0/">CC&nbsp;BY&nbsp;4.0</a>.
-    Images are cropped and colour-graded. opaque is not affiliated with IBM.
-  </div>
 </main>
 
 <footer class="foot">
-  <div class="wrap">
-    <div class="foot__top">
-      <a href="#top" aria-label="opaque — home">
-        <span class="wordmark">
-          <span class="wordmark__name">opaque</span>
-          <span class="wordmark__sub" aria-hidden="true"><i></i>post<i></i>quantum<i></i></span>
-        </span>
-      </a>
-      <nav class="foot__links" aria-label="Footer">
+  <!-- The header's wave, turned over. The page opens on that edge and closes on
+       its mirror, which is what makes the two ends read as one object rather
+       than as a band at the top and a strip at the bottom. Same path, flipped
+       in the viewBox. -->
+  <svg class="foot__wave" viewBox="0 0 1440 48" preserveAspectRatio="none" aria-hidden="true">
+    <path class="foot__wave-fill"
+          d="M0,24 C60,17 100,16 140,22 C260,38 430,10 570,26 C700,41 870,12 1000,28 C1140,45 1310,8 1440,34 V48 H0 Z"/>
+    <path class="foot__wave-lip"
+          d="M0,24 C60,17 100,16 140,22 C260,38 430,10 570,26 C700,41 870,12 1000,28 C1140,45 1310,8 1440,34"/>
+  </svg>
+
+  <div class="wrap foot__inner">
+
+    <!-- The closing statement, not a column of links. This is the last thing
+         anyone reads, so it gets the room. -->
+    <div class="foot__say">
+      <p class="foot__line">Everything breaks eventually.<br><em>Your wallet is the exception.</em></p>
+      <a href="app.html" class="btn btn--solid">Open the wallet <span aria-hidden="true">&rarr;</span></a>
+    </div>
+
+    <nav class="foot__cols" aria-label="Footer">
+      <div class="foot__col">
+        <p class="label label--dim">The argument</p>
         <a href="#how">How it works</a>
         <a href="#why">The gap</a>
         <a href="#threat">Threat model</a>
         <a href="#build">Built on</a>
-      </nav>
-      <div class="foot__social">
-        <a href="https://github.com" aria-label="opaque on GitHub" rel="noreferrer">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></svg>
-        </a>
-        <a href="https://x.com" aria-label="opaque on X" rel="noreferrer">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18.901 1.153h3.68l-8.04 9.19L24 22.846h-7.406l-5.8-7.584-6.638 7.584H.474l8.6-9.83L0 1.154h7.594l5.243 6.932ZM17.61 20.644h2.039L6.486 3.24H4.298Z"/></svg>
-        </a>
-        <a href="https://linkedin.com" aria-label="opaque on LinkedIn" rel="noreferrer">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 01-2.063-2.065 2.064 2.064 0 112.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/></svg>
-        </a>
-        <a href="https://discord.com" aria-label="opaque on Discord" rel="noreferrer">
-          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.317 4.3698a19.7913 19.7913 0 00-4.8851-1.5152.0741.0741 0 00-.0785.0371c-.211.3753-.4447.8648-.6083 1.2495-1.8447-.2762-3.68-.2762-5.4868 0-.1636-.3933-.4058-.8742-.6177-1.2495a.077.077 0 00-.0785-.037 19.7363 19.7363 0 00-4.8852 1.515.0699.0699 0 00-.0321.0277C.5334 9.0458-.319 13.5799.0992 18.0578a.0824.0824 0 00.0312.0561c2.0528 1.5076 4.0413 2.4228 5.9929 3.0294a.0777.0777 0 00.0842-.0276c.4616-.6304.8731-1.2952 1.226-1.9942a.076.076 0 00-.0416-.1057c-.6528-.2476-1.2743-.5495-1.8722-.8923a.077.077 0 01-.0076-.1277c.1258-.0943.2517-.1923.3718-.2914a.0743.0743 0 01.0776-.0105c3.9278 1.7933 8.18 1.7933 12.0614 0a.0739.0739 0 01.0785.0095c.1202.099.246.1981.3728.2924a.077.077 0 01-.0066.1276 12.2986 12.2986 0 01-1.873.8914.0766.0766 0 00-.0407.1067c.3604.6987.7719 1.3636 1.225 1.9932a.076.076 0 00.0842.0286c1.961-.6067 3.9495-1.5219 6.0023-3.0294a.077.077 0 00.0313-.0552c.5004-5.177-.8382-9.6739-3.5485-13.6604a.061.061 0 00-.0312-.0286zM8.02 15.3312c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9555-2.4189 2.157-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.9555 2.4189-2.1569 2.4189zm7.9748 0c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9554-2.4189 2.1569-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.946 2.4189-2.1568 2.4189Z"/></svg>
-        </a>
       </div>
-    </div>
-    <div class="foot__base">
-      <p>&copy; 2026 opaque. All rights reserved.</p>
-      <p>Same possibilities. A safer tomorrow.</p>
-    </div>
+      <div class="foot__col">
+        <p class="label label--dim">Elsewhere</p>
+        <a href="https://github.com" rel="noreferrer">GitHub</a>
+        <a href="https://x.com" rel="noreferrer">X</a>
+        <a href="https://linkedin.com" rel="noreferrer">LinkedIn</a>
+        <a href="https://discord.com" rel="noreferrer">Discord</a>
+      </div>
+    </nav>
+  </div>
+
+  <!-- The wordmark as the floor of the page: clipped by the footer box so it
+       reads as something the page is standing on rather than a logo placed on
+       it. Decorative only — the accessible name is the link above. -->
+  <div class="foot__floor" aria-hidden="true">opaque</div>
+
+  <div class="wrap foot__base">
+    <p>&copy; 2026 opaque. All rights reserved.</p>
+    <!-- CC BY requires the author, the licence and a link. If a photograph is
+         swapped, this line and media/CREDITS.md change together — dropping the
+         attribution while keeping the image is a licence breach, not a
+         formatting choice. -->
+    <p class="foot__credits">
+      Photography &mdash;
+      <a href="https://commons.wikimedia.org/wiki/File:IBM_Quantum_System_One.jpg">IBM Quantum System One</a>
+      by OJB Quantum, <a href="https://creativecommons.org/licenses/by/4.0/">CC&nbsp;BY&nbsp;4.0</a>;
+      <a href="https://commons.wikimedia.org/wiki/File:IBM_Q_System_One_(Fraunhofer)_installation.jpg">IBM Q System One installation</a>
+      by IBM Research, <a href="https://creativecommons.org/licenses/by/2.0/">CC&nbsp;BY&nbsp;2.0</a>.
+      Not affiliated with IBM.
+    </p>
   </div>
 </footer>
 
