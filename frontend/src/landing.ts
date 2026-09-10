@@ -137,7 +137,6 @@ const debris = document.querySelector<HTMLElement>('[data-debris]');
 const dust = Array.from(document.querySelectorAll<HTMLElement>('[data-dust]'));
 const note = document.querySelector<HTMLElement>('[data-note]');
 const line = document.querySelector<HTMLElement>('[data-line]');
-const nav = document.querySelector<HTMLElement>('.nav');
 
 const still = window.matchMedia('(prefers-reduced-motion: reduce)');
 
@@ -165,16 +164,6 @@ if (fsButton && document.fullscreenEnabled) {
   });
 } else if (fsButton) {
   fsButton.hidden = true;
-}
-
-/* ── The header ─────────────────────────────────────────────────────────── */
-
-if (nav) {
-  const onScrolled = (): void => {
-    nav.classList.toggle('is-scrolled', window.scrollY > 24);
-  };
-  window.addEventListener('scroll', onScrolled, { passive: true });
-  onScrolled();
 }
 
 /* ── The rig ────────────────────────────────────────────────────────────── */
@@ -377,6 +366,163 @@ if (pin && rig && !still.matches) {
 
   window.addEventListener('resize', measure);
   render(0);
+}
+
+/* ── The argument, on arrival ───────────────────────────────────────────── */
+
+// Everything below the hero. Built with gsap.from rather than a resting state
+// in the stylesheet, so the page is fully legible with JavaScript off — nothing
+// is hidden waiting for a script that might never run.
+if (!still.matches) {
+  // Blocks rise into place as they come up. Once only: re-animating on the way
+  // back up makes a long page feel unstable under the hand.
+  for (const el of document.querySelectorAll<HTMLElement>('[data-reveal]')) {
+    gsap.from(el, {
+      opacity: 0,
+      y: 26,
+      duration: 0.7,
+      ease: 'power2.out',
+      scrollTrigger: { trigger: el, start: 'top 88%', once: true },
+    });
+  }
+
+  // The rule across each pillar draws itself left to right.
+  for (const el of document.querySelectorAll<HTMLElement>('.pillar')) {
+    gsap.fromTo(
+      el,
+      { '--draw': 0 },
+      {
+        '--draw': 1,
+        duration: 0.9,
+        ease: 'power2.out',
+        scrollTrigger: { trigger: el, start: 'top 88%', once: true },
+      },
+    );
+  }
+
+  // Six struck through in sequence, then the two that hold are left standing.
+  // The stagger is the point: read one at a time, the list becomes an argument
+  // rather than a table.
+  const broken = document.querySelectorAll<HTMLElement>('.ledger span:not(.holds)');
+  const ledger = document.querySelector<HTMLElement>('.ledger');
+  if (ledger && broken.length > 0) {
+    gsap.fromTo(
+      broken,
+      { '--strike': 0 },
+      {
+        '--strike': 1,
+        duration: 0.45,
+        ease: 'power1.inOut',
+        stagger: 0.09,
+        scrollTrigger: { trigger: ledger, start: 'top 72%', once: true },
+      },
+    );
+  }
+
+  // Photographs drift against the scroll. Small: enough to separate them from
+  // the type, not enough to read as a gimmick.
+  for (const fig of document.querySelectorAll<HTMLElement>('.band')) {
+    const img = fig.querySelector('img');
+    if (!img) continue;
+    gsap.fromTo(
+      img,
+      { yPercent: -6 },
+      {
+        yPercent: 6,
+        ease: 'none',
+        scrollTrigger: { trigger: fig, start: 'top bottom', end: 'bottom top', scrub: true },
+      },
+    );
+  }
+}
+
+/* ── Tilt ───────────────────────────────────────────────────────────────── */
+
+// Leans toward the cursor, lifts, and lights the surface under it. Two things
+// on the page use it: the chip render and the refrigerator photograph.
+//
+// Angles are measured from each element's own centre, not from the viewport or
+// the column it sits in, so the corner nearest the pointer is always the one
+// that rises. Kept to ±14° horizontal and ±9° vertical on purpose — these are
+// flat images with no modelled sides, and past roughly fifteen degrees the eye
+// starts asking to see the edge of the object and there is none to show.
+//
+// Every frame is a lerp toward a target rather than a direct assignment, which
+// is what stops it snapping around under a fast mouse. It also means letting go
+// needs no transition: the target simply becomes the resting pose again.
+
+// A coarse pointer has no hover, and nothing to lean toward.
+const canHover = window.matchMedia('(hover: hover)').matches;
+
+if (canHover && !still.matches) {
+  const REST_X = 6; // degrees — the pose it sits in untouched
+  const SWING_Y = 14;
+  const SWING_X = 9;
+
+  for (const host of document.querySelectorAll<HTMLElement>('[data-tilt]')) {
+    const face = host.querySelector<HTMLElement>('.tilt__body');
+    const glow = host.querySelector<HTMLElement>('.tilt__glow');
+    if (!face || !glow) continue;
+
+    const now = { rx: REST_X, ry: 0, lift: 0, lit: 0.25 };
+    const want = { rx: REST_X, ry: 0, lift: 0, lit: 0.25 };
+    let running = false;
+
+    const frame = (): void => {
+      // 0.1 rather than something snappier: the weight of the ease is most of
+      // what makes it read as an object being handled.
+      const ease = 0.1;
+      now.rx += (want.rx - now.rx) * ease;
+      now.ry += (want.ry - now.ry) * ease;
+      now.lift += (want.lift - now.lift) * ease;
+      now.lit += (want.lit - now.lit) * ease;
+
+      face.style.transform =
+        `perspective(1100px) rotateX(${now.rx.toFixed(2)}deg) rotateY(${now.ry.toFixed(2)}deg) translateY(${now.lift.toFixed(2)}px) scale(${(1 + now.lift * -0.0016).toFixed(4)})`;
+      glow.style.setProperty('--lit', now.lit.toFixed(3));
+
+      // Stop once it has settled rather than burning a frame forever on an
+      // element nobody is touching.
+      running =
+        Math.abs(want.rx - now.rx) > 0.01 ||
+        Math.abs(want.ry - now.ry) > 0.01 ||
+        Math.abs(want.lift - now.lift) > 0.01 ||
+        Math.abs(want.lit - now.lit) > 0.002;
+      if (running) requestAnimationFrame(frame);
+    };
+
+    const wake = (): void => {
+      if (running) return;
+      running = true;
+      requestAnimationFrame(frame);
+    };
+
+    host.addEventListener('pointermove', (event) => {
+      if (event.pointerType === 'touch') return;
+      const box = host.getBoundingClientRect();
+      // -0.5 … 0.5 from the centre of this element, and clamped there. A
+      // pointermove can carry coordinates outside the box it fired on — moving
+      // fast across an edge, or while something else holds pointer capture —
+      // and without this the swing multiplies straight past its limit. Seen at
+      // 39° on an element meant to top out at 15.
+      const half = (n: number): number => (n < -0.5 ? -0.5 : n > 0.5 ? 0.5 : n);
+      const x = half((event.clientX - box.left) / box.width - 0.5);
+      const y = half((event.clientY - box.top) / box.height - 0.5);
+      want.ry = x * SWING_Y * 2;
+      want.rx = REST_X - y * SWING_X * 2;
+      want.lift = -10;
+      want.lit = 0.62;
+      wake();
+    });
+
+    host.addEventListener('pointerleave', () => {
+      want.rx = REST_X;
+      want.ry = 0;
+      want.lift = 0;
+      want.lit = 0.25;
+      wake();
+    });
+  }
 }
 
 /* ── Boot gate ──────────────────────────────────────────────────────────── */

@@ -34,21 +34,33 @@
 </button>
 
 <header class="nav">
-  <div class="wrap nav__inner">
-    <a href="#top" aria-label="opaque — home">
-      <span class="wordmark">
-        <span class="wordmark__name">opaque</span>
-        <span class="wordmark__sub" aria-hidden="true"><i></i>post<i></i>quantum<i></i></span>
-      </span>
-    </a>
-    <nav class="nav__links" aria-label="Primary">
-      <a href="#product">Product</a>
-      <a href="#developers">Developers</a>
-      <a href="#docs">Docs</a>
-      <a href="#about">About</a>
-    </nav>
-    <a href="app.html" class="btn btn--outline">Get Started</a>
+  <!-- The band and the wave under it are one shape: the wave path closes up to
+       the top of its own box, so it is the header's bottom edge rather than a
+       decoration sitting below one. Both take the same fill, so there is no
+       seam between them at any width. -->
+  <div class="nav__band">
+    <div class="wrap nav__inner">
+      <a href="#top" class="nav__brand" aria-label="opaque — home">
+        <img src="media/logo.webp" alt="opaque" width="600" height="127" decoding="async">
+      </a>
+      <nav class="nav__links" aria-label="Primary">
+        <a href="#how">How it works</a>
+        <a href="#why">The gap</a>
+        <a href="#threat">Threat model</a>
+        <a href="#build">Built on</a>
+      </nav>
+      <a href="app.html" class="btn btn--outline">Get Started</a>
+    </div>
   </div>
+  <!-- preserveAspectRatio="none" on purpose: the wave should stretch to the
+       viewport rather than keep its ratio, so its height stays constant while
+       its wavelength grows with the window. -->
+  <svg class="nav__wave" viewBox="0 0 1440 48" preserveAspectRatio="none" aria-hidden="true">
+    <path class="nav__wave-fill"
+          d="M0,24 C60,31 100,32 140,26 C260,10 430,38 570,22 C700,7 870,36 1000,20 C1140,3 1310,40 1440,14 V0 H0 Z"/>
+    <path class="nav__wave-lip"
+          d="M0,24 C60,31 100,32 140,26 C260,10 430,38 570,22 C700,7 870,36 1000,20 C1140,3 1310,40 1440,14"/>
+  </svg>
 </header>
 
 <main id="top">
@@ -137,6 +149,193 @@
     </div>
   </section>
 
+  <!-- ══ The argument ═══════════════════════════════════════════════════
+       What the thing actually is. This copy is the earlier build's, carried
+       over unchanged and re-set in the dark instrument — the words were the
+       part that was working. -->
+
+  <div class="wrap slab" id="how" data-fig="01">
+    <p class="sec-n" data-reveal data-n="01">Post-quantum · network-level · settlement</p>
+    <h2 class="h2" data-reveal>Private payments that are still private after quantum.</h2>
+    <p class="lede" style="max-width:52ch">A ring signature hides which of eight signed. A relay mesh hides where it
+      came from. Neither of them breaks under Shor.</p>
+    <p class="prose" style="max-width:52ch;margin-top:var(--gap-6)">
+      Every private payment tool on Ethereum today hides <em>what</em> happened. None of them hide
+      <em>who connected to make it happen</em> — and every one is signed with cryptography a quantum
+      computer is already known how to break.
+    </p>
+  </div>
+
+  <div class="wrap slab" data-fig="02">
+    <div class="pillars">
+      <div class="pillar" data-reveal>
+        <p class="sec-n" data-reveal data-n="02">Quantum-secure</p>
+        <h3>Signed with lattice math, not elliptic curves.</h3>
+        <p class="prose">
+          Every payment is authorised by a post-quantum ring signature — the sender proves they are one
+          of a small group without revealing which one, on the same class of hard problem NIST
+          standardised against quantum attack. There is no “upgrade later”, because it was never
+          breakable that way.
+        </p>
+      </div>
+      <div class="pillar" data-reveal>
+        <p class="sec-n" data-reveal data-n="03">Network-level</p>
+        <h3>Hiding the payment is not hiding the person.</h3>
+        <p class="prose">
+          Encrypting a transaction still leaves an IP address behind. Every payment is routed through a
+          relay mesh — three hops, batched, randomly delayed — so the moment your wallet connects is
+          never linkable to the moment your transaction lands.
+        </p>
+      </div>
+      <div class="pillar" data-reveal>
+        <p class="sec-n" data-reveal data-n="04">Settlement</p>
+        <h3>Trustless by construction, not by policy.</h3>
+        <p class="prose">
+          The signature is verified entirely on-chain — no relay, operator or enclave anyone has to
+          trust for a payment to be valid. Funds settle in USDC over Arc, built for exactly this kind
+          of conditional, multi-step flow.
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <figure class="band" style="margin:0">
+    <img src="media/quantum-system.webp" alt="Engineers installing a quantum computer"
+         width="1800" height="1199" loading="lazy" decoding="async">
+    <figcaption class="band__note">
+      <p class="prose"><b>The machine does not have to exist yet to matter.</b>
+        Harvest now, decrypt later: a signature broadcast today is archived forever, and read the day
+        hardware like this reaches scale. Every private payment made on elliptic curves is on that clock.</p>
+    </figcaption>
+  </figure>
+
+  <div class="wrap slab slab--tight" data-fig="05">
+    <p class="sec-n" data-reveal data-n="05">What survives a quantum computer</p>
+    <div class="ledger">
+      <span data-reveal>secp256k1 <i>broken</i></span><span>Ed25519 <i>broken</i></span>
+      <span>BLS12-381 <i>broken</i></span><span>bn254 pairing <i>broken</i></span>
+      <span>Groth16 SNARK <i>broken</i></span><span>Pedersen hiding <i>broken</i></span>
+      <span class="holds">Ring-LWE <i>holds</i></span><span class="holds">Module-SIS <i>holds</i></span>
+    </div>
+    <p class="caption" style="max-width:74ch">
+      Shor breaks discrete-log outright; Grover halves hash strength, which 256-bit output already
+      absorbs. Every shielded-payment protocol in production today sits in the top two rows.
+    </p>
+  </div>
+
+  <div class="wrap slab" id="why" data-fig="06">
+    <p class="sec-n" data-reveal data-n="06">The gap</p>
+    <h2 class="h2" data-reveal>Why nothing like this exists yet.</h2>
+    <div class="compare">
+      <div data-reveal class="compare__rows">
+        <div data-reveal class="compare__row">
+          <p class="prose"><b>Railgun, Aztec, Privacy Pools</b> hide the payment — sender, amount, recipient — with
+            elliptic-curve cryptography a quantum computer breaks. None of them touch network-origin privacy.</p>
+        </div>
+        <div data-reveal class="compare__row">
+          <p class="prose"><b>Monero</b> is the closest existing shape — ring signatures plus network-layer
+            obfuscation — but with pre-quantum cryptography, on a chain with no smart contracts.</p>
+        </div>
+        <div data-reveal class="compare__row">
+          <p class="prose"><b>Flashbots and private RPC</b> hide a transaction from the public mempool, not from
+            the RPC provider. A different problem, and the one most often mistaken for this one.</p>
+        </div>
+        <div data-reveal class="compare__row compare__row--claim">
+          <p class="prose">Nobody surveyed composes quantum-secure payment privacy with network-origin privacy,
+            on Ethereum. <b>That composition is the claim</b> — not any single piece of it.</p>
+        </div>
+      </div>
+      <figure>
+        <!-- The chip leans toward the cursor. .chip owns the perspective, the
+             body inside it does the turning, and the glow sits under both — see
+             landing.ts. It is a flat cut-out, so the tilt is an illusion and the
+             angles are kept small deliberately: past about 15 degrees the eye
+             starts asking to see the side of the chip, and there isn't one. -->
+        <div class="tilt" data-tilt>
+          <div class="tilt__glow" aria-hidden="true"></div>
+          <img class="tilt__body" src="media/chip.webp"
+               alt="A wire-bonded superconducting quantum processor"
+               width="1100" height="426" loading="lazy" decoding="async">
+        </div>
+        <figcaption class="caption">
+          Six transmons on a wire-bonded die. Shor needs many thousands of stable logical qubits before
+          it recovers a key — which is why the honest question is not “when”, but “what did you sign
+          that is still readable then”.
+        </figcaption>
+      </figure>
+    </div>
+  </div>
+
+  <div class="wrap slab" id="threat" data-fig="07">
+    <p class="sec-n" data-reveal data-n="07">Threat model</p>
+    <h2 class="h2" data-reveal>Said plainly, including what it does not do.</h2>
+    <div class="cards">
+      <div data-reveal class="card card--hides">
+        <h3>What it hides</h3>
+        <ul>
+          <li>Which ring member signed a payment</li>
+          <li>The payment amount</li>
+          <li>The sender's network origin</li>
+          <li>The input evaluated by the policy check</li>
+        </ul>
+      </div>
+      <div data-reveal class="card card--limits">
+        <h3>What it does not claim</h3>
+        <ul>
+          <li>Defence against a global passive network adversary</li>
+          <li>Defence if every relay hop is compromised at once</li>
+          <li>Protection from your own timing and amount patterns</li>
+          <li>Ring size 8 is a proof of concept, not a production anonymity set</li>
+        </ul>
+      </div>
+      <div data-reveal class="card card--trust">
+        <h3>What you trust</h3>
+        <p class="prose">
+          Nothing, for payment validity — the ring signature is verified on-chain by the contract
+          itself. The relay mesh is trusted only for network-origin privacy, and never for whether a
+          payment is valid.
+        </p>
+      </div>
+    </div>
+  </div>
+
+  <div class="wrap slab" id="build" data-fig="08">
+    <div class="built">
+      <div class="tilt" data-tilt>
+        <div class="tilt__glow" aria-hidden="true"></div>
+        <img class="tilt__body" src="media/quantum-tower.webp"
+             alt="The gold-plated dilution refrigerator of a quantum computer"
+             width="576" height="1400" loading="lazy" decoding="async">
+      </div>
+      <div>
+        <p class="sec-n" data-reveal data-n="08">Built on what's real</p>
+        <div class="built__list">
+          <div>
+            <p>ChipmunkRing (2025)</p>
+            <p class="prose">A published lattice-based ring signature with working reference code. Not a
+              hackathon invention.</p>
+          </div>
+          <div>
+            <p>MatRiCT / MatRiCT+</p>
+            <p class="prose">Post-quantum ring-confidential-transaction design, already running in production
+              on Hcash.</p>
+          </div>
+          <div>
+            <p>Ethereum's own roadmap</p>
+            <p class="prose">Privacy and quantum-resistance are both live Ethereum Foundation workstreams.
+              This maps onto both.</p>
+          </div>
+        </div>
+        <div class="tags">
+          <span class="tag">Chainlink CRE</span>
+          <span class="tag">Arc / USDC</span>
+          <span class="tag">ETHOnline 2026</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+
   <!-- ══ The resolution ═════════════════════════════════════════════════ -->
   <section class="dawn" id="product">
     <!-- preserveAspectRatio="none": these are abstract silhouettes, and letting
@@ -185,7 +384,7 @@
       <p class="dawn__sub">Building the infrastructure for a post-quantum internet — secure, open, and built for what's next.</p>
       <div class="dawn__cta">
         <a href="app.html" class="btn btn--solid">Get Started <span aria-hidden="true">&rarr;</span></a>
-        <a href="#docs" class="btn btn--quiet">Learn More</a>
+        <a href="#how" class="btn btn--quiet">Learn More</a>
       </div>
     </div>
 
@@ -193,6 +392,15 @@
     <p class="label label--dim dawn__corner dawn__corner--r">Built<br>for a more<br>private tomorrow.</p>
   </section>
 
+
+  <div class="wrap credits">
+    Photography &mdash;
+    <a href="https://commons.wikimedia.org/wiki/File:IBM_Quantum_System_One.jpg">IBM Quantum System One</a>
+    by OJB Quantum, <a href="https://creativecommons.org/licenses/by/4.0/">CC&nbsp;BY&nbsp;4.0</a>;
+    <a href="https://commons.wikimedia.org/wiki/File:IBM_Q_System_One_(Fraunhofer)_installation.jpg">IBM Q System One installation</a>
+    by IBM Research, <a href="https://creativecommons.org/licenses/by/2.0/">CC&nbsp;BY&nbsp;2.0</a>.
+    Diagrams are original work. opaque is not affiliated with IBM.
+  </div>
 </main>
 
 <footer class="foot">
@@ -205,10 +413,10 @@
         </span>
       </a>
       <nav class="foot__links" aria-label="Footer">
-        <a href="#product">Product</a>
-        <a href="#developers">Developers</a>
-        <a href="#docs">Docs</a>
-        <a href="#about">About</a>
+        <a href="#how">How it works</a>
+        <a href="#why">The gap</a>
+        <a href="#threat">Threat model</a>
+        <a href="#build">Built on</a>
       </nav>
       <div class="foot__social">
         <a href="https://github.com" aria-label="opaque on GitHub" rel="noreferrer">
