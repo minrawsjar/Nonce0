@@ -14,16 +14,7 @@
 </head>
 <body>
 
-<!-- Held over the page until every layer has decoded. A rig of twenty-odd
-     cut-outs is unforgiving of a half-loaded sequence: scroll in early and
-     chunks fly out of a wall that has not arrived. Removed by landing.ts, and
-     never shown at all without JavaScript. -->
-<div class="boot" data-boot hidden>
-  <span class="boot__bar"><i data-boot-bar></i></span>
-</div>
-
-<!-- No header over the sequence — landing.ts hides it for the length of the
-     hero and brings it back once the shield has closed. This stays. -->
+<!-- Full-screen control for the cinematic intro. -->
 <button class="fs" type="button" data-fs aria-label="Enter full screen">
   <svg viewBox="0 0 24 24" aria-hidden="true" class="fs__in">
     <path d="M3 9V3h6M21 9V3h-6M3 15v6h6M21 15v6h-6"/>
@@ -53,23 +44,7 @@
 
 <main id="top">
 
-  <!-- ══ The hero ═══════════════════════════════════════════════════════
-       Seventeen plates on one dissolve chain, wall through to wallet — there is no
-       separate ending any more.
-
-       The first six share a camera exactly; the inscription does not move a
-       pixel across them, so the wall lighting up, cracking and shedding its
-       first chunks is five dissolves with nothing but the stone changing. The
-       rest carry their own camera move and land inside the push, which keeps
-       them reading as one move rather than as cuts.
-
-       How long each plate holds is set by how much actually changes at that
-       point in the break, not by dividing the scroll evenly — see WALL_CUTS in
-       landing.ts. That, far more than the number of plates, is what makes this
-       feel continuous.
-
-       The shard rig flies over the middle of it, so the dissolves through the
-       heaviest part of the break always have real motion on top of them. -->
+  <!-- Scroll-driven wall-to-wallet sequence. -->
   <section class="hero">
     <div class="hero__pin">
 
@@ -103,31 +78,16 @@
       <img class="plate" data-wide src="media/hero-09.webp"
            alt="An opaque wallet held inside a sphere of orange light" decoding="async">
 
-      <!-- Base positions are percentages of the rig box. Deliberately oversized:
-           the box is scaled about its own centre, so a composition that only
-           just fitted would pull its own canvas edges into frame the moment the
-           camera moved. -->
-      <div class="rig" data-rig>
-        <img class="rig__dust" data-dust src="media/rig/dust-medium.webp"
-             alt="" aria-hidden="true" decoding="async" style="left:42%; top:32%; width:40%">
-        <img class="rig__dust" data-dust src="media/rig/dust-large.webp"
-             alt="" aria-hidden="true" decoding="async" style="left:46%; top:54%; width:50%">
-        <img class="rig__dust" data-dust src="media/rig/dust-small.webp"
-             alt="" aria-hidden="true" decoding="async" style="left:56%; top:74%; width:38%">
-        <img class="rig__debris" data-debris src="media/rig/debris.webp"
-             alt="" aria-hidden="true" decoding="async">
-        <!-- Shards are built from the trajectory table in landing.ts. -->
-        <div class="rig__shards" data-shards></div>
-      </div>
-
       <!-- The headline is carved into the stone, so it exists for the eye and
            for nothing else. This carries the same words — off-screen, but there
            for search, for screen readers, and if the images never arrive. -->
-      <h1 class="sr-only">The future breaks everything. But never your wallet.</h1>
+      <h1 class="sr-only hero__title">The future breaks everything. But never your wallet.</h1>
 
       <p class="label label--bright hero__note" data-note>Same internet.<br>A more private<br>tomorrow.</p>
 
       <p class="hero__line" data-line>Even an opaque wall can be broken tomorrow.<br>But never your wallet.</p>
+
+      <a class="hero__skip" href="#product">Skip intro <span aria-hidden="true">↗</span></a>
 
       <div class="rail" aria-hidden="true">
         <span class="rail__hint">Scroll</span>

@@ -94,16 +94,15 @@ img, svg { display: block; max-width: 100%; }
    and the full-screen button is the only chrome over it. landing.ts puts
    .in-hero on the body and takes it off once the shield has closed. Default is
    visible, so without JavaScript the page still has its navigation. */
-body.in-hero .nav { opacity: 0; pointer-events: none; }
+body.in-hero .nav { opacity: 0; visibility: hidden; pointer-events: none; }
 
 .nav {
   opacity: 1;
-  transition: opacity 0.5s ease;
   position: fixed;
   inset: 0 0 auto;
   z-index: 40;
   padding-block: clamp(14px, 1.6vw, 22px);
-  transition: background-color 0.35s ease, backdrop-filter 0.35s ease, border-color 0.35s ease;
+  transition: opacity 0.35s ease, visibility 0.35s ease, background-color 0.35s ease, border-color 0.35s ease;
   border-bottom: 1px solid transparent;
 }
 /* The page runs from near-black to a bright ember horizon, so a permanently
@@ -180,49 +179,7 @@ body.in-hero .nav { opacity: 0; pointer-events: none; }
   background: #08070c;
 }
 
-/* A 16:9 box scaled to cover the viewport — object-fit: cover, but for a whole
-   composition rather than one image. Because it keeps its ratio at every window
-   shape, a percentage is the same fraction of the picture everywhere, which is
-   what lets the layer positions below be plain numbers. Left and width resolve
-   against its width, top against its height; landing.ts assumes exactly that. */
-.rig {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: max(100vw, 177.78vh);
-  height: max(100vh, 56.25vw);
-  transform: translate(-50%, -50%);
-  transform-origin: 50% 50%;
-  will-change: transform, opacity;
-}
-/* No will-change here. There are thirty-odd images in this hero, and hinting
-   every one of them pins every one to its own GPU texture for the life of the
-   page — hundreds of megabytes, and a compositor doing that much work per frame
-   is exactly what a "jerky" scroll is. The handful that are actually moving get
-   promoted on their own. Only .rig keeps the hint, because it transforms
-   continuously for the whole sequence. */
-.rig img { position: absolute; }
-
-/* The cut-outs were lit against white for the contact sheet, which is several
-   stops brighter than this scene. Without knocking them back the debris reads
-   as pale sand pasted over a night shot. These values were matched against the
-   plates by eye. */
-.rig__shard { filter: brightness(0.52) saturate(0.94); opacity: 0; }
-.rig__dust { filter: brightness(0.42) saturate(0.9); opacity: 0; transform: translate(-50%, -50%); }
-.rig__debris {
-  left: 50%; top: 50%; width: 58%;
-  filter: brightness(0.55);
-  opacity: 0;
-  transform: translate(-50%, -50%);
-}
-.rig__shards { position: absolute; inset: 0; }
-/* Centre-anchored, so a shard grows toward the lens from where it sits rather
-   than drifting off its own top-left corner. */
-.rig__shards img { transform: translate(-50%, -50%); }
-
-/* The wide plates that open the sequence and the two that close it. Both pairs
-   are full-bleed and cover-cropped; which is on screen is entirely a matter of
-   opacity, and landing.ts owns that. */
+/* Only the active artwork pair is composited. */
 .plate {
   position: absolute;
   inset: 0;
@@ -230,12 +187,10 @@ body.in-hero .nav { opacity: 0; pointer-events: none; }
   height: 100%;
   object-fit: cover;
   opacity: 0;
+  visibility: hidden;
 }
 /* The opening plate is what a JS-less visitor is left looking at. */
-[data-wide]:first-of-type { opacity: 1; }
-/* The wallet plates are simply the last links in the same chain now, so they
-   need no special stacking — source order already puts them above the rig. */
-
+[data-wide]:first-of-type { opacity: 1; visibility: visible; }
 /* Off-screen but not hidden: assistive technology and search still read it. */
 .sr-only {
   position: absolute;
@@ -303,25 +258,8 @@ body.in-hero .nav { opacity: 0; pointer-events: none; }
 body.is-full .fs__in { display: none; }
 body.is-full .fs__out { display: block; }
 /* Once the header returns, the corner belongs to the header. */
-body:not(.in-hero) .fs { opacity: 0; pointer-events: none; }
-
-/* ── Boot gate ─────────────────────────────────────────────────────────── */
-
-/* Nothing on the page matches these once it has loaded: landing.ts removes the
-   element outright the moment every layer has decoded. They are live for the
-   first second and are not dead code. */
-.boot {
-  position: fixed;
-  inset: 0;
-  z-index: 90;
-  display: grid;
-  place-items: center;
-  background: #000;
-  transition: opacity 0.6s ease;
-}
-.boot__bar { display: block; width: min(180px, 40vw); height: 1px; background: var(--rule); }
-.boot__bar i { display: block; height: 100%; width: 0%; background: var(--ember); transition: width 0.25s ease; }
-.boot.is-done { opacity: 0; pointer-events: none; }
+body:not(.in-hero) .fs { opacity: 0; visibility: hidden; pointer-events: none; }
+.fs[hidden] { display: none; }
 
 /* ── The rail: hero progress, and the scroll hint ──────────────────────── */
 
@@ -481,34 +419,59 @@ body:not(.in-hero) .fs { opacity: 0; pointer-events: none; }
   .rail { top: 62%; right: 14px; }
   .foot__top { justify-content: flex-start; }
 
-  /* The rig already covers a portrait viewport by overflowing sideways, so the
-     wall stays composed — but the pay-off plates are flat 16:9 images and need
-     telling where to crop. */
+  /* Keep tablet artwork centered. Phones use the full composition below. */
   .plate { object-position: 50% 50%; }
   .fs { width: 38px; height: 38px; }
   .hero__note { top: 12%; }
   .hero__line { top: 66%; }
 }
 
-/* ── Reduced motion: no pinning, no scrubbing ──────────────────────────── */
+/* Keep an exit available throughout the intro. */
+.hero__skip {
+  position: absolute;
+  z-index: 10;
+  left: clamp(20px, 4vw, 64px);
+  bottom: max(28px, env(safe-area-inset-bottom));
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+}
+.hero__skip:hover { color: var(--text); }
+.hero__pin { isolation: isolate; }
+#product { scroll-margin-top: 76px; }
 
-/* Scrubbing the sequence with the scroll wheel is the whole idea here, so the
-   honest fallback is to stop doing it rather than to do it faster. The hero
-   becomes two ordinary full-height frames — the wall, then the wallet — with
-   the payoff line already in place. landing.ts checks the same query and never
-   builds the timeline at all, so nothing overrides these. */
+/* Preserve the whole composition on phones; live type sits above the artwork. */
+@media (max-width: 600px) {
+  .plate { object-fit: contain; object-position: center 48%; }
+  .hero__title {
+    z-index: 8;
+    clip-path: none;
+    width: auto;
+    height: auto;
+    margin: 0;
+    left: 24px;
+    right: 48px;
+    top: max(82px, 12svh);
+    white-space: normal;
+    font-size: clamp(26px, 7vw, 38px);
+    font-weight: 400;
+    line-height: 1.22;
+    letter-spacing: -0.035em;
+  }
+  .hero__note { display: none; }
+  .hero__line { top: 76%; width: calc(100% - 64px); font-size: 16px; }
+  .rail { top: 76%; bottom: 10%; }
+  .nav__inner { gap: 12px; }
+  .nav .wordmark { --mark-size: 24px; }
+  .dawn__corner { bottom: 24px; }
+}
+
+/* The JS media context also removes the pin when this preference changes. */
 @media (prefers-reduced-motion: reduce) {
-  /* The wall standing whole, and nothing else. landing.ts does not build the
-     rig at all under this query, so no chunk ever leaves the seam — motion is
-     the thing being opted out of, and there is no still frame of an explosion
-     that would be worth showing instead. */
-  .hero__pin { height: 100vh; height: 100svh; }
-  /* The wall standing whole, and the line. render() never runs under this
-     query, so every other layer would sit at opacity 0 anyway — hiding them
-     outright also stops the browser fetching a rig that will never be seen. */
-  .rig, [data-wide] ~ [data-wide] { display: none; }
-  .hero__line { opacity: 1; top: auto; bottom: 8%; }
-  .hero__line { position: static; transform: none; opacity: 1; padding: 0 24px 64px; }
-  .rail { display: none; }
-  .btn, .foot__social a { transition: none; }
+  .hero__line, .rail { display: none; }
+  .nav, .btn, .fs, .foot__social a { transition: none; }
 }
