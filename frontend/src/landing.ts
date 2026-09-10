@@ -41,21 +41,16 @@ const updateNav = (): void => { nav?.classList.toggle('is-scrolled', window.scro
 window.addEventListener('scroll', updateNav, { passive: true });
 updateNav();
 
-// Paint the opening image immediately. Never block the page behind a loader.
-// A failed or slow image is excluded so scrubbing cannot reveal a blank frame.
-const decoded = new Set<HTMLImageElement>();
-const ready = Promise.all(plates.map(async (plate) => {
-  try { await plate.decode(); decoded.add(plate); }
-  catch { /* Hold the preceding usable image if this asset fails. */ }
-}));
-
-async function initHero(): Promise<void> {
-  let timeout: ReturnType<typeof setTimeout> | undefined;
-  await Promise.race([ready, new Promise<void>((resolve) => { timeout = setTimeout(resolve, 4000); })]);
-  clearTimeout(timeout);
-  if (!pin || window.scrollY >= pin.offsetHeight) return;
-  const frames = plates.flatMap((plate, index) => decoded.has(plate) ? [{ plate, stop: stops[index] ?? 1 }] : []);
-  if (frames.length < 2) return;
+// Pinning must not wait for every image to decode. On a cold production load,
+// that delay left the navigation over the artwork and could skip the timeline
+// entirely when fewer than two frames decoded before the timeout.
+function initHero(): void {
+  if (!pin || plates.length < 2 || window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    body.classList.remove('in-hero');
+    return;
+  }
+  body.classList.add('in-hero');
+  const frames = plates.map((plate, index) => ({ plate, stop: stops[index] ?? 1 }));
   frames[0]!.stop = 0;
   frames[frames.length - 1]!.stop = 1;
 
@@ -71,10 +66,15 @@ async function initHero(): Promise<void> {
       const from = frames[current]!;
       const to = frames[current + 1]!;
       const mix = segment(scene, from.stop, to.stop);
+      let paintedFrom = from;
+      for (let i = current; i >= 0; i -= 1) {
+        if (frames[i]!.plate.naturalWidth > 0) { paintedFrom = frames[i]!; break; }
+      }
+      const paintedTo = to.plate.naturalWidth > 0 ? to : undefined;
       for (const plate of plates) {
-        const visible = plate === from.plate || (plate === to.plate && mix > 0);
+        const visible = plate === paintedFrom.plate || (plate === paintedTo?.plate && mix > 0);
         plate.style.visibility = visible ? 'visible' : 'hidden';
-        plate.style.opacity = plate === to.plate ? String(mix) : plate === from.plate ? '1' : '0';
+        plate.style.opacity = plate === paintedTo?.plate ? String(mix) : plate === paintedFrom.plate ? '1' : '0';
         plate.style.willChange = visible ? 'opacity' : 'auto';
       }
       pin.style.setProperty('--p', String(progress));
@@ -86,6 +86,9 @@ async function initHero(): Promise<void> {
       }
     };
     const play = { progress: 0 };
+    for (const plate of plates) {
+      if (!plate.complete) plate.addEventListener('load', () => render(play.progress), { once: true });
+    }
     const syncHeader = (active: boolean): void => { body.classList.toggle('in-hero', active); };
     const tween = gsap.to(play, {
       progress: 1,
@@ -108,7 +111,7 @@ async function initHero(): Promise<void> {
     };
   });
 }
-void initHero();
+initHero();
 
 // Content motion starts only as each section approaches the viewport. It runs
 // once so the long-form page stays settled when a reader scrolls back.
