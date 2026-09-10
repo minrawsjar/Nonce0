@@ -51,12 +51,13 @@ const ARC_EXPLORER = 'https://testnet.arcscan.app';
  */
 const DEPOSIT_GAS_USDC = 0.2;
 /**
- * Timing protection, fixed rather than asked for: a payment waits until the
- * pool's freshness reaches this (of 100), and goes at DEADLINE_HOURS whatever
- * the pool looks like, so a quiet pool delays it but never strands it.
+ * Timing protection, fixed rather than asked for. A payment goes as soon as
+ * the privacy score (the lower of pool coverage and relay health) reaches
+ * MIN_FRESHNESS of 100 — in practice at once — and waits only while relays
+ * look unhealthy or their health is unknown, for MAX_WAIT_SECONDS at most.
  */
 const MIN_FRESHNESS = 70;
-const DEADLINE_HOURS = 12;
+const MAX_WAIT_SECONDS = 3_600;
 const shortAddress = (value: string) => value ? `${value.slice(0, 6)}…${value.slice(-4)}` : 'Not connected';
 const isRejected = (error: unknown) => typeof error === 'object' && error !== null && 'code' in error && (error as { code: unknown }).code === 4001;
 
@@ -457,7 +458,7 @@ async function onSend(event: SubmitEvent): Promise<void> {
         noteId: note.id,
         recipient: recipient as never,
         minPrivacyScore: (MIN_FRESHNESS * 100) as PrivacyScore,
-        deadline: (BigInt(Math.floor(Date.now() / 1000) + DEADLINE_HOURS * 3600)) as UnixSeconds,
+        deadline: (BigInt(Math.floor(Date.now() / 1000) + MAX_WAIT_SECONDS)) as UnixSeconds,
         credentialHandle,
         idempotencyKey: `pay-${note.id}-${Date.now()}` as never,
       });
@@ -467,8 +468,8 @@ async function onSend(event: SubmitEvent): Promise<void> {
       done++;
     }
     status.textContent = count === 1
-      ? `Sent across the mesh. It settles once the pool's cover is good enough, within ${DEADLINE_HOURS} hours at the latest.`
-      : `Sent ${count} payments across the mesh. Each settles on its own, once the pool's cover is good enough, within ${DEADLINE_HOURS} hours at the latest.`;
+      ? 'Sent across the mesh. It usually settles within seconds; Activity shows when it lands.'
+      : `Sent ${count} payments across the mesh. Each usually settles within seconds; Activity shows when they land.`;
     el<HTMLInputElement>('recipient').value = '';
     await refreshNotes();
     showView('activity');
