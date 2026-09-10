@@ -6,8 +6,9 @@
 //   set -a; . ./.env; set +a; node chain/e2e-pq-account.ts
 //
 // Costs about 1.2 USDC from EGRESS_PRIVATE_KEY, which pays for the deploy and
-// funds the account. The deposit is a random commitment: one more member of
-// the ring pool that nobody can spend.
+// funds the account. The deposit is a random 128-bit image: one more ring
+// member that nobody can spend. It must be an image — the pool takes any
+// bytes32, but only a 16-byte image right-padded can ever sit in a ring.
 
 import { createPublicClient, createWalletClient, http, parseAbi, parseEther, parseEventLogs } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
@@ -49,7 +50,7 @@ const pool = createAccountPool({
   base: createPoolClient({ offChain: { pqWallet: 'LIVE', graph: 'LIVE', confidentialExecution: 'SIMULATED', policyScope: 'CRE_WORKFLOW_ONLY' } }),
   publicClient: publicClient as never, wallet, account, authority: ARC_AUTHORITY,
 });
-const commitment = toHex(crypto.getRandomValues(new Uint8Array(32))) as NoteCommitment;
+const commitment = toHex(new Uint8Array([...crypto.getRandomValues(new Uint8Array(16)), ...new Uint8Array(16)])) as NoteCommitment;
 const tx = await pool.deposit({ scope, commitment });
 
 const receipt = await publicClient.getTransactionReceipt({ hash: tx as `0x${string}` });

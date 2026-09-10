@@ -63,6 +63,9 @@ export function cryptoRandomInt(maxExclusive: number): number {
   }
 }
 
+/** A 128-bit image widened to bytes32, as backend/zk/statement.ts widen() makes it. */
+const RING_IMAGE = /^0x[0-9a-f]{32}0{32}$/;
+
 /** true → 2, unknown → 1, false → 0. Unknown is never demoted to false. */
 const activityRank = (candidate: RingCandidate): number =>
   candidate.hasOtherActivity === null ? 1 : candidate.hasOtherActivity ? 2 : 0;
@@ -121,6 +124,11 @@ export function selectDecoys(input: SelectDecoysInput): readonly NoteCommitment[
     if (!Number.isInteger(raw.timesUsedInRing) || raw.timesUsedInRing < 0) {
       throw new ProtocolFailure('INVALID_INPUT', 'timesUsedInRing must be a non-negative integer');
     }
+    // The ring proves membership over 128-bit images. The pool takes any
+    // bytes32, so a commitment with data past 16 bytes is a real deposit that
+    // can never sit in a ring. Anyone can make one for the price of a note,
+    // so it is skipped here rather than failing every spend that draws it.
+    if (!RING_IMAGE.test(commitment)) continue;
     if (seen.has(commitment)) continue;
     seen.add(commitment);
     pool.push({ ...raw, commitment });
