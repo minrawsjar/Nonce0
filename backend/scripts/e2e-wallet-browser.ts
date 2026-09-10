@@ -25,7 +25,9 @@
 // funding wallet activates it, Node funds it (standing in for a transfer to
 // the Receive address), and the deposit is a UserOperation its FORS key signs.
 // That run then rotates the key, withdraws what is left, backs up, and restores
-// the backup into a fresh browser. Every run fails if the page sent a request
+// the backup into a fresh browser. E2E_NOTES=<n> sets both amount fields: it
+// deposits n notes at once and sends n USDC as n payments, and waits for all n
+// to settle. Every run fails if the page sent a request
 // to anyone but its own origin and the stack: no RPC, bundler, subgraph or CDN.
 //
 // Uses the Playwright already installed for the wallet SDK's browser test, and
@@ -50,6 +52,7 @@ const APP_URL = process.env['APP_URL'] ?? 'http://127.0.0.1:5173/app.html';
 const WALLET_KEY = process.env['E2E_WALLET_KEY'] as `0x${string}` | undefined;
 const pc = createPublicClient({ chain: ARC_TESTNET, transport: http() });
 const RECIPIENT = deployment.accounts.attester;
+const NOTES = Number(process.env['E2E_NOTES'] ?? 1);
 
 const PROFILE = process.env['E2E_PROFILE'];
 const launch = { channel: 'chrome', headless: true };
@@ -116,8 +119,8 @@ if (signer !== undefined && process.env['E2E_PQ'] === '1') {
     step(`activate (funding wallet pays PQAccountFactory): ${await page.textContent('#wallet-status')}`);
   }
   const address = (await page.textContent('#account-address')) as `0x${string}`;
-  if ((await pc.getBalance({ address })) < parseEther('1.1')) {
-    const hash = await signer.sendTransaction({ to: address, value: parseEther('1.2') });
+  if ((await pc.getBalance({ address })) < parseEther(String(NOTES + 0.1))) {
+    const hash = await signer.sendTransaction({ to: address, value: parseEther(String(NOTES + 0.2)) });
     await pc.waitForTransactionReceipt({ hash });
   }
   step(`PQ account ${address}: ${await page.textContent('#account-state')}`);
@@ -125,10 +128,11 @@ if (signer !== undefined && process.env['E2E_PQ'] === '1') {
 }
 
 if (signer !== undefined && (await page.textContent('#balance')) === '0.00') {
+  await page.fill('#deposit-count', String(NOTES));
   await page.click('#deposit');
   await page.waitForFunction(() => /Deposited|Deposit sent|Deposit failed/.test(document.getElementById('deposit-status')?.textContent ?? ''), null, { timeout: 300_000 });
   step(`deposit (through the page's own button): ${await page.textContent('#deposit-status')}`);
-  await page.waitForFunction(() => document.getElementById('balance')?.textContent === '1.00', null, { timeout: 120_000 });
+  await page.waitForFunction((n: number) => document.getElementById('balance')?.textContent === `${n}.00`, NOTES, { timeout: 120_000 });
   step(`private balance: ${await page.textContent('#balance')} USDC in ${await page.textContent('#note-count')}`);
 }
 
@@ -180,14 +184,19 @@ step(`ring view (through the mesh): ${await page.textContent('#pool-size')} · f
 await page.click('#tab-send');
 await page.fill('#recipient', RECIPIENT);
 await page.fill('#freshness', '50');
+await page.fill('#send-amount', String(NOTES));
 await page.click('#arm');
-await page.waitForFunction(() => /Sent across the mesh|Not sent/.test(document.getElementById('send-status')?.textContent ?? ''), null, { timeout: 420_000 });
+await page.waitForFunction(() => /across the mesh|Not sent|were not sent/.test(document.getElementById('send-status')?.textContent ?? ''), null, { timeout: 420_000 });
 step(`send: ${await page.textContent('#send-status')}`);
 
-// The newest row is first; an older settled row must not stand in for this one.
-await page.waitForFunction(() => /view settlement/.test(document.querySelector('#intent-list .intent')?.textContent ?? ''), null, { timeout: 420_000 });
-const tx = await page.getAttribute('#intent-list .intent a', 'href');
-step(`activity (status through the mesh): ${(await page.textContent('#intent-list .intent-state'))}  ${tx}`);
+// The newest rows are first; an older settled row must not stand in for these.
+await page.waitForFunction((n: number) => {
+  const rows = [...document.querySelectorAll('#intent-list .intent')].slice(0, n);
+  return rows.length === n && rows.every((r) => /view settlement/.test(r.textContent ?? ''));
+}, NOTES, { timeout: 420_000 });
+const txs: string[] = await page.$$eval('#intent-list .intent', (rows: Element[], n: number) =>
+  rows.slice(0, n).map((r) => r.querySelector('a')?.getAttribute('href') ?? ''), NOTES);
+step(`activity (status through the mesh): ${txs.length} settled  ${txs.join('  ')}`);
 step(`private balance after: ${await page.textContent('#balance')} USDC`);
 if (errors.length) step(`page errors: ${errors.slice(0, 3).join(' | ')}`);
 // The page talks to its own origin and the stack, and to nobody else: its reads
@@ -198,4 +207,4 @@ for (const l of direct.slice(0, 3)) step(`  leak: ${l.url} ${l.body.slice(0, 160
 if (direct.length > 0) process.exitCode = 1;
 await context.close();
 await context.browser()?.close();
-process.stdout.write(`TX ${tx?.split('/').pop()}\n`);
+process.stdout.write(`TX ${txs.map((t) => t.split('/').pop()).join(' ')}\n`);

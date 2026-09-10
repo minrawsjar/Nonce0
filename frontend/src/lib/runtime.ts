@@ -20,8 +20,10 @@
 //   status       a mesh query. The page never opens a connection to the exit.
 //   account      LIVE on Arc: FORS keys in IndexedDB, the account deployed by
 //                PQAccountFactory. The funding wallet only pays for that.
-//   deposit      from the account once activated (a UserOperation its PQ key
-//                signs), from the funding wallet before. Attributable either way.
+//   deposit      from the account once activated (one UserOperation its PQ key
+//                signs, for any number of notes), from the funding wallet
+//                before (one approval, then a transaction per note).
+//                Attributable either way.
 
 import type {
   CredentialHandle,
@@ -43,7 +45,7 @@ import { createGraphHealth } from '../../../backend/mesh/graph-health.ts';
 import type { DirectoryTrustRoot, SignedDirectory } from '../../../backend/mesh/contracts.ts';
 import { createIntentSealer } from '../../../backend/cre/seal-client.ts';
 import { ARC_AUTHORITY, createLivePqWallet, createPqAccountOps } from '../../../backend/chain/pq-wallet-chain.ts';
-import { browserPayer, createBrowserPool, createMeshChainObserver } from '../../../backend/chain/wallet-chain.ts';
+import { browserPayer, createBrowserPool, createMeshChainObserver, type DepositMany } from '../../../backend/chain/wallet-chain.ts';
 import { capabilitiesOf } from '../../../backend/chain/pool.ts';
 import { readOne, type WalletRpcSend } from '../../../backend/chain/wallet-rpc.ts';
 import { MarkovPathPolicy } from '../../../graph/src/path-policy.ts';
@@ -163,16 +165,19 @@ export async function startWallet(config?: StackConfig): Promise<WalletRuntime> 
   });
   const opsFor = (account: `0x${string}`) =>
     createPqAccountOps({ wallet, account: account.toLowerCase() as never, authority: ARC_AUTHORITY, walletRpc });
+  // Until the account is activated, the funding wallet deposits directly, as
+  // before. After, deposits come from the account: one UserOperation its PQ
+  // key signs, however many notes, and no wallet popup.
+  const depositMany: DepositMany = async (input) => {
+    const state = await wallet.getState();
+    if (!state.active) return browserPool.depositMany(input);
+    const hash = await opsFor(state.accountAddress as `0x${string}`).deposit(input);
+    return input.commitments.map(() => hash);
+  };
   const pool: typeof browserPool = {
     ...browserPool,
-    // Until the account is activated, the funding wallet deposits directly, as
-    // before. After, deposits come from the account: a UserOperation its PQ
-    // key signs, and no wallet popup.
-    async deposit(input) {
-      const state = await wallet.getState();
-      if (!state.active) return browserPool.deposit(input);
-      return opsFor(state.accountAddress as `0x${string}`).deposit(input);
-    },
+    depositMany,
+    deposit: async ({ scope, commitment }) => (await depositMany({ scope, commitments: [commitment] }))[0]!,
     isNullifierSpent: (s, nullifier) => chain.isNullifierSpent(s, nullifier),
     capabilities: async (p) => capabilitiesOf((await readOne(walletRpc, p, 'capabilities', [])).value as never, cfg.capabilities),
   };

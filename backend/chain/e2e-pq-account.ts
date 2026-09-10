@@ -1,17 +1,18 @@
 #!/usr/bin/env node
 // The PQ account, LIVE on Arc: FORS keys in this process, the account deployed
-// by PQAccountFactory, a deposit it signs with FORS and sends as a v0.7
-// UserOperation through a public bundler, then a withdrawal of what is left.
+// by PQAccountFactory, a two-note deposit it signs ONCE with FORS and sends as
+// a v0.7 UserOperation through a public bundler, then a withdrawal of the rest.
 // No ECDSA key signs for the account. Reads and bundler calls run through the
 // same WALLET_RPC answerer the mesh exit runs; the page reaches it over the
 // mesh, and this script calls it in-process.
 //
 //   set -a; . ./.env; set +a; node chain/e2e-pq-account.ts
 //
-// Costs about 1 USDC from EGRESS_PRIVATE_KEY: it pays for the deploy and funds
-// the account with 1.2, and the withdrawal sends back what the deposit left. The deposit is a random 128-bit image: one more ring
-// member that nobody can spend. It must be an image — the pool takes any
-// bytes32, but only a 16-byte image right-padded can ever sit in a ring.
+// Costs about 2 USDC from EGRESS_PRIVATE_KEY: it pays for the deploy and funds
+// the account with 2.2, and the withdrawal sends back what the deposit left.
+// Each note is a random 128-bit image: one more ring member that nobody can
+// spend. It must be an image — the pool takes any bytes32, but only a 16-byte
+// image right-padded can ever sit in a ring.
 
 import { createPublicClient, createWalletClient, http, parseAbi, parseEther, parseEventLogs } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
@@ -48,15 +49,16 @@ log(`register  ${await wallet.register()} (PQAccountFactory.createAccount)`);
 const registered = await wallet.getState();
 log(`          active=${registered.active} useCount=${registered.chainUseCount}/${registered.maxUses}`);
 
-const fund = await funder.sendTransaction({ to: account, value: parseEther('1.2') });
+const fund = await funder.sendTransaction({ to: account, value: parseEther('2.2') });
 await publicClient.waitForTransactionReceipt({ hash: fund });
-log(`fund      ${fund} (1.2 USDC: one denomination, the rest for gas)`);
+log(`fund      ${fund} (2.2 USDC: two denominations, the rest for gas)`);
 
 const ring8 = poolFor(1_000_000, 'RING_8');
 const scope = { chainId: asChainId(BigInt(deployment.network.chainId)), pool: ring8.address, denomination: ring8.denomination } as never;
 const ops = createPqAccountOps({ wallet, account, authority: ARC_AUTHORITY, walletRpc });
-const commitment = toHex(new Uint8Array([...crypto.getRandomValues(new Uint8Array(16)), ...new Uint8Array(16)])) as NoteCommitment;
-const tx = await ops.deposit({ scope, commitment });
+const image = () => toHex(new Uint8Array([...crypto.getRandomValues(new Uint8Array(16)), ...new Uint8Array(16)])) as NoteCommitment;
+const commitments = [image(), image()];
+const tx = await ops.deposit({ scope, commitments });
 
 const receipt = await publicClient.getTransactionReceipt({ hash: tx as `0x${string}` });
 const events = parseEventLogs({
@@ -64,13 +66,15 @@ const events = parseEventLogs({
   logs: receipt.logs,
 });
 const op = events.find((e) => e.eventName === 'UserOperationEvent');
-const from = events.find((e) => e.eventName === 'DepositFrom');
+const deposits = events.filter((e) => e.eventName === 'DepositFrom');
 const after = await wallet.getState();
 log(`deposit   ${tx} (${receipt.status}, bundled by ${receipt.from})`);
 log(`          userOp success=${op?.args.success} gas=${op?.args.actualGasUsed} paid by the account`);
-log(`          depositor ${from?.args.depositor} = account: ${from?.args.depositor.toLowerCase() === account}`);
-log(`          FORS useCount ${registered.chainUseCount} -> ${after.chainUseCount} of ${after.maxUses}`);
-if (receipt.status !== 'success' || op?.args.success !== true || after.chainUseCount !== registered.chainUseCount + 1n) process.exit(1);
+const fromAccount = deposits.every((d) => d.args.depositor.toLowerCase() === account);
+log(`          ${deposits.length} notes deposited, all by the account: ${fromAccount}`);
+log(`          FORS useCount ${registered.chainUseCount} -> ${after.chainUseCount} of ${after.maxUses} (one signature for both)`);
+if (receipt.status !== 'success' || op?.args.success !== true || deposits.length !== 2 || !fromAccount
+  || after.chainUseCount !== registered.chainUseCount + 1n) process.exit(1);
 
 const before = await publicClient.getBalance({ address: payer.address });
 const out = await ops.withdraw(payer.address.toLowerCase() as never);

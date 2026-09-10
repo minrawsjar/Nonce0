@@ -158,8 +158,8 @@ export function capabilitiesOf(
 }
 
 export interface OpaquePoolClient extends PrivatePoolContract {
-  /** ERC-20 approval for one deposit. Separate because it is a separate tx. */
-  approveDeposit(pool: Address): Promise<TxHash>;
+  /** ERC-20 approval for `notes` deposits (default one). Separate because it is a separate tx. */
+  approveDeposit(pool: Address, notes?: bigint): Promise<TxHash>;
   readonly publicClient: PublicClient;
 }
 
@@ -253,7 +253,7 @@ export function createPoolClient(options: PoolClientOptions): OpaquePoolClient {
       return send(wallet(), input.scope.pool, 'deposit', [input.commitment]);
     },
 
-    async approveDeposit(pool: Address): Promise<TxHash> {
+    async approveDeposit(pool: Address, notes = 1n): Promise<TxHash> {
       const client = wallet();
       const denomination = (await publicClient.readContract({
         address: getAddress(pool),
@@ -265,9 +265,9 @@ export function createPoolClient(options: PoolClientOptions): OpaquePoolClient {
         abi: POOL_ABI,
         functionName: 'token',
       })) as Address;
-      // Exactly one denomination, not MaxUint256. An unlimited approval to a
-      // pool is an unlimited approval for as long as the wallet exists.
-      return send(client, token, 'approve', [getAddress(pool), denomination], ERC20_ABI);
+      // Exactly what these deposits need, never MaxUint256. An unlimited
+      // approval to a pool is an unlimited approval for as long as the wallet exists.
+      return send(client, token, 'approve', [getAddress(pool), denomination * notes], ERC20_ABI);
     },
 
     async spend(spend: PrivateSpend): Promise<TxHash> {

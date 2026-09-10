@@ -35,6 +35,8 @@ import {
 } from '@opaque/protocol-types';
 import { asPrivateSpend, assertRelayPath, spendHash } from '@opaque/protocol-types/codecs.js';
 
+import type { DepositMany } from '../../../../backend/chain/wallet-chain.ts';
+
 export type { ProtocolCapabilities, IntentStatus, NoteSummary, PaymentRequest, PoolScope };
 
 /**
@@ -57,10 +59,18 @@ export function decodeQueryResult<K extends MeshQuery['kind']>(
   return result as Extract<MeshQueryResult, { kind: K }>;
 }
 
+/**
+ * The most notes one deposit makes. Every note is the pool's one
+ * denomination (§6.6: a note of any other size would stand out in its ring),
+ * so an amount is a count of notes. ponytail: a round cap that keeps one
+ * operation well inside a bundler's gas limit; measure before raising it.
+ */
+export const MAX_NOTES_PER_DEPOSIT = 10;
+
 export interface AdapterPorts {
   readonly wallet: PqWallet;
   readonly ring: RingClient;
-  readonly pool: PrivatePoolContract;
+  readonly pool: PrivatePoolContract & { readonly depositMany: DepositMany };
   /**
    * getRelaySnapshot() MUST return relay keys from the VERIFIED, PINNED
    * directory — createMeshBootstrap(...).snapshot() — and never from a network
@@ -101,13 +111,16 @@ async function meshPath(ports: AdapterPorts): Promise<RelayPath> {
   return nodes;
 }
 
-export function createPaymentApplication(ports: AdapterPorts): PaymentApplication {
+export function createPaymentApplication(ports: AdapterPorts): PaymentApplication & {
+  /** `count` notes of the pool's denomination, deposited together. */
+  depositNotes(scope: PoolScope, count: number): Promise<readonly NoteSummary[]>;
+} {
   const query = async <K extends MeshQuery['kind']>(
     request: Extract<MeshQuery, { kind: K }>,
   ): Promise<Extract<MeshQueryResult, { kind: K }>> =>
     decodeQueryResult(request, await ports.transport.query(request, await meshPath(ports)));
 
-  return {
+  const app = {
     async capabilities(scope: PoolScope): Promise<ProtocolCapabilities> {
       // Read from the pool, never assumed (T12). A SINGLE_NOTE_PQ deployment
       // must never be rendered with eight-member anonymity copy, and an
@@ -124,33 +137,45 @@ export function createPaymentApplication(ports: AdapterPorts): PaymentApplicatio
     disableWallet: (): Promise<TxHash> => ports.wallet.disable(),
 
     async deposit(scope: PoolScope): Promise<NoteSummary> {
-      // The note and its commitment are persisted BEFORE the deposit is
+      return (await app.depositNotes(scope, 1))[0]!;
+    },
+
+    async depositNotes(scope: PoolScope, count: number): Promise<readonly NoteSummary[]> {
+      if (!Number.isInteger(count) || count < 1 || count > MAX_NOTES_PER_DEPOSIT) {
+        throw new ProtocolFailure('INVALID_INPUT', `deposit 1 to ${MAX_NOTES_PER_DEPOSIT} notes at a time`);
+      }
+      // Every note and its commitment are persisted BEFORE the deposit is
       // submitted. A crash between the two leaves a recoverable local record,
       // where the reverse order would lose the secret for funded money.
-      const note = await ports.ring.createNote(scope);
-      const txHash = await ports.pool.deposit({ scope, commitment: note.commitment });
+      const notes: NoteSummary[] = [];
+      for (let i = 0; i < count; i++) notes.push(await ports.ring.createNote(scope));
+      const hashes = await ports.pool.depositMany({ scope, commitments: notes.map((n) => n.commitment) });
       // Recorded as pending first: a tx hash is a claim, not evidence.
-      await ports.ring.recordDeposit(note.id, txHash);
+      for (const [i, note] of notes.entries()) await ports.ring.recordDeposit(note.id, hashes[i]!);
       // Then reconciled against the chain. Without this a deposit stopped at
       // DEPOSIT_PENDING forever — and reserve() requires AVAILABLE, so a note
       // the user had paid for could never be spent. The pool port returns once
       // the deposit is mined — but Arc's public RPC is load-balanced, and the
       // node that answers the next read can be a block behind the one that
       // returned the receipt. So the evidence is looked for a few times before
-      // the note is left pending (listNotes keeps looking after that).
-      let summary = await ports.ring.reconcileNote(note.id);
-      for (let attempt = 0; attempt < 10 && summary.state === 'DEPOSIT_PENDING'; attempt++) {
+      // a note is left pending (listNotes keeps looking after that).
+      const summaries: NoteSummary[] = [];
+      for (const note of notes) summaries.push(await ports.ring.reconcileNote(note.id));
+      for (let attempt = 0; attempt < 10 && summaries.some((n) => n.state === 'DEPOSIT_PENDING'); attempt++) {
         await new Promise((resolve) => setTimeout(resolve, 3_000));
-        summary = await ports.ring.reconcileNote(note.id);
+        for (const [i, n] of summaries.entries()) if (n.state === 'DEPOSIT_PENDING') summaries[i] = await ports.ring.reconcileNote(n.id);
       }
-      return summary;
+      return summaries;
     },
 
     async listNotes(scope: PoolScope): Promise<readonly NoteSummary[]> {
-      // A note still pending is re-checked against the chain every time the
-      // wallet looks: one missed read must not leave paid-for money unspendable.
+      // A note not yet known funded is re-checked against the chain every time
+      // the wallet looks: one missed read must not leave paid-for money
+      // unspendable. CREATED too: a deposit that landed without being recorded
+      // (a wallet popup rejected halfway through a multi-note deposit, an
+      // operation whose receipt never arrived) is still found and funded here.
       const notes = await ports.ring.listNotes(scope);
-      const pending = notes.filter((n) => n.state === 'DEPOSIT_PENDING');
+      const pending = notes.filter((n) => n.state === 'DEPOSIT_PENDING' || n.state === 'CREATED');
       if (pending.length === 0) return notes;
       await Promise.all(pending.map((n) => ports.ring.reconcileNote(n.id).catch(() => undefined)));
       return ports.ring.listNotes(scope);
@@ -173,6 +198,7 @@ export function createPaymentApplication(ports: AdapterPorts): PaymentApplicatio
       return (await query({ kind: 'INTENT_STATUS', handle })).value;
     },
   };
+  return app;
 }
 
 /**

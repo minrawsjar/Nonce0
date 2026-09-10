@@ -15,6 +15,7 @@
 
 import type { IntentStatus, NoteSummary, PrivacyScore, StatusHandle, UnixSeconds } from '@opaque/protocol-types';
 
+import { MAX_NOTES_PER_DEPOSIT } from './lib/protocol/index.js';
 import { startWallet, type WalletRuntime } from './lib/runtime.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -277,11 +278,19 @@ async function refreshNotes(): Promise<void> {
   el('asset-balance').textContent = `${available.length}.00`;
   el('asset-notes').textContent = `${available.length} private note${available.length === 1 ? '' : 's'}`;
   el<HTMLButtonElement>('arm').disabled = available.length === 0;
+  el<HTMLInputElement>('send-amount').max = String(Math.max(1, available.length));
 }
 
 async function onDeposit(): Promise<void> {
   const button = el<HTMLButtonElement>('deposit');
   const status = el('deposit-status');
+  // An amount is a count of notes: every note is the pool's one denomination.
+  const count = Number(el<HTMLInputElement>('deposit-count').value);
+  if (!Number.isInteger(count) || count < 1 || count > MAX_NOTES_PER_DEPOSIT) {
+    status.textContent = `Choose a whole amount from 1 to ${MAX_NOTES_PER_DEPOSIT} USDC.`;
+    return;
+  }
+  const notes = count === 1 ? 'one note' : `${count} notes`;
   // An activated account deposits by itself; only the funding-wallet path needs one connected.
   const fromAccount = (await rt.app.walletState().catch(() => undefined))?.active === true;
   if (!fromAccount) {
@@ -294,16 +303,22 @@ async function onDeposit(): Promise<void> {
   }
   button.disabled = true;
   status.textContent = fromAccount
-    ? 'Signing the deposit with your account\'s PQ key; a public bundler submits it…'
-    : 'Approve exactly 1 USDC, then confirm the deposit in your funding wallet…';
+    ? `Signing one deposit of ${notes} with your account's PQ key; a public bundler submits it…`
+    : count === 1
+      ? 'Approve exactly 1 USDC, then confirm the deposit in your funding wallet…'
+      : `Approve exactly ${count} USDC, then confirm ${count} deposits in your funding wallet…`;
   try {
-    const note = await rt.app.deposit(rt.scope);
-    status.textContent = note.state === 'AVAILABLE'
-      ? 'Deposited. The note is on chain and spendable.'
-      : `Deposit sent; the note is ${note.state} until the chain confirms it.`;
+    const made = await rt.app.depositNotes(rt.scope, count);
+    const waiting = made.filter((n) => n.state !== 'AVAILABLE').length;
+    status.textContent = waiting === 0
+      ? `Deposited ${count} USDC as ${notes}, on chain and spendable.`
+      : `Deposit sent; ${waiting} of ${notes} still wait for the chain to confirm them.`;
     await Promise.all([refreshNotes(), renderBudget().catch(() => undefined)]);
   } catch (error) {
     status.textContent = isRejected(error) ? '' : `Deposit failed: ${(error as Error).message}`;
+    // A deposit stopped halfway (a later popup rejected) still funded the
+    // notes before it; listing finds them, so the balance shows what landed.
+    await refreshNotes().catch(() => undefined);
   } finally {
     button.disabled = false;
   }
@@ -383,40 +398,61 @@ async function onSend(event: SubmitEvent): Promise<void> {
     status.textContent = 'Enter a recipient address (0x followed by 40 hex characters).';
     return;
   }
-  const note = notes.find((n) => n.state === 'AVAILABLE');
-  if (note === undefined) {
-    status.textContent = 'No spendable note. Deposit 1 USDC first.';
+  // An amount is a count of notes, each spent as its own payment: a note is
+  // always the pool's one denomination (§6.6), so there is no change to make.
+  const count = Number(el<HTMLInputElement>('send-amount').value);
+  const available = notes.filter((n) => n.state === 'AVAILABLE');
+  if (!Number.isInteger(count) || count < 1) {
+    status.textContent = 'Send a whole amount of USDC: every note is exactly 1 USDC.';
+    return;
+  }
+  if (count > available.length) {
+    status.textContent = available.length === 0
+      ? 'No spendable note. Deposit first.'
+      : `You hold ${available.length} USDC in notes. Deposit more to send ${count}.`;
     return;
   }
 
   const button = el<HTMLButtonElement>('arm');
   button.disabled = true;
+  let done = 0;
   try {
     // Out of band, BEFORE paying: the authority learns a recipient, never a
     // payment, and cannot tie the credential to the moment it is used.
     status.textContent = 'Getting a policy credential for this recipient…';
     const credentialHandle = await rt.obtainCredential(recipient as `0x${string}`);
 
-    status.textContent = 'Building the ring proof in this browser (a few seconds — the note secret never leaves the page)…';
     const hours = Math.max(1, Math.min(72, Number(el<HTMLInputElement>('deadline').value) || 12));
     const freshness = Math.max(0, Math.min(100, Number(el<HTMLInputElement>('freshness').value) || 70));
-    const ref = await rt.app.submitPayment({
-      noteId: note.id,
-      recipient: recipient as never,
-      minPrivacyScore: (freshness * 100) as PrivacyScore,
-      deadline: (BigInt(Math.floor(Date.now() / 1000) + hours * 3600)) as UnixSeconds,
-      credentialHandle,
-      idempotencyKey: `pay-${note.id}-${Date.now()}` as never,
-    });
-    sent.unshift({ handle: ref.statusHandle as string, recipient, at: Date.now() });
-    saveSent();
-    status.textContent = 'Sent across the mesh. It settles when cover is good enough, or at the deadline.';
+    for (const note of available.slice(0, count)) {
+      status.textContent = count === 1
+        ? 'Building the ring proof in this browser (a few seconds — the note secret never leaves the page)…'
+        : `Building ring proof ${done + 1} of ${count} in this browser (the note secrets never leave the page)…`;
+      const ref = await rt.app.submitPayment({
+        noteId: note.id,
+        recipient: recipient as never,
+        minPrivacyScore: (freshness * 100) as PrivacyScore,
+        deadline: (BigInt(Math.floor(Date.now() / 1000) + hours * 3600)) as UnixSeconds,
+        credentialHandle,
+        idempotencyKey: `pay-${note.id}-${Date.now()}` as never,
+      });
+      // Recorded as each one goes, so a failure later still shows these.
+      sent.unshift({ handle: ref.statusHandle as string, recipient, at: Date.now() });
+      saveSent();
+      done++;
+    }
+    status.textContent = count === 1
+      ? 'Sent across the mesh. It settles when cover is good enough, or at the deadline.'
+      : `Sent ${count} payments across the mesh. Each settles on its own, when cover is good enough or at the deadline.`;
     el<HTMLInputElement>('recipient').value = '';
     await refreshNotes();
     showView('activity');
     renderActivity();
   } catch (error) {
-    status.textContent = `Not sent: ${(error as Error).message}`;
+    status.textContent = done === 0
+      ? `Not sent: ${(error as Error).message}`
+      : `Sent ${done} of ${count}; the rest were not sent: ${(error as Error).message}`;
+    if (done > 0) { await refreshNotes().catch(() => undefined); renderActivity(); }
   } finally {
     button.disabled = notes.every((n) => n.state !== 'AVAILABLE');
   }
@@ -514,6 +550,7 @@ async function init(): Promise<void> {
   el('tab-activity').addEventListener('click', () => { showView('activity'); void pollActivity(); });
   el<HTMLFormElement>('send-form').addEventListener('submit', (e) => void onSend(e as SubmitEvent));
   el('deposit').addEventListener('click', () => void onDeposit());
+  el<HTMLInputElement>('deposit-count').max = String(MAX_NOTES_PER_DEPOSIT);
   el('action-send').addEventListener('click', () => showView('send'));
   el('action-receive').addEventListener('click', () => el<HTMLDialogElement>('receive-dialog').showModal());
   el('account-button').addEventListener('click', () => el<HTMLDialogElement>('account-dialog').showModal());

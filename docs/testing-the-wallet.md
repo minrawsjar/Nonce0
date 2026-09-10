@@ -44,20 +44,29 @@ wallet after restarting the stack.
    RPC `https://rpc.testnet.arc.io`, currency `USDC`. Get USDC from
    [faucet.circle.com](https://faucet.circle.com). It pays gas too, so nothing
    else needs funding.
-2. **Deposit 1 USDC.** Approve exactly 1 USDC, then confirm the deposit. The
-   deposit is public by design — it is the *spend* that is private. The note
-   shows as spendable once the chain confirms it, never before.
+2. **Deposit.** Set *Deposit amount* (1 to 10 USDC) and press *Deposit*.
+   Every note is exactly 1 USDC, because a note of any other size would stand
+   out in its ring (spec §6.6), so 3 USDC becomes three notes. From the
+   funding wallet that is one approval for the whole amount, then one
+   confirmation per note. The deposit is public by design — it is the *spend*
+   that is private. A note shows as spendable once the chain confirms it,
+   never before.
 
    Or deposit from the **PQ account**. In *Account details*, press *Activate
    account*: the funding wallet pays to deploy it and gets no power over it.
-   Then send the account a little over 1 USDC; *Receive* shows its address.
-   From then on *Deposit* is a UserOperation the account's FORS key signs, a
-   public bundler submits it, and no wallet popup appears. Each one uses one of
-   the key's 32 signatures, shown under *Signing key*. The keys live in this
-   browser only, so clearing site data loses the account.
-3. **Send.** Enter a recipient and press *Send 1 USDC privately*. The page
-   builds the proof (a few seconds, and the tab is busy while it does), seals
-   it, and sends it across the mesh as ~35 chunks.
+   Then send the account a little more USDC than you mean to deposit;
+   *Receive* shows its address. From then on *Deposit* is one UserOperation
+   the account's FORS key signs, however many notes it makes, a public bundler
+   submits it, and no wallet popup appears. Each deposit uses one of the key's
+   32 signatures, shown under *Signing key*. The keys live in this browser
+   only, so clearing site data loses the account.
+3. **Send.** Set the amount in whole USDC, enter a recipient, and press
+   *Review private transfer*. Each USDC is one note spent as its own payment:
+   the page builds its proof in a worker (a few seconds each), seals it, and
+   sends it across the mesh as ~35 chunks. Several sent together to one
+   address settle as separate 1-USDC transfers, which are easier to link to
+   each other than a single one. Amounts like 2.37 are not possible: hiding
+   them needs elliptic-curve range proofs, which this design rules out.
 4. **Watch Activity.** It settles when the privacy score clears your threshold,
    or at the deadline. A *view settlement* link appears when it lands.
 

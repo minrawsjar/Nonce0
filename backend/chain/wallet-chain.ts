@@ -28,6 +28,7 @@ import type {
   PrivatePoolContract,
   ProtocolCapabilities,
   RingSnapshot,
+  TxHash,
 } from '@opaque/protocol-types';
 
 import { ARC_TESTNET, createPoolClient } from './pool.ts';
@@ -77,9 +78,22 @@ export function createMeshChainObserver(options: {
   readonly walletRpc: WalletRpcSend;
   readonly ringSnapshot: (scope: PoolScope) => Promise<RingSnapshot>;
 }): WalletChainObserver {
+  // One snapshot answers every note reconciled together (a multi-note deposit
+  // checks all of them at once). Kept 2 s after it arrives, so a retry 3 s
+  // later asks again and can see a deposit this one did not.
+  let last: { key: string; settledAt?: number; snapshot: Promise<RingSnapshot> } | undefined;
+  const snapshotFor = (scope: PoolScope): Promise<RingSnapshot> => {
+    const key = `${scope.chainId}:${scope.pool.toLowerCase()}`;
+    if (last === undefined || last.key !== key || (last.settledAt !== undefined && Date.now() - last.settledAt > 2_000)) {
+      const entry: NonNullable<typeof last> = { key, snapshot: options.ringSnapshot(scope) };
+      entry.snapshot.then(() => { entry.settledAt = Date.now(); }, () => { entry.settledAt = 0; });
+      last = entry;
+    }
+    return last.snapshot;
+  };
   return {
     async observeCommitment(scope, commitment) {
-      const member = (await options.ringSnapshot(scope)).candidates.find((c) => c.commitment.toLowerCase() === commitment.toLowerCase());
+      const member = (await snapshotFor(scope)).candidates.find((c) => c.commitment.toLowerCase() === commitment.toLowerCase());
       return member === undefined ? null : { blockNumber: member.enrolledAtBlock };
     },
     isNullifierSpent: async (scope, nullifier) =>
@@ -87,27 +101,36 @@ export function createMeshChainObserver(options: {
   };
 }
 
+/** Several notes at once: every commitment in one deposit, all one denomination. */
+export type DepositMany = (input: { readonly scope: PoolScope; readonly commitments: readonly NoteCommitment[] }) => Promise<readonly TxHash[]>;
+
 /**
  * The pool port for a browser: the user's own wallet pays for a deposit.
  * Deposit APPROVES FIRST — the frozen PrivatePoolContract has no approve, and
- * a deposit without allowance reverts in transferFrom. Exactly one
- * denomination per deposit, never MaxUint256.
+ * a deposit without allowance reverts in transferFrom. Exactly what the
+ * deposits need, never MaxUint256.
  */
 export function createBrowserPool(
   provider: EIP1193Provider | undefined,
   offChain: Pick<ProtocolCapabilities, 'pqWallet' | 'graph' | 'confidentialExecution' | 'policyScope'>,
-): PrivatePoolContract & { readonly publicClient: PublicClient } {
+): PrivatePoolContract & { readonly publicClient: PublicClient; readonly depositMany: DepositMany } {
   const client = createPoolClient({ ...(provider === undefined ? {} : { provider }), offChain });
+  // One approval for all of them, then one transaction per note: an EOA
+  // cannot batch, and the pool takes one commitment per deposit.
+  const depositMany: DepositMany = async ({ scope, commitments }) => {
+    if (provider === undefined) {
+      throw new Error('no wallet: install MetaMask (or any EIP-1193 wallet) on Arc testnet to deposit');
+    }
+    await client.approveDeposit(scope.pool, BigInt(commitments.length));
+    const hashes: TxHash[] = [];
+    for (const commitment of commitments) hashes.push(await client.deposit({ scope, commitment }));
+    return hashes;
+  };
   return {
     publicClient: client.publicClient as PublicClient,
     capabilities: (pool) => client.capabilities(pool),
-    async deposit(input) {
-      if (provider === undefined) {
-        throw new Error('no wallet: install MetaMask (or any EIP-1193 wallet) on Arc testnet to deposit');
-      }
-      await client.approveDeposit(input.scope.pool);
-      return client.deposit(input);
-    },
+    depositMany,
+    deposit: async ({ scope, commitment }) => (await depositMany({ scope, commitments: [commitment] }))[0]!,
     spend: (spend) => client.spend(spend),
     isNullifierSpent: (scope, value) => client.isNullifierSpent(scope, value),
   };

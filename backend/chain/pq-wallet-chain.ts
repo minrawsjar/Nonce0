@@ -314,17 +314,21 @@ export function createPqAccountOps(options: {
   return {
     funds,
 
-    /** A pool deposit: exactly one denomination approved, then deposited. */
-    async deposit({ scope, commitment }: { scope: PoolScope; commitment: NoteCommitment }): Promise<TxHash> {
-      const denomination = BigInt(scope.denomination);
+    /**
+     * Pool deposits, one note per commitment, as ONE operation: exactly what
+     * they need approved, then each deposited. One FORS signature however many
+     * notes, so a multi-note deposit does not spend the key's budget per note.
+     */
+    async deposit({ scope, commitments }: { scope: PoolScope; commitments: readonly NoteCommitment[] }): Promise<TxHash> {
+      const total = BigInt(scope.denomination) * BigInt(commitments.length);
       const have = await funds();
-      if (have.usdc6 < denomination) throw shortfall(denomination * WEI_PER_USDC6, have);
+      if (have.usdc6 < total) throw shortfall(total * WEI_PER_USDC6, have);
       const op = await prepare([
-        { to: deployment.tokens.usdc.address as Address, data: encodeFunctionData({ abi: ERC20_ABI, functionName: 'approve', args: [scope.pool, denomination] }) as Hex },
-        { to: scope.pool, data: encodeFunctionData({ abi: POOL, functionName: 'deposit', args: [commitment] }) as Hex },
+        { to: deployment.tokens.usdc.address as Address, data: encodeFunctionData({ abi: ERC20_ABI, functionName: 'approve', args: [scope.pool, total] }) as Hex },
+        ...commitments.map((commitment) => ({ to: scope.pool, data: encodeFunctionData({ abi: POOL, functionName: 'deposit', args: [commitment] }) as Hex })),
       ]);
       // Gas the EntryPoint already holds for the account is spent first.
-      const need = denomination * WEI_PER_USDC6 + (prefundOf(op) > have.prepaidGas ? prefundOf(op) - have.prepaidGas : 0n);
+      const need = total * WEI_PER_USDC6 + (prefundOf(op) > have.prepaidGas ? prefundOf(op) - have.prepaidGas : 0n);
       if (have.usdc6 * WEI_PER_USDC6 < need) throw shortfall(need, have);
       return submit(op);
     },
