@@ -69,7 +69,7 @@ import type {
 import { checkCredential, type RecipientCredential } from '../../backend/cre/credential.ts'
 import { evaluateIntent, type EvaluationDeps } from '../../backend/cre/evaluate-intent.ts'
 import { issueRelease } from '../../backend/cre/release.ts'
-import { openIntent } from '../../backend/cre/sealed-intent.ts'
+import { decodeIntentPlaintext, openIntent } from '../../backend/cre/sealed-intent.ts'
 
 // ─── Config ─────────────────────────────────────────────────────────────────
 
@@ -182,7 +182,10 @@ export const onIntentSubmitted = async (
 				config.encryptionKeyId,
 				encrypted.encryptedPayload,
 			)
-			const parsed = JSON.parse(text(opened)) as {
+			// The container, not bare JSON: a ring spend's 1.1 MiB proof follows
+			// the JSON as raw bytes. decodeIntentPlaintext also still reads the
+			// all-JSON form, which the committed simulate fixture uses.
+			const parsed = decodeIntentPlaintext(opened) as {
 				spend: Record<string, any>
 				credential: string
 			}

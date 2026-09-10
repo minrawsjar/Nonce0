@@ -28,8 +28,12 @@ contract DeploymentsTest is Test {
 
     /// null means NOT DEPLOYED, and a script that needs it must stop — with a
     /// message that says which file to edit, not a bare JSON parse failure.
+    ///
+    /// The ERC-4337 account factory is the example because it does not exist
+    /// yet — it has not even been written. (This used attestedRingVerifier until
+    /// that was deployed, which is the point: null is a state, not a constant.)
     function test_anUndeployedContractIsRefusedByName() public {
-        vm.expectRevert(bytes("attestedRingVerifier is not deployed: set it in ../deployments/arc-testnet.json"));
-        d.contractAddress("attestedRingVerifier");
+        vm.expectRevert(bytes("pqAccountFactory is not deployed: set it in ../deployments/arc-testnet.json"));
+        d.contractAddress("pqAccountFactory");
     }
 }

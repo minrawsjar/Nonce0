@@ -79,7 +79,10 @@ async function harness(credentialRecipient: Address = RECIPIENT) {
     spend,
     request: {
       noteId: 'note-mine' as NoteId, recipient: RECIPIENT, minPrivacyScore: 5_000 as PrivacyScore,
-      deadline: NOW, // immediate mode: the deadline branch, not a bypass
+      // Immediate mode: a deadline one second out. The executor refuses one
+      // that has already passed — it could never be met — so "immediate" is
+      // the deadline branch firing the moment time reaches it, not a bypass.
+      deadline: (NOW + 1n) as UnixSeconds,
       credentialHandle: 'cred-1' as CredentialHandle, idempotencyKey: 'pay-1' as IdempotencyKey,
     },
   });
@@ -88,7 +91,8 @@ async function harness(credentialRecipient: Address = RECIPIENT) {
   const delivered: ApprovedRelease[] = [];
   const simulator = createCreSimulator({
     executor, intentSecretKey: intentKeys.secretKey, encryptionKeyId: KEY_ID, credentialMac,
-    policyVersion: POLICY, releaseTtlSeconds: 900n, now: () => NOW,
+    // Evaluated one second later: the deadline has arrived, so it fires.
+    policyVersion: POLICY, releaseTtlSeconds: 900n, now: () => (NOW + 1n) as UnixSeconds,
     attester: { identity, forsSeed: FORS_SEED, useCount: async () => 0n },
     deliver: async (release) => { delivered.push(release); return `0x${'aa'.repeat(32)}` as TxHash; },
     evidence: async (txHash, release) => ({ txHash, spendHash: spendHash(release.spend), succeeded: true }),
@@ -97,7 +101,7 @@ async function harness(credentialRecipient: Address = RECIPIENT) {
   return { executor, ref, simulator, delivered, spend };
 }
 
-test('a real ring payment goes from WAITING to SETTLED through the CRE stand-in', { todo: 'BLOCKED: a RING_8 spend carries a 1,101 KiB ZKBoo proof (2,202 KiB as hex), but a sealed intent is capped at 128 KiB and the mesh at 64 KiB. The proof cannot reach the attester yet. See docs/proof-transport.md.' }, async () => {
+test('a real ring payment goes from WAITING to SETTLED through the CRE stand-in', async () => {
   const { executor, ref, simulator, delivered } = await harness();
   assert.equal((await executor.getStatus(ref.statusHandle)).state, 'WAITING_FOR_PRIVACY');
 
@@ -147,7 +151,7 @@ test('the attester refuses a proof below full strength, rather than signing a fo
   );
 });
 
-test('a credential for someone else fails the intent instead of paying anyone', { todo: 'BLOCKED: a RING_8 spend carries a 1,101 KiB ZKBoo proof (2,202 KiB as hex), but a sealed intent is capped at 128 KiB and the mesh at 64 KiB. The proof cannot reach the attester yet. See docs/proof-transport.md.' }, async () => {
+test('a credential for someone else fails the intent instead of paying anyone', async () => {
   const { executor, ref, simulator, delivered } = await harness(asAddress('0x000000000000000000000000000000000000dead'));
   await simulator.tick();
   assert.equal((await executor.getStatus(ref.statusHandle)).state, 'FAILED');

@@ -40,7 +40,7 @@ import { evaluateIntent, type ScoreReading } from './evaluate-intent.ts';
 import type { OpaqueExecutor } from './executor.ts';
 import type { SettlementEvidence } from './intent-store.ts';
 import { issueRelease } from './release.ts';
-import { openIntent } from './sealed-intent.ts';
+import { decodeIntentPlaintext, openIntent } from './sealed-intent.ts';
 
 export interface CreSimulatorOptions {
   readonly executor: OpaqueExecutor;
@@ -73,8 +73,6 @@ export interface CreSimulator {
   start(intervalMs?: number): void;
   stop(): void;
 }
-
-const text = (b: Uint8Array): string => new TextDecoder().decode(b);
 
 export function createCreSimulator(options: CreSimulatorOptions): CreSimulator {
   const { executor } = options;
@@ -137,10 +135,10 @@ export function createCreSimulator(options: CreSimulatorOptions): CreSimulator {
             },
             async decryptInTee(intent) {
               const plain = openIntent(options.intentSecretKey, options.encryptionKeyId, intent.encryptedPayload);
-              const parsed = JSON.parse(text(plain)) as { spend: unknown; credential: string };
+              const opened = decodeIntentPlaintext(plain);
               // The real codec, not a hand-revived chainId: it validates the
               // whole spend and revives every bigint that crossed as decimal.
-              return { spend: asPrivateSpend(parsed.spend), credential: parsed.credential };
+              return { spend: asPrivateSpend(opened.spend), credential: opened.credential };
             },
             async checkRecipientPolicy(spend, credential) {
               let parsed: RecipientCredential;

@@ -28,6 +28,7 @@ import {
   MAX_SEALED_INTENT_BYTES,
   NONCE_BYTES,
   aad,
+  encodeIntentPlaintext,
   intentKey,
 } from './sealed-intent.ts';
 
@@ -127,12 +128,10 @@ export function createIntentSealer(
   return async (input) => {
     const credential = await options.resolveCredential(input.request.credentialHandle);
 
-    // Bigints cross as decimal strings. JSON.stringify throws on one outright,
-    // and the enclave revives them on the way in.
-    const payload = JSON.stringify(
-      { spend: input.spend, credential },
-      (_key, value: unknown) => (typeof value === 'bigint' ? value.toString(10) : value),
-    );
+    // The proof travels as raw bytes after the JSON, not as hex inside it —
+    // for a ring spend that is the difference between 1.1 MiB and 2.2 MiB.
+    // Bigints inside the JSON still cross as decimal strings.
+    const payload = encodeIntentPlaintext(input.spend as { proof: Hex }, credential);
 
     return {
       version: PROTOCOL_VERSION,
@@ -140,7 +139,7 @@ export function createIntentSealer(
       encryptedPayload: sealIntent(
         options.crePublicKey,
         options.encryptionKeyId,
-        new TextEncoder().encode(payload),
+        payload,
       ),
       encryptionKeyId: options.encryptionKeyId,
       spendHash: input.spendHash,
