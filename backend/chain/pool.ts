@@ -283,16 +283,30 @@ export function createPoolClient(options: PoolClientOptions): OpaquePoolClient {
       // toHex, not Buffer: this client runs in the wallet page too.
       const salt = toHex(crypto.getRandomValues(new Uint8Array(32))) as Bytes32;
 
-      const commitment = (await publicClient.readContract({
+      // Two phases only where the VERIFIER requires them, read from the pool
+      // rather than assumed from the spend's mode. SINGLE_NOTE_PQ publishes the
+      // note secret in calldata, so its reveal is front-runnable and must be
+      // committed first. An attested RING_8 spend binds its recipient into a
+      // signature, so copied calldata still pays the same person: committing
+      // there is a wasted transaction and a two-block wait on every payment.
+      const onChain = (await publicClient.readContract({
         address: getAddress(pool),
         abi: POOL_ABI,
-        functionName: 'spendCommitment',
-        args: [ring, spend.proof, getAddress(spend.recipient), salt],
-      })) as Bytes32;
+        functionName: 'capabilities',
+      })) as { requiresCommitReveal: boolean };
 
-      await send(client, pool, 'commitSpend', [commitment]);
-      // The salt lives only in this closure across the wait. See the header.
-      await waitForBlocks(COMMIT_DELAY_BLOCKS);
+      if (onChain.requiresCommitReveal) {
+        const commitment = (await publicClient.readContract({
+          address: getAddress(pool),
+          abi: POOL_ABI,
+          functionName: 'spendCommitment',
+          args: [ring, spend.proof, getAddress(spend.recipient), salt],
+        })) as Bytes32;
+
+        await send(client, pool, 'commitSpend', [commitment]);
+        // The salt lives only in this closure across the wait. See the header.
+        await waitForBlocks(COMMIT_DELAY_BLOCKS);
+      }
       return send(client, pool, 'spend', [ring, spend.proof, getAddress(spend.recipient), salt]);
     },
 

@@ -43,7 +43,8 @@ import {
   utf8,
 } from '@opaque/pq-wallet';
 
-import { verifyRingSpend } from '../zk/spend.ts';
+import { verifierId as zkVerifierId, verifyRingSpend } from '../zk/spend.ts';
+import { REPS_128 } from '../zk/zkboo.ts';
 
 // Pinned to AttestedRingVerifier.sol. Changing any of these is a protocol break.
 const VERIFIER_DOMAIN = 'opaque/v1/spend-verifier';
@@ -51,6 +52,8 @@ const ATTEST_DOMAIN = 'opaque/v1/ring-attestation';
 const SCHEME = 'attested-ring8/zkboo-aes128-ring8';
 /** PQKeyRegistry.consume wraps every payload in this before digesting. */
 const USER_ACTION_DOMAIN = 'opaque/v1/pq-wallet/action';
+/** 219 repetitions, soundness 2^-128. The only ring proof an attester signs for. */
+const ZK_VERIFIER_ID = zkVerifierId(REPS_128);
 
 /** Who is attesting, and for which pool. All of it is committed to on chain. */
 export interface AttesterIdentity {
@@ -156,8 +159,15 @@ export function attestRingSpend(input: {
   }
 
   // RULE 1. The one check that makes this an attester and not a mint.
-  if (!verifyRingSpend(spend)) {
-    throw new ProtocolFailure('PROOF_REJECTED', 'the ring proof does not verify');
+  //
+  // PINNED to the full-strength verifier. verifyRingSpend reads the repetition
+  // count out of the proof itself and, unpinned, accepts any count that is
+  // self-consistent — so a 1-repetition proof, whose soundness error is a
+  // constant fraction rather than 2^-128, verifies. Forging one for a note you
+  // do not own takes a handful of guesses, and this function would sign it.
+  // Found in review before anything used it; the test pins it.
+  if (!verifyRingSpend(spend, ZK_VERIFIER_ID)) {
+    throw new ProtocolFailure('PROOF_REJECTED', 'the ring proof does not verify at full strength');
   }
 
   // Recomputed, never read off the spend: the pool derives paymentContext
