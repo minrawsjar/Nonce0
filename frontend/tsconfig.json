@@ -8,7 +8,9 @@
     ],
     "module": "ESNext",
     "moduleResolution": "bundler",
-    "types": [],
+    "types": [
+      "vite/client"
+    ],
     "strict": true,
     "noUncheckedIndexedAccess": true,
     "noImplicitOverride": true,

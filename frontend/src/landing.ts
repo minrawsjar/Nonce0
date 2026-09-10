@@ -181,6 +181,29 @@ if (nav) {
 
 const shards: HTMLImageElement[] = [];
 
+// Declared as a glob rather than assembled from a template string, because a
+// URL built at runtime is a URL the bundler cannot see. Built the other way,
+// the ten cut-outs were simply absent from `npm run build` — every shard 404'd
+// in production, so the wall pinned and scrubbed and nothing ever flew off it,
+// while `npm run dev` served them from disk and looked perfect.
+//
+// Going through the glob also gets them content hashes and immutable caching,
+// which a hand-written path never would.
+const ROCKS = import.meta.glob('../media/rig/rock-*.webp', {
+  eager: true,
+  query: '?url',
+  import: 'default',
+}) as Record<string, string>;
+
+const rockUrl = (rock: number): string => {
+  const key = `../media/rig/rock-${String(rock).padStart(2, '0')}.webp`;
+  const url = ROCKS[key];
+  // Loud, and at first paint rather than as a silent gap in the animation: a
+  // missing cut-out here means the glob and the SHARDS table have drifted.
+  if (url === undefined) throw new Error(`rig asset missing: ${key}`);
+  return url;
+};
+
 // Nothing to build if nothing will ever fly: under reduced motion the hero is
 // the wall standing whole and no chunk ever leaves the seam, so the shards are
 // fourteen images that would be fetched and decoded to sit at opacity 0.
@@ -191,7 +214,7 @@ if (shardHost && !still.matches) {
   for (const shard of SHARDS) {
     const img = document.createElement('img');
     img.className = 'rig__shard';
-    img.src = `media/rig/rock-${String(shard.rock).padStart(2, '0')}.webp`;
+    img.src = rockUrl(shard.rock);
     img.alt = '';
     img.setAttribute('aria-hidden', 'true');
     img.decoding = 'async';
