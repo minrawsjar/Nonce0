@@ -101,8 +101,11 @@ export function createPaymentApplication(ports: AdapterPorts): PaymentApplicatio
 
   return {
     async capabilities(scope: PoolScope): Promise<ProtocolCapabilities> {
-      // Read from the pool, never assumed. A SINGLE_NOTE_PQ deployment must
-      // never be rendered with eight-member anonymity copy (T12).
+      // Read from the pool, never assumed (T12). A SINGLE_NOTE_PQ deployment
+      // must never be rendered with eight-member anonymity copy, and an
+      // ATTESTED_OFFCHAIN one must be presented as trust in a named attester
+      // rather than as a number — the chain cannot check its anonymity set at
+      // all. docs/settlement-paths.md has the comparison.
       return ports.pool.capabilities(scope.pool);
     },
 

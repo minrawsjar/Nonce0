@@ -67,6 +67,8 @@ alone would have to be built in Solidity and run 438 times per spend.
 Off-chain verification is GO at 2.0 s and stays publicly verifiable.
 
 **The routing is decided: verify off-chain, enforce through the contract.**
+Two implementations of that decision exist; [settlement-paths.md](settlement-paths.md)
+compares them and recommends one.
 `AttestedRingVerifier` is that decision in code. The ring proof is checked off
 the chain; the contract enforces ring membership, single-use nullifiers, the
 denomination and recipient, and a live attester key inside its few-time bound.
