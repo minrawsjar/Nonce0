@@ -304,6 +304,26 @@ export function createRelay(options: RelayOptions): Relay {
   const handler = (req: IncomingMessage, res: ServerResponse): void => {
     const url = req.url ?? '/';
     const path = url.split('?')[0] ?? '/';
+
+    // A browser wallet is the client, and without these it cannot reach a
+    // relay at all: the POST carries application/octet-stream, which forces a
+    // preflight, and the drop collection is cross-origin. Set once here so
+    // every response path carries them — Node merges setHeader into writeHead.
+    //
+    // `*` weakens nothing. There are no cookies or credentials to protect; the
+    // onion is the protection, and any client may already POST one. Relays
+    // only — the mesh exit is reached by hop 3, server to server, and stays
+    // off the browser-facing surface entirely.
+    res.setHeader('access-control-allow-origin', '*');
+    res.setHeader('access-control-allow-methods', 'POST, GET, OPTIONS');
+    res.setHeader('access-control-allow-headers', 'content-type');
+    res.setHeader('access-control-max-age', '600');
+    if (req.method === 'OPTIONS') {
+      res.writeHead(204);
+      res.end();
+      return;
+    }
+
     void (async () => {
       try {
         if (path === '/v1/relay') {

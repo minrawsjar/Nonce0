@@ -82,18 +82,26 @@ async function post(relay: Relay, body: Uint8Array): Promise<{ status: number; j
   return await respond(relay, req);
 }
 
-function respond(relay: Relay, req: any): Promise<{ status: number; json: any }> {
+function respond(relay: Relay, req: any): Promise<{ status: number; json: any; headers: Record<string, unknown> }> {
   return new Promise((resolve) => {
     let status = 0;
     let body = '';
+    // Headers the way Node merges them: setHeader first, then writeHead's
+    // argument on top. A fake that ignored setHeader would pass a relay that
+    // sent no CORS headers at all.
+    const headers: Record<string, unknown> = {};
     const res: any = {
-      writeHead: (code: number) => {
+      setHeader: (name: string, value: unknown) => {
+        headers[name.toLowerCase()] = value;
+      },
+      writeHead: (code: number, extra?: Record<string, unknown>) => {
         status = code;
+        for (const [k, v] of Object.entries(extra ?? {})) headers[k.toLowerCase()] = v;
         return res;
       },
       end: (chunk?: string) => {
         body = chunk ?? '';
-        resolve({ status, json: body === '' ? undefined : JSON.parse(body) });
+        resolve({ status, json: body === '' ? undefined : JSON.parse(body), headers });
       },
     };
     relay.handler(req, res);
@@ -292,4 +300,25 @@ test('the relay serves the two endpoints over actual HTTP', async () => {
   } finally {
     await relay.close();
   }
+});
+
+// ── a browser can reach it ────────────────────────────────────────────────
+
+test('a browser can reach a relay: preflight answered, every response carries CORS', async () => {
+  // The wallet is a browser page. Its POST carries application/octet-stream,
+  // which forces an OPTIONS preflight; without an answer, the browser never
+  // sends the onion and the whole mesh is unreachable from the wallet.
+  const { built } = mesh();
+  const relay = built.get(ids[0]!)!;
+
+  const preflight = await respond(relay, { method: 'OPTIONS', url: '/v1/relay' });
+  assert.equal(preflight.status, 204, 'preflight answered');
+  assert.equal(preflight.headers['access-control-allow-origin'], '*');
+  assert.match(String(preflight.headers['access-control-allow-methods']), /POST/);
+  assert.match(String(preflight.headers['access-control-allow-headers']), /content-type/);
+
+  // And on real responses, including refusals — a browser that cannot read an
+  // error sees a CORS failure instead of the actual reason.
+  const missing = await get(relay, '/v1/status/does-not-exist');
+  assert.equal(missing.headers['access-control-allow-origin'], '*', 'even on a miss');
 });
