@@ -108,6 +108,7 @@ const step = (s: string) => process.stdout.write(`[${((Date.now() - t0) / 1000).
 await page.goto(APP_URL);
 await page.waitForFunction(() => /RING_8/.test(document.getElementById('caps')?.textContent ?? ''), null, { timeout: 60_000 });
 step(`capabilities (the pool's, read over the mesh): ${await page.textContent('#caps')}`);
+await page.waitForFunction(() => !/Loading/.test(document.getElementById('note-count')?.textContent ?? 'Loading'), null, { timeout: 120_000 });
 step(`private balance: ${await page.textContent('#balance')} USDC in ${await page.textContent('#note-count')}`);
 
 if (signer !== undefined && process.env['E2E_PQ'] === '1') {
@@ -185,15 +186,20 @@ await page.click('#tab-send');
 await page.fill('#recipient', RECIPIENT);
 await page.fill('#freshness', '50');
 await page.fill('#send-amount', String(NOTES));
+// The page adds its rows and refreshes its balance only after the last
+// payment is out, while its own poll may render earlier ones: wait for both.
+const rowsBefore = await page.locator('#intent-list .intent').count();
+const balanceAfter = `${Number(await page.textContent('#balance')) - NOTES}.00`;
 await page.click('#arm');
 await page.waitForFunction(() => /across the mesh|Not sent|were not sent/.test(document.getElementById('send-status')?.textContent ?? ''), null, { timeout: 420_000 });
 step(`send: ${await page.textContent('#send-status')}`);
 
 // The newest rows are first; an older settled row must not stand in for these.
-await page.waitForFunction((n: number) => {
-  const rows = [...document.querySelectorAll('#intent-list .intent')].slice(0, n);
-  return rows.length === n && rows.every((r) => /view settlement/.test(r.textContent ?? ''));
-}, NOTES, { timeout: 420_000 });
+await page.waitForFunction(([n, before]: number[]) => {
+  const rows = [...document.querySelectorAll('#intent-list .intent')];
+  return rows.length >= before! + n! && rows.slice(0, n).every((r) => /view settlement/.test(r.textContent ?? ''));
+}, [NOTES, rowsBefore], { timeout: 420_000 });
+await page.waitForFunction((b: string) => document.getElementById('balance')?.textContent === b, balanceAfter, { timeout: 60_000 });
 const txs: string[] = await page.$$eval('#intent-list .intent', (rows: Element[], n: number) =>
   rows.slice(0, n).map((r) => r.querySelector('a')?.getAttribute('href') ?? ''), NOTES);
 step(`activity (status through the mesh): ${txs.length} settled  ${txs.join('  ')}`);
