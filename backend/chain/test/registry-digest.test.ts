@@ -4,6 +4,8 @@ import test from 'node:test';
 import { createPublicClient, http, parseAbi } from 'viem';
 
 import { FORS_C_DEFAULT, forsSchemeId, pqDigest } from '@opaque/pq-wallet';
+
+import { deployment, requireContract } from '../../../deployments/index.ts';
 import { asAddress, asChainId } from '@opaque/protocol-types/codecs.js';
 
 import {
@@ -21,14 +23,14 @@ import {
 //
 // So this asks the DEPLOYED bytecode, not a local build and not a fixture.
 // `digest` is a view function: these are eth_calls, no gas, no state.
-const REGISTRY = '0x7FC11e0f5d224439b2d710BB1c141913F454eF17';
-const CHAIN_ID = 5042002n;
+const REGISTRY = requireContract('pqKeyRegistry');
+const CHAIN_ID = BigInt(deployment.network.chainId);
 
 const ABI = parseAbi([
   'function digest(address account,string schemeId,uint64 useCount,bytes payload) view returns (bytes32)',
 ]);
 
-const client = createPublicClient({ transport: http('https://rpc.testnet.arc.io') });
+const client = createPublicClient({ transport: http(deployment.network.rpcUrl) });
 const schemeId = forsSchemeId(FORS_C_DEFAULT);
 const ACCOUNT = '0x00000000000000000000000000000000000000a1';
 

@@ -3,18 +3,21 @@ import test from 'node:test';
 
 import { ProtocolFailure, type Address, type Nullifier, type PoolScope } from '@opaque/protocol-types';
 
+import { deployment, poolFor, requireContract } from '../../../deployments/index.ts';
 import { ARC_TESTNET, POOL_ABI, createPoolClient } from '../pool.ts';
 
 // The pool actually deployed by script/Deploy.s.sol. These read the LIVE
 // chain on purpose: a mock that agrees with itself proves nothing about
 // whether the ABI matches the deployed bytecode, which is the one thing that
 // really goes wrong between a contract and its client.
-const POOL = '0x4cfa5843453E782924Bfa7cE6a9E3dAd713Da995' as Address;
-const VERIFIER = '0x8ad3c8f52F17B0F62a4dA3c3A1905a04E114B015' as Address;
-const USDC = '0x3600000000000000000000000000000000000000';
+// From deployments/arc-testnet.json, never a second copy: a test that pinned
+// its own address would keep passing against a pool nobody uses any more.
+const POOL = poolFor(1_000_000).address as Address;
+const VERIFIER = requireContract('singleNotePqVerifier') as Address;
+const USDC = deployment.tokens.usdc.address;
 
 const scope: PoolScope = {
-  chainId: 5_042_002n as PoolScope['chainId'],
+  chainId: BigInt(deployment.network.chainId) as PoolScope['chainId'],
   pool: POOL,
   denomination: 1_000_000 as PoolScope['denomination'],
 };

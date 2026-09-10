@@ -3,14 +3,17 @@ import test from 'node:test';
 
 import type { Address } from '@opaque/protocol-types';
 
+import type { CreAuthorization } from '../../cre/authorize-payment.ts';
 import { authorizationArgs, batchSettlementArgs } from '../cre-settlement.ts';
 
+// Typed as the real thing. As a bare object literal the hex widened to string,
+// which nothing noticed because backend/chain was never in the typecheck.
 const authorization = {
   id: `0x${'01'.repeat(32)}`, spendHash: `0x${'02'.repeat(32)}`, nullifier: `0x${'03'.repeat(32)}`,
   pool: `0x${'11'.repeat(20)}` as Address, recipient: `0x${'aa'.repeat(20)}` as Address,
   feeCollector: `0x${'bb'.repeat(20)}` as Address, grossAmount: 2_000_000n, feeAmount: 10_000n,
   feeBps: 50, expiresAt: 1_760_000_300n,
-};
+} as unknown as CreAuthorization;
 
 test('encodes the exact gate and atomic-batch arguments', () => {
   const [published] = authorizationArgs(authorization);

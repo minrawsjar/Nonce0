@@ -1,0 +1,121 @@
+// Typed, validated access to deployments/arc-testnet.json.
+//
+// Dependency-free on purpose: no package owns this, and the frontend, backend
+// and graph all import it by relative path. Validation runs once, at import —
+// a malformed address fails every consumer immediately instead of reaching a
+// transaction.
+//
+//   import { deployment, requireContract } from '../../deployments/index.ts';
+//   const registry = requireContract('pqKeyRegistry');   // throws if null
+
+import raw from './arc-testnet.json' with { type: 'json' };
+
+export type Address = `0x${string}`;
+
+export type ContractName =
+  | 'pqKeyRegistry'
+  | 'singleNotePqVerifier'
+  | 'attestedRingVerifier'
+  | 'relayDirectory'
+  | 'crePolicyGate'
+  | 'creBatchSettlement'
+  | 'pqAccountFactory'
+  | 'pqAccountValidator';
+
+export type ServiceName = 'graphUrl' | 'meshExitUrl' | 'releaseEgressUrl' | 'creTriggerUrl' | 'relayDirectoryUrl';
+
+export interface DeployedContract {
+  readonly address: Address;
+  readonly deployedAtBlock: number;
+}
+
+export interface PoolDeployment {
+  readonly address: Address;
+  readonly denomination: number;
+  readonly proofMode: 'RING_8' | 'SINGLE_NOTE_PQ' | 'ATTESTED_OFFCHAIN';
+  readonly verifier: ContractName;
+  readonly deployedAtBlock: number;
+}
+
+export interface Deployment {
+  readonly network: {
+    readonly name: string;
+    readonly chainId: number;
+    readonly rpcUrl: string;
+    readonly explorer: string;
+    readonly nativeCurrency: { readonly name: string; readonly symbol: string; readonly decimals: number };
+  };
+  readonly tokens: { readonly usdc: { readonly address: Address; readonly decimals: number } };
+  readonly contracts: Readonly<Record<ContractName, DeployedContract | null>>;
+  readonly pools: readonly PoolDeployment[];
+  readonly erc4337: {
+    readonly entryPoints: Readonly<Record<'v0.6' | 'v0.7' | 'v0.8', Address>>;
+    readonly preferredEntryPoint: 'v0.6' | 'v0.7' | 'v0.8';
+    readonly bundlerUrl: string;
+    readonly bundlerApiKeyEnv: string;
+  };
+  readonly services: Readonly<Record<ServiceName, string | null>>;
+}
+
+// Lower-case, like every other address in this repo: codecs.ts treats
+// upper-case as a different value for hashing, so the config must not
+// introduce a second spelling of one address.
+const ADDRESS = /^0x[0-9a-f]{40}$/;
+const ZERO = `0x${'0'.repeat(40)}`;
+
+function bad(path: string, why: string): never {
+  throw new Error(`deployments/arc-testnet.json: ${path} ${why}`);
+}
+
+function address(value: unknown, path: string): Address {
+  if (typeof value !== 'string' || !ADDRESS.test(value)) bad(path, 'must be a lower-case 0x address');
+  // The trap this file exists to remove: a zero address looks configured and
+  // then fails on chain. "Not deployed" is spelled null, and nothing else.
+  if (value === ZERO) bad(path, 'is the zero address — write null for "not deployed"');
+  return value as Address;
+}
+
+function validate(d: typeof raw): Deployment {
+  address(d.tokens.usdc.address, 'tokens.usdc.address');
+  for (const [name, c] of Object.entries(d.contracts)) {
+    if (c !== null) address((c as DeployedContract).address, `contracts.${name}.address`);
+  }
+  d.pools.forEach((p, i) => {
+    address(p.address, `pools[${i}].address`);
+    if (!(p.verifier in d.contracts)) bad(`pools[${i}].verifier`, `names no known contract (${p.verifier})`);
+  });
+  for (const [v, a] of Object.entries(d.erc4337.entryPoints)) address(a, `erc4337.entryPoints.${v}`);
+  return d as unknown as Deployment;
+}
+
+export const deployment: Deployment = validate(raw);
+
+/** The address of a contract that must be deployed for the caller to work. */
+export function requireContract(name: ContractName): Address {
+  const c = deployment.contracts[name];
+  if (c === null) {
+    throw new Error(`${name} is not deployed on ${deployment.network.name}: set its address in deployments/arc-testnet.json`);
+  }
+  return c.address;
+}
+
+/** An endpoint the caller cannot run without. */
+export function requireService(name: ServiceName): string {
+  const url = deployment.services[name];
+  if (url === null) {
+    throw new Error(`${name} is not configured for ${deployment.network.name}: set it in deployments/arc-testnet.json`);
+  }
+  return url;
+}
+
+/** The pool for a denomination, in the smallest unit (1 USDC = 1_000_000). */
+export function poolFor(denomination: number): PoolDeployment {
+  const pool = deployment.pools.find((p) => p.denomination === denomination);
+  if (pool === undefined) {
+    throw new Error(`no ${denomination} pool is deployed on ${deployment.network.name}`);
+  }
+  return pool;
+}
+
+/** The ERC-4337 EntryPoint the wallet should target. */
+export const entryPoint = (): Address => deployment.erc4337.entryPoints[deployment.erc4337.preferredEntryPoint];

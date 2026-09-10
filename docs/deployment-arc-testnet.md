@@ -1,5 +1,11 @@
 # Deployed addresses — Arc Testnet
 
+> **The source of truth is [`deployments/arc-testnet.json`](../deployments/arc-testnet.json).**
+> Code reads it, never this page. The backend, the frontend, the deploy scripts
+> and the subgraph renderer all import that one file, and
+> `backend/chain/test/deployments.test.ts` checks every address in it against
+> the live chain. This page explains the deployment; it does not define it.
+
 Chain **5042002**. Explorer: [testnet.arcscan.app](https://testnet.arcscan.app).
 
 | Contract | Address |

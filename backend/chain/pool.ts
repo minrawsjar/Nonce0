@@ -59,16 +59,18 @@ import {
 } from '@opaque/protocol-types';
 import { toHex } from '@opaque/protocol-types/codecs.js';
 
+import { deployment } from '../../deployments/index.ts';
+
 /** Arc Testnet. Chain id verified live against rpc.testnet.arc.io. */
 export const ARC_TESTNET: Chain = {
-  id: 5_042_002,
+  id: deployment.network.chainId,
   name: 'Arc Testnet',
   // Arc's native currency IS USDC, at 18 decimals. Naming it USDC here and
   // meaning the 6-decimal ERC-20 elsewhere is the confusion this comment and
   // the Usdc6/Wei18 brands exist to prevent.
-  nativeCurrency: { name: 'USDC', symbol: 'USDC', decimals: 18 },
-  rpcUrls: { default: { http: ['https://rpc.testnet.arc.io'] } },
-  blockExplorers: { default: { name: 'Arcscan', url: 'https://testnet.arcscan.app' } },
+  nativeCurrency: deployment.network.nativeCurrency,
+  rpcUrls: { default: { http: [deployment.network.rpcUrl] } },
+  blockExplorers: { default: { name: 'Arcscan', url: deployment.network.explorer } },
 };
 
 export const POOL_ABI = parseAbi([

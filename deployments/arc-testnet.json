@@ -1,0 +1,62 @@
+{
+  "$comment": "THE source of truth for every public address and endpoint on Arc testnet. Public values only — never a private key, API key or MAC secret. `null` means NOT DEPLOYED, and the loader refuses it where a value is required; a zero address would instead fail silently on chain. Verified live by backend/chain/test/deployments.test.ts.",
+
+  "network": {
+    "name": "arc-testnet",
+    "chainId": 5042002,
+    "rpcUrl": "https://rpc.testnet.arc.io",
+    "explorer": "https://testnet.arcscan.app",
+    "nativeCurrency": { "name": "USDC", "symbol": "USDC", "decimals": 18 }
+  },
+
+  "tokens": {
+    "usdc": {
+      "$comment": "The ERC-20 interface: 6 decimals. The SAME asset is the 18-decimal native currency that pays gas. Confusing the two is a factor of 10^12.",
+      "address": "0x3600000000000000000000000000000000000000",
+      "decimals": 6
+    }
+  },
+
+  "contracts": {
+    "pqKeyRegistry":        { "address": "0x7fc11e0f5d224439b2d710bb1c141913f454ef17", "deployedAtBlock": 61282726 },
+    "singleNotePqVerifier": { "address": "0x8ad3c8f52f17b0f62a4da3c3a1905a04e114b015", "deployedAtBlock": 61282726 },
+    "attestedRingVerifier": null,
+    "relayDirectory":       null,
+    "crePolicyGate":        null,
+    "creBatchSettlement":   null,
+    "pqAccountFactory":     null,
+    "pqAccountValidator":   null
+  },
+
+  "pools": [
+    {
+      "$comment": "SINGLE_NOTE_PQ: post-quantum, NOT anonymous on chain. docs/settlement-paths.md.",
+      "address": "0x4cfa5843453e782924bfa7ce6a9e3dad713da995",
+      "denomination": 1000000,
+      "proofMode": "SINGLE_NOTE_PQ",
+      "verifier": "singleNotePqVerifier",
+      "deployedAtBlock": 61282726
+    }
+  ],
+
+  "erc4337": {
+    "$comment": "All three EntryPoints verified deployed on Arc testnet. The public RPC is NOT a bundler (eth_supportedEntryPoints: method not supported).",
+    "entryPoints": {
+      "v0.6": "0x5ff137d4b0fdcd49dca30c7cf57e578a026d2789",
+      "v0.7": "0x0000000071727de22e5e9d8baf0edac6f37da032",
+      "v0.8": "0x4337084d9e255ff0702461cf8895ce9e3b5ff108"
+    },
+    "preferredEntryPoint": "v0.7",
+    "bundlerUrl": "https://api.pimlico.io/v2/arc-testnet/rpc",
+    "bundlerApiKeyEnv": "PIMLICO_API_KEY"
+  },
+
+  "services": {
+    "$comment": "Endpoints, not keys. Each is null until that service is hosted.",
+    "graphUrl": null,
+    "meshExitUrl": null,
+    "releaseEgressUrl": null,
+    "creTriggerUrl": null,
+    "relayDirectoryUrl": null
+  }
+}
