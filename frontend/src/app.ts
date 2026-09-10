@@ -289,7 +289,7 @@ async function renderCapabilities(): Promise<void> {
   const parts = [
     `Pool ${caps.proofMode === 'RING_8' ? `RING_8 — ${caps.ringSize}-member ring, verified off chain by an attester` : caps.proofMode}`,
     `CRE ${stack.confidentialExecution === 'SIMULATED' ? 'SIMULATED (not an enclave)' : 'attested'}`,
-    'mesh: one operator (local)',
+    'mesh: six relays, one operator',
     `PQ account ${stack.pqWallet === 'MOCK' ? 'on a mock chain' : 'live'}`,
   ];
   el('caps').textContent = parts.join(' · ');

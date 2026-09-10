@@ -24,10 +24,11 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import type { Hex, RelayId, UnixSeconds } from '@opaque/protocol-types';
+import { keyGen } from '@opaque/pq-wallet';
 
 import { MIN_POOL_RELAYS } from './contracts.ts';
 import type { DirectoryEntry, DirectoryTrustRoot, RelayDirectory, SignedDirectory } from './contracts.ts';
-import { deterministicSigner, signDirectory, signerCommitment } from './directory.ts';
+import { signDirectory, signerCommitment } from './directory.ts';
 import { createRelay, type Relay } from './server.ts';
 import { generateRelayKeypair } from './transport.ts';
 import type { MeshMessageKind } from './transport.ts';
@@ -96,13 +97,17 @@ export function buildLocalMesh(
   // FORS+C is few-time: this key signs ONE directory and the successor is
   // committed below. Regenerating the mesh makes a new signer, which is why
   // the trust root is written out beside the directory rather than baked in.
-  const signer = deterministicSigner(`local/${now}`);
+  //
+  // From the OS RNG and then dropped. It used to be derived from `now`, which
+  // is the directory's own issuedAt: anyone reading a published directory
+  // could re-derive this key and its successor, and sign a mesh of their own.
+  const signer = keyGen();
   const directory: RelayDirectory = {
     version: 1n,
     issuedAt: now as UnixSeconds,
     expiresAt: (now + 7n * DAY) as UnixSeconds,
     entries,
-    nextSignerCommitment: signerCommitment(deterministicSigner(`local/${now}/next`).publicKey),
+    nextSignerCommitment: signerCommitment(keyGen().publicKey),
   };
 
   return {
@@ -128,6 +133,7 @@ export function writeLocalMesh(out: string, mesh: LocalMesh): void {
 export async function serveLocalMesh(
   mesh: LocalMesh,
   egress: ReadonlyMap<MeshMessageKind, string>,
+  host?: string,
 ): Promise<readonly Relay[]> {
   const relays: Relay[] = [];
   for (const entry of mesh.signed.directory.entries) {
@@ -138,7 +144,7 @@ export async function serveLocalMesh(
       directory: mesh.signed.directory,
       egress,
     });
-    await relay.listen(mesh.ports.get(entry.id)!);
+    await relay.listen(mesh.ports.get(entry.id)!, host);
     relays.push(relay);
   }
   return relays;

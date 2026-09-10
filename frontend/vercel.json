@@ -1,0 +1,4 @@
+{
+  "$comment": "The wallet bundles source from ../backend, ../packages/* and ../graph, and a bare import there resolves from THAT directory's node_modules, never this one. So each gets its own install, exactly as on a dev machine. No workspaces or root node_modules: ../package.json explains why.",
+  "installCommand": "for d in ../packages/protocol-types ../packages/pq-wallet ../packages/ring-client ../graph ../backend; do npm ci --omit=dev --no-audit --no-fund --prefix \"$d\" || exit 1; done && npm ci --no-audit --no-fund"
+}

@@ -105,7 +105,8 @@ export interface Relay {
    * which message it was.
    */
   readonly undelivered: number;
-  listen(port: number): Promise<Server>;
+  /** `host` unset binds every interface; a public box passes 127.0.0.1 and fronts it. */
+  listen(port: number, host?: string): Promise<Server>;
   close(): Promise<void>;
   readonly queued: number;
   readonly drops: DropStore;
@@ -355,7 +356,7 @@ export function createRelay(options: RelayOptions): Relay {
     get undelivered() {
       return undelivered;
     },
-    listen(port: number): Promise<Server> {
+    listen(port: number, host?: string): Promise<Server> {
       server = createServer(handler);
       // Batches leave on their own clock, never in response to a request:
       // draining on arrival would make release time a function of arrival.
@@ -364,7 +365,7 @@ export function createRelay(options: RelayOptions): Relay {
         drops.sweep(now());
       }, batchWindowMs);
       timer.unref();
-      return new Promise((resolve) => server!.listen(port, () => resolve(server!)));
+      return new Promise((resolve) => server!.listen(port, host, () => resolve(server!)));
     },
     close(): Promise<void> {
       if (timer !== undefined) clearInterval(timer);

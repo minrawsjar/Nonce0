@@ -3,6 +3,11 @@
 //
 //   cd backend && set -a && . ./.env && set +a && node stack.ts
 //
+// On a public box, behind deploy/Caddyfile (docs/hosting.md):
+//
+//   PUBLIC_URL=https://mesh.example.com node stack.ts            six relays here
+//   PUBLIC_URL=… MESH_CONFIG=mesh/deploy/config node stack.ts    six elsewhere
+//
 // Six relays, the mesh exit (executor + query answering + the CRE stand-in),
 // the release egress, and a test credential authority. Writes the wallet's
 // public config to frontend/public/stack.json — the signed relay directory,
@@ -41,6 +46,8 @@ import { createExecutorServer } from './cre/executor-server.ts';
 import { generateIntentKeypair } from './cre/seal-client.ts';
 import { createCreSimulator } from './cre/simulator.ts';
 import { createEgress } from './mesh/egress.ts';
+import type { DirectoryTrustRoot, SignedDirectory } from './mesh/contracts.ts';
+import { verify } from './mesh/directory.ts';
 import { buildLocalMesh, serveLocalMesh } from './mesh/local-mesh.ts';
 import type { MeshMessageKind } from './mesh/transport.ts';
 
@@ -50,6 +57,12 @@ const OUT = join(HERE, '..', 'frontend', 'public', 'stack.json');
 const PORTS = { relays: 18_101, exit: 18_200, egress: 18_201, credentials: 18_202 } as const;
 const KEY_ID = 'opaque-intent-key-v1';
 const POLICY = 'opaque-policy-v1';
+// Every listener binds loopback. On a public box only the TLS proxy in front
+// (deploy/Caddyfile) is reachable, and the egress — which signs — never is.
+const LOOPBACK = '127.0.0.1';
+// Where the WALLET reaches this box. Unset: loopback, one laptop. Set to e.g.
+// https://mesh.example.com and the directory names the proxy's /r1…/r6.
+const PUBLIC_URL = process.env['PUBLIC_URL']?.replace(/\/+$/, '');
 
 const env = (name: string): string => {
   const v = process.env[name];
@@ -85,7 +98,20 @@ const poolAbi = parseAbi([
 ]);
 
 // ── the mesh ─────────────────────────────────────────────────────────────
-const mesh = buildLocalMesh(PORTS.relays);
+// Relays on six other hosts: MESH_CONFIG=mesh/deploy/config, the directory and
+// root make-config.ts wrote for them. Unset: six relays in this process.
+const MESH_CONFIG = process.env['MESH_CONFIG'];
+const readConfig = <T>(name: string): T => JSON.parse(readFileSync(join(MESH_CONFIG!, name), 'utf8'),
+  (_k, v: unknown) => (typeof v === 'string' && /^\d+n$/.test(v) ? BigInt(v.slice(0, -1)) : v)) as T;
+const mesh = MESH_CONFIG === undefined
+  ? buildLocalMesh({
+    basePort: PORTS.relays,
+    endpointFor: (_id, i, port) =>
+      PUBLIC_URL === undefined ? `http://${LOOPBACK}:${port}/v1/relay` : `${PUBLIC_URL}/r${i + 1}/v1/relay`,
+  })
+  : { signed: readConfig<SignedDirectory>('directory.json'), root: readConfig<DirectoryTrustRoot>('trust-root.json') };
+// At boot, not at the first payment: an expired directory (7 days) stops here.
+verify(mesh.signed, mesh.root, nowS());
 const relaySnapshot = (): RelaySnapshot => ({
   // Keys from the SIGNED directory. Health is a flat prior until a Graph feed
   // is wired: this is what the wallet's path policy weighs, not a measurement.
@@ -108,10 +134,10 @@ const egress = createEgress({
     offChain: { pqWallet: 'MOCK', graph: 'LIVE', confidentialExecution: 'SIMULATED', policyScope: 'CRE_WORKFLOW_ONLY' },
   })),
 });
-await egress.listen(PORTS.egress);
+await egress.listen(PORTS.egress, LOOPBACK);
 
 const exit = createExecutorServer({ graph: ringSource });
-await exit.listen(PORTS.exit);
+await exit.listen(PORTS.exit, LOOPBACK);
 
 const simulator = createCreSimulator({
   executor: exit.executor,
@@ -154,10 +180,10 @@ const simulator = createCreSimulator({
 });
 simulator.start(3_000);
 
-const relays = await serveLocalMesh(mesh, new Map<MeshMessageKind, string>([
+const relays = !('secretKeys' in mesh) ? [] : await serveLocalMesh(mesh, new Map<MeshMessageKind, string>([
   ['PAYMENT', `http://127.0.0.1:${PORTS.exit}/v1/mesh/payment`],
   ['QUERY', `http://127.0.0.1:${PORTS.exit}/v1/mesh/query`],
-]));
+]), LOOPBACK);
 
 // ── test credential authority ────────────────────────────────────────────
 // Issues for ANY recipient: a stand-in for a real policy authority, which the
@@ -167,7 +193,9 @@ const credentials = createServer((req, res) => {
   res.setHeader('access-control-allow-headers', 'content-type');
   if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return; }
   const chunks: Buffer[] = [];
-  req.on('data', (c: Buffer) => chunks.push(c));
+  let size = 0;
+  // Public once PUBLIC_URL is set: a body is one address, so anything big is abuse.
+  req.on('data', (c: Buffer) => { size += c.length; if (size > 1024) req.destroy(); else chunks.push(c); });
   req.on('end', () => {
     try {
       const { recipient } = JSON.parse(Buffer.concat(chunks).toString('utf8')) as { recipient?: string };
@@ -181,7 +209,7 @@ const credentials = createServer((req, res) => {
     }
   });
 });
-await new Promise<void>((r) => credentials.listen(PORTS.credentials, '127.0.0.1', r));
+await new Promise<void>((r) => credentials.listen(PORTS.credentials, LOOPBACK, r));
 
 // ── what the wallet reads ────────────────────────────────────────────────
 mkdirSync(dirname(OUT), { recursive: true });
@@ -190,7 +218,7 @@ writeFileSync(OUT, JSON.stringify({
   signedDirectory: mesh.signed,
   trustRoot: mesh.root,
   cre: { publicKey: intentKeys.publicKey, encryptionKeyId: KEY_ID, policyVersion: POLICY },
-  credentialUrl: `http://127.0.0.1:${PORTS.credentials}/v1/credential`,
+  credentialUrl: `${PUBLIC_URL ?? `http://${LOOPBACK}:${PORTS.credentials}`}/v1/credential`,
   pool: { address: ring8.address, denomination: ring8.denomination, proofMode: ring8.proofMode },
   capabilities: { pqWallet: 'MOCK', graph: 'LIVE', confidentialExecution: 'SIMULATED', policyScope: 'CRE_WORKFLOW_ONLY' },
 }, bigintReplacer, 2));

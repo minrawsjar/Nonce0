@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Generates the config three containers share: a signed directory whose
+// Generates the config six relays share: a signed directory whose
 // endpoints are SERVICE NAMES, the pinned trust root, and one key per relay.
 //
 // Endpoints matter here. Loopback works when three relays share a host and
@@ -15,15 +15,23 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { MIN_POOL_RELAYS } from '../contracts.ts';
 import { buildLocalMesh, writeLocalMesh } from '../local-mesh.ts';
 
 const out = join(dirname(fileURLToPath(import.meta.url)), 'config');
 mkdirSync(out, { recursive: true });
 
+// Six hosts: RELAY_URLS="https://r1.example.com,...,https://r6.example.com"
+// (docs/hosting.md). Unset: the six compose services, reached by name.
+const urls = process.env['RELAY_URLS']?.split(',').map((u) => u.trim().replace(/\/+$/, ''));
+if (urls !== undefined && urls.length !== MIN_POOL_RELAYS) {
+  throw new Error(`RELAY_URLS needs ${MIN_POOL_RELAYS} comma-separated URLs, got ${urls.length}`);
+}
+
 const mesh = buildLocalMesh({
   basePort: 8080,
-  // Every container listens on 8080 internally and is reached by name.
-  endpointFor: (_id, index) => `http://relay${index + 1}:8080/v1/relay`,
+  endpointFor: (_id, index) =>
+    urls === undefined ? `http://relay${index + 1}:8080/v1/relay` : `${urls[index]}/v1/relay`,
 });
 
 writeLocalMesh(out, mesh);

@@ -74,7 +74,8 @@ export interface ExecutorServerOptions {
 export interface ExecutorServer {
   readonly handler: (req: IncomingMessage, res: ServerResponse) => void;
   readonly executor: OpaqueExecutor;
-  listen(port: number): Promise<Server>;
+  /** `host` unset binds every interface; a public box passes 127.0.0.1 and fronts it. */
+  listen(port: number, host?: string): Promise<Server>;
   close(): Promise<void>;
 }
 
@@ -289,9 +290,9 @@ export function createExecutorServer(options: ExecutorServerOptions = {}): Execu
   return {
     handler,
     executor,
-    listen(port: number): Promise<Server> {
+    listen(port: number, host?: string): Promise<Server> {
       server = createServer(handler);
-      return new Promise((resolve) => server!.listen(port, () => resolve(server!)));
+      return new Promise((resolve) => server!.listen(port, host, () => resolve(server!)));
     },
     close(): Promise<void> {
       const running = server;

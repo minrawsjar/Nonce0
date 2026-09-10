@@ -77,7 +77,8 @@ export interface EgressOptions {
 
 export interface Egress {
   readonly handler: (req: IncomingMessage, res: ServerResponse) => void;
-  listen(port: number): Promise<Server>;
+  /** `host` unset binds every interface; a public box passes 127.0.0.1 and fronts it. */
+  listen(port: number, host?: string): Promise<Server>;
   close(): Promise<void>;
   /** Transactions delivered, by intent. Lets a restart answer a duplicate. */
   readonly delivered: ReadonlyMap<IntentId, TxHash>;
@@ -242,9 +243,9 @@ export function createEgress(options: EgressOptions): Egress {
   return {
     handler,
     delivered,
-    listen(port: number): Promise<Server> {
+    listen(port: number, host?: string): Promise<Server> {
       server = createServer(handler);
-      return new Promise((resolve) => server!.listen(port, () => resolve(server!)));
+      return new Promise((resolve) => server!.listen(port, host, () => resolve(server!)));
     },
     close(): Promise<void> {
       const running = server;

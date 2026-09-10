@@ -10,10 +10,14 @@ FROM node:22-alpine
 RUN addgroup -S opaque && adduser -S -G opaque opaque
 WORKDIR /app
 
-COPY packages/protocol-types/package.json ./packages/protocol-types/
-COPY packages/pq-wallet/package.json ./packages/pq-wallet/
-COPY backend/package.json ./backend/
-RUN cd backend && npm install --omit=dev --no-audit --no-fund
+# One install per directory: a bare import resolves from the importing file's
+# own node_modules, so packages/* need theirs too. (Before .dockerignore this
+# "worked" by copying the host's node_modules — and the host's secrets.)
+COPY packages/protocol-types/package.json packages/protocol-types/package-lock.json ./packages/protocol-types/
+COPY packages/pq-wallet/package.json packages/pq-wallet/package-lock.json ./packages/pq-wallet/
+COPY backend/package.json backend/package-lock.json ./backend/
+RUN for d in packages/protocol-types packages/pq-wallet backend; do \
+      npm ci --omit=dev --no-audit --no-fund --prefix "$d" || exit 1; done
 
 COPY packages/protocol-types ./packages/protocol-types
 COPY packages/pq-wallet ./packages/pq-wallet

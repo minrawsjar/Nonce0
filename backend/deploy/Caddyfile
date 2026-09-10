@@ -1,0 +1,53 @@
+# TLS in front of backend/stack.ts and the built wallet. docs/hosting.md.
+#
+#   MESH_DOMAIN=mesh.example.com caddy run --config backend/deploy/Caddyfile
+#
+# Run from the repo root — the file_server roots below are relative to it.
+# stack.ts must be started with PUBLIC_URL=https://$MESH_DOMAIN.
+#
+# There is no `log` directive, on purpose: Caddy writes no access log without
+# one, and an access log of client address beside path is exactly the
+# sender-to-payment link the relays exist not to keep. Do not add one.
+#
+# The egress (18201) holds the key that signs settlements. It is never routed.
+
+{$MESH_DOMAIN} {
+	handle_path /r1/* {
+		reverse_proxy 127.0.0.1:18101
+	}
+	handle_path /r2/* {
+		reverse_proxy 127.0.0.1:18102
+	}
+	handle_path /r3/* {
+		reverse_proxy 127.0.0.1:18103
+	}
+	handle_path /r4/* {
+		reverse_proxy 127.0.0.1:18104
+	}
+	handle_path /r5/* {
+		reverse_proxy 127.0.0.1:18105
+	}
+	handle_path /r6/* {
+		reverse_proxy 127.0.0.1:18106
+	}
+	handle /v1/credential {
+		reverse_proxy 127.0.0.1:18202
+	}
+	# The exit, for relays on OTHER hosts (MESH_CONFIG mode). Anyone can post
+	# here, as to any relay; a client that skips the mesh only unmasks itself.
+	handle /v1/mesh/* {
+		reverse_proxy 127.0.0.1:18200
+	}
+	# Rewritten by stack.ts on every start, so served live rather than built in.
+	handle /stack.json {
+		header Cache-Control no-store
+		# Public config, read cross-origin by a wallet hosted elsewhere.
+		header Access-Control-Allow-Origin *
+		root * frontend/public
+		file_server
+	}
+	handle {
+		root * frontend/dist
+		file_server
+	}
+}

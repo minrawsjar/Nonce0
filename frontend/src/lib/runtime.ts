@@ -49,7 +49,9 @@ const reviver = (_k: string, v: unknown) => (typeof v === 'string' && /^\d+n$/.t
  * In a real build it must be a compile-time constant — a root fetched from a
  * server an attacker controls is a root the attacker chose.
  */
-export async function loadStack(url = 'stack.json'): Promise<StackConfig> {
+// A wallet hosted apart from its backend (Vercel) sets VITE_STACK_URL at build
+// time, e.g. https://api.example.com/stack.json. docs/hosting.md.
+export async function loadStack(url: string = import.meta.env['VITE_STACK_URL'] ?? 'stack.json'): Promise<StackConfig> {
   const response = await fetch(url, { cache: 'no-store' });
   if (!response.ok) throw new Error(`no stack config at ${url} — is backend/stack.ts running?`);
   return JSON.parse(await response.text(), reviver) as StackConfig;

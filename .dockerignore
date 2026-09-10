@@ -1,0 +1,14 @@
+# The build context is the repo root, and both images COPY backend/ whole.
+# Without this, backend/.env (the egress key, the attester seed), backend/.stack
+# (the CRE intent key) and every relay's .key land in a layer of EVERY image —
+# including the relay image handed to hosts that should hold one key, not all.
+# Secrets are mounted at run time, never built in.
+**/.env
+**/.env.*
+**/*.key
+backend/.stack
+backend/deploy/config
+backend/mesh/deploy/config
+frontend/public/stack.json
+**/node_modules
+.git
