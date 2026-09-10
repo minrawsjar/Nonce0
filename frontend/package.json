@@ -26,7 +26,12 @@
     "These dependencies do NOT reach the scanner. frontend/ is a SIBLING of",
     "../src, never a parent, so Node's upward module resolution cannot see this",
     "node_modules from shipped code. Do not introduce workspaces or a root",
-    "node_modules — that is exactly what would break it."
+    "node_modules — that is exactly what would break it.",
+    "",
+    "vercel.json installs ../backend, ../packages/* and ../graph as well: the",
+    "wallet bundles their source, and a bare import there resolves from THAT",
+    "directory's node_modules, never this one. vercel.json allows no comments",
+    "(its schema refuses unknown keys, and the deploy fails), so this is here."
   ],
   "devDependencies": {
     "typescript": "^7.0.2",
