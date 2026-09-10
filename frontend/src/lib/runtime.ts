@@ -3,12 +3,17 @@
 //
 // Where each piece comes from — and the one rule that matters most:
 //
-//   relay keys   the SIGNED directory, verified against a pinned root before a
-//                single relay is contacted. Never a network response.
+//   relay keys   the SIGNED directory, walked from a root compiled into this
+//                build (deployments/arc-testnet.json) before a single relay
+//                is contacted. Never a root from the network.
 //   ring         a mesh query, answered at the exit: members from the pool's
 //                own events, their §8.1 weights from the subgraph.
 //   relay health a mesh query too (the subgraph, via the exit), clamped.
-//   proof        built HERE, in the page: the note secret never leaves it.
+//   proof        built HERE, in a Web Worker of this page: the note secret
+//                never leaves the origin, and the tab does not freeze.
+//   account and  WALLET_RPC through the mesh: the account's registry state,
+//   note reads   balances, nonce, a note's nullifier. No RPC or bundler learns
+//                which wallet asked.
 //   intent       sealed here to the CRE key, then chunked across the mesh.
 //   status       a mesh query. The page never opens a connection to the exit.
 //   account      LIVE on Arc: FORS keys in IndexedDB, the account deployed by
@@ -18,6 +23,7 @@
 
 import type {
   CredentialHandle,
+  Hex,
   IntentRef,
   IntentStatus,
   PoolScope,
@@ -26,23 +32,31 @@ import type {
   RelaySnapshot,
   RingSnapshot,
   StatusHandle,
+  TxHash,
 } from '@opaque/protocol-types';
 
 import { createMeshBootstrap } from '../../../backend/mesh/bootstrap.ts';
+import { chainTo } from '../../../backend/mesh/directory.ts';
 import { createGraphHealth } from '../../../backend/mesh/graph-health.ts';
 import type { DirectoryTrustRoot, SignedDirectory } from '../../../backend/mesh/contracts.ts';
 import { createIntentSealer } from '../../../backend/cre/seal-client.ts';
-import { ARC_AUTHORITY, createAccountPool, createLivePqWallet } from '../../../backend/chain/pq-wallet-chain.ts';
-import { browserPayer, createBrowserPool, createChainObserver } from '../../../backend/chain/wallet-chain.ts';
+import { ARC_AUTHORITY, createLivePqWallet, createPqAccountOps } from '../../../backend/chain/pq-wallet-chain.ts';
+import { browserPayer, createBrowserPool, createMeshChainObserver } from '../../../backend/chain/wallet-chain.ts';
+import type { WalletRpcSend } from '../../../backend/chain/wallet-rpc.ts';
 import { MarkovPathPolicy } from '../../../graph/src/path-policy.ts';
 import { createNoteVault, createRingClient } from '../../../packages/ring-client/src/index.ts';
 import { IndexedDbSignerStore } from '../../../packages/pq-wallet/src/indexeddb-store.ts';
-import { deployment } from '../../../deployments/index.ts';
+import { deployment, meshTrustRoot } from '../../../deployments/index.ts';
+import { exportBackup, keyStoreName, restoreBackup } from './backup.ts';
+import { createWorkerProver } from './prover.ts';
 import { createPaymentApplication, type AdapterPorts } from './protocol/index.ts';
 import { localNoteStorage } from './note-storage.ts';
 
 export interface StackConfig {
+  /** From the pinned root to the directory in force. Older stacks sent only signedDirectory. */
+  readonly directoryChain?: readonly SignedDirectory[];
   readonly signedDirectory: SignedDirectory;
+  /** A dev server's root, for its random mesh. A built wallet never reads it. */
   readonly trustRoot: DirectoryTrustRoot;
   readonly cre: { readonly publicKey: `0x${string}`; readonly encryptionKeyId: string; readonly policyVersion: string };
   readonly credentialUrl: string;
@@ -52,11 +66,24 @@ export interface StackConfig {
 
 const reviver = (_k: string, v: unknown) => (typeof v === 'string' && /^\d+n$/.test(v) ? BigInt(v.slice(0, -1)) : v);
 
-/**
- * LOCAL DEVELOPMENT: the trust root arrives in stack.json from the dev server.
- * In a real build it must be a compile-time constant — a root fetched from a
- * server an attacker controls is a root the attacker chose.
- */
+const ROOT_KEY = 'opaque:mesh-root:v1';
+/** The compiled-in root, or a later one this browser has already walked to. */
+function pinnedRoot(): DirectoryTrustRoot {
+  const compiled = meshTrustRoot() as DirectoryTrustRoot;
+  try {
+    const stored = JSON.parse(localStorage.getItem(ROOT_KEY) ?? 'null', reviver) as { root: DirectoryTrustRoot; from: string } | null;
+    // Honoured only if walked from THIS build's root, and only forward of it:
+    // a floor, never a way around the pin. A build with a new root starts over.
+    if (stored !== null && stored.from === compiled.signerCommitment && typeof stored.root.minVersion === 'bigint'
+      && stored.root.minVersion > compiled.minVersion && /^0x[0-9a-f]{64}$/.test(stored.root.signerCommitment)) return stored.root;
+  } catch { /* unreadable storage falls back to the compiled root */ }
+  return compiled;
+}
+function savePinnedRoot(root: DirectoryTrustRoot): void {
+  const entry = { root, from: meshTrustRoot().signerCommitment };
+  try { localStorage.setItem(ROOT_KEY, JSON.stringify(entry, (_k, v: unknown) => (typeof v === 'bigint' ? `${v}n` : v))); } catch { /* best effort */ }
+}
+
 // A wallet hosted apart from its backend (Vercel) sets VITE_STACK_URL at build
 // time, e.g. https://api.example.com/stack.json. docs/hosting.md.
 export async function loadStack(url: string = import.meta.env['VITE_STACK_URL'] ?? 'stack.json'): Promise<StackConfig> {
@@ -76,8 +103,13 @@ export interface WalletRuntime {
   readRing(): Promise<RingSnapshot>;
   readPrivacy(): Promise<PrivacyConditions>;
   readStatus(handle: StatusHandle): Promise<IntentStatus>;
-  /** The account's USDC (Arc's native balance, 18 decimals, is the same money). */
-  accountBalance(address: `0x${string}`): Promise<number>;
+  /** The account's USDC, and the gas it has prepaid to the EntryPoint. */
+  accountFunds(address: `0x${string}`): Promise<{ readonly usdc: number; readonly prepaidGas: number }>;
+  /** Everything the account holds, less this operation's gas, to `to`. */
+  withdraw(address: `0x${string}`, to: `0x${string}`): Promise<TxHash>;
+  exportBackup(passphrase: string): Promise<Blob>;
+  /** Into a new key store; reload the page to open it. Returns the notes it added. */
+  restoreBackup(file: Blob, passphrase: string): Promise<number>;
   hasWallet: boolean;
 }
 
@@ -96,24 +128,38 @@ export async function startWallet(config?: StackConfig): Promise<WalletRuntime> 
   });
 
   // VERIFY FIRST: throws before any relay is contacted if the directory does
-  // not chain to the pinned root.
+  // not chain to the pinned root. The root is compiled in; this browser then
+  // remembers the furthest root it has accepted, so a server cannot roll it
+  // back to an older directory. Only a dev server's wallet takes the root the
+  // server sends, for the random mesh a local stack makes.
+  const devRoot = import.meta.env.DEV ? cfg.trustRoot : undefined;
+  const { signed, root } = chainTo(cfg.directoryChain ?? [cfg.signedDirectory], devRoot ?? pinnedRoot());
   const bootstrap = createMeshBootstrap({
-    root: cfg.trustRoot,
-    signed: cfg.signedDirectory,
+    root,
+    signed,
     pathPolicy: new MarkovPathPolicy(),
     health: relayHealth.health,
     // Big uploads (a ring intent is ~35 chunks) outlast the default poll.
     client: { pollIntervalMs: 250, pollTimeoutMs: 120_000 },
   });
 
+  if (devRoot === undefined) savePinnedRoot(root);
+
   const provider = (globalThis as { ethereum?: unknown }).ethereum as never;
   const browserPool = createBrowserPool(provider, cfg.capabilities);
+  // Every read that names this wallet's account or notes, and every
+  // UserOperation, crosses the mesh (§7.5): see backend/chain/wallet-rpc.ts.
+  const walletRpc: WalletRpcSend = async (operation, encodedRequest) =>
+    (await query<Hex>({ kind: 'WALLET_RPC', operation, encodedRequest })).value;
   // The account's FORS keys, encrypted under a non-extractable key, in this
-  // browser and nowhere else. Clearing site data loses the account.
-  const keys = new IndexedDbSignerStore('opaque-pq-account-v1');
+  // browser and nowhere else. Back them up (exportBackup), or clearing site
+  // data loses the account.
+  const keys = new IndexedDbSignerStore(keyStoreName());
   const wallet = createLivePqWallet({
-    signerStore: keys, walletStore: keys, publicClient: browserPool.publicClient, payer: browserPayer(provider),
+    signerStore: keys, walletStore: keys, publicClient: browserPool.publicClient, payer: browserPayer(provider), walletRpc,
   });
+  const opsFor = (account: `0x${string}`) =>
+    createPqAccountOps({ wallet, account: account.toLowerCase() as never, authority: ARC_AUTHORITY, walletRpc });
   const pool: typeof browserPool = {
     ...browserPool,
     // Until the account is activated, the funding wallet deposits directly, as
@@ -122,17 +168,16 @@ export async function startWallet(config?: StackConfig): Promise<WalletRuntime> 
     async deposit(input) {
       const state = await wallet.getState();
       if (!state.active) return browserPool.deposit(input);
-      return createAccountPool({
-        base: browserPool, publicClient: browserPool.publicClient, wallet, account: state.accountAddress, authority: ARC_AUTHORITY,
-      }).deposit(input);
+      return opsFor(state.accountAddress as `0x${string}`).deposit(input);
     },
+    isNullifierSpent: (s, nullifier) => chain.isNullifierSpent(s, nullifier),
   };
-  const poolEntry = deployment.pools.find((p) => p.address.toLowerCase() === scope.pool);
-  const vault = createNoteVault({
-    storage: localNoteStorage(),
-    chain: createChainObserver(pool.publicClient, BigInt(poolEntry?.deployedAtBlock ?? 0)),
+  const chain = createMeshChainObserver({
+    walletRpc,
+    ringSnapshot: async (s) => (await query<RingSnapshot>({ kind: 'RING_SNAPSHOT', scope: s })).value,
   });
-  const ring = createRingClient(vault);
+  const vault = createNoteVault({ storage: localNoteStorage(), chain });
+  const ring = createRingClient(vault, createWorkerProver());
 
   const credentials = new Map<string, string>();
   const sealIntent = createIntentSealer({
@@ -191,6 +236,12 @@ export async function startWallet(config?: StackConfig): Promise<WalletRuntime> 
     readRing: async () => (await query<RingSnapshot>({ kind: 'RING_SNAPSHOT', scope })).value,
     readPrivacy: async () => (await query<PrivacyConditions>({ kind: 'PRIVACY_CONDITIONS', scope })).value,
     readStatus: async (handle) => (await query<IntentStatus>({ kind: 'INTENT_STATUS', handle })).value,
-    accountBalance: async (address) => Number(await browserPool.publicClient.getBalance({ address })) / 1e18,
+    async accountFunds(address) {
+      const f = await opsFor(address).funds();
+      return { usdc: Number(f.usdc6) / 1e6, prepaidGas: Number(f.prepaidGas) / 1e18 };
+    },
+    withdraw: (address, to) => opsFor(address).withdraw(to.toLowerCase() as never),
+    exportBackup: (passphrase) => exportBackup(keys, passphrase),
+    restoreBackup,
   };
 }

@@ -83,6 +83,14 @@
     "bundlerUrl": "https://public.pimlico.io/v2/5042002/rpc",
     "bundlerApiKeyEnv": "PIMLICO_API_KEY"
   },
+  "mesh": {
+    "$comment": "The relay directory's trust root, compiled into the wallet. The stack derives its weekly directories from MESH_MASTER (a secret), starting at genesis; the wallet walks the chain from this root to the directory in force. To shorten the chain, pin a later generation: meshRootAt(master, g) gives { signerCommitment, minVersion: g }.",
+    "genesis": 1789076990,
+    "trustRoot": {
+      "signerCommitment": "0xf71b29d1ba0006fb53023d4e972b0db23e6807d23a6fa4fccf3440bdb36d9f59",
+      "minVersion": 0
+    }
+  },
   "services": {
     "$comment": "Endpoints, not keys. Each is null until that service is hosted.",
     "graphUrl": "https://api.studio.thegraph.com/query/1760100/opaque/v0.1.0",

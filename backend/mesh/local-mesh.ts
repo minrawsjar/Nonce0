@@ -23,8 +23,10 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
+import { keccak_256 } from '@noble/hashes/sha3.js';
+
 import type { Hex, RelayId, UnixSeconds } from '@opaque/protocol-types';
-import { keyGen } from '@opaque/pq-wallet';
+import { canonical, keyGen, utf8 } from '@opaque/pq-wallet';
 
 import { MIN_POOL_RELAYS } from './contracts.ts';
 import type { DirectoryEntry, DirectoryTrustRoot, RelayDirectory, SignedDirectory } from './contracts.ts';
@@ -40,11 +42,34 @@ const replacer = (_key: string, value: unknown): unknown =>
   typeof value === 'bigint' ? `${value}n` : value;
 
 export interface LocalMesh {
+  /** The directory in force: the last link of `chain`. */
   readonly signed: SignedDirectory;
+  /** The root the chain starts from: pinned in the wallet when `master` is set. */
   readonly root: DirectoryTrustRoot;
+  /** From `root` to `signed`, each link signed by the key the one before committed to. */
+  readonly chain: readonly SignedDirectory[];
   readonly secretKeys: ReadonlyMap<RelayId, Hex>;
   readonly ports: ReadonlyMap<RelayId, number>;
+  /** When `signed` stops being the generation in force. Set only with `master`. */
+  readonly generationEndsAt?: bigint;
 }
+
+/** A directory generation. Its directory stays valid a day past it, so a rollover is not a cliff. */
+export const GENERATION_SECONDS = 7n * 86_400n;
+
+const derive = (master: Uint8Array, label: string, ...parts: readonly (string | bigint)[]): Uint8Array =>
+  keccak_256(canonical([utf8(`opaque/v1/mesh/${label}`), master, ...parts.map((p) => utf8(String(p)))]));
+
+/** The FORS key that signs generation `g`'s directory. */
+const directorySigner = (master: Uint8Array, g: bigint) => keyGen(derive(master, 'directory-signer', g));
+
+/**
+ * The root a wallet pins for a mesh derived from `master`: generation `from`'s
+ * signer, and `from` as the rollback floor. Start at 0; later builds can pin a
+ * later generation, so the chain they are served stays short.
+ */
+export const meshRootAt = (master: Uint8Array, from = 0n): DirectoryTrustRoot =>
+  ({ signerCommitment: signerCommitment(directorySigner(master, from).publicKey), minVersion: from });
 
 export interface LocalMeshOptions {
   readonly basePort?: number;
@@ -57,6 +82,16 @@ export interface LocalMeshOptions {
    * is a much worse place to find out.
    */
   readonly endpointFor?: (id: RelayId, index: number, port: number) => string;
+  /**
+   * Derive the mesh from this secret instead of the OS: relay keys and the
+   * directory signer of every weekly generation since `genesis`, and the
+   * chain of directories from the genesis root to the one in force. The same
+   * secret and clock give the same bytes on every boot, so a root compiled
+   * into the wallet keeps verifying across restarts, and relays keep their
+   * keys until the week turns.
+   */
+  readonly master?: Uint8Array;
+  readonly genesis?: bigint;
 }
 
 export function buildLocalMesh(
@@ -74,6 +109,38 @@ export function buildLocalMesh(
   const entries: DirectoryEntry[] = [];
   const secretKeys = new Map<RelayId, Hex>();
   const ports = new Map<RelayId, number>();
+
+  if (options.master !== undefined) {
+    const master = options.master;
+    const genesis = options.genesis ?? now;
+    const current = now >= genesis ? (now - genesis) / GENERATION_SECONDS : 0n;
+    const chain: SignedDirectory[] = [];
+    for (let g = 0n; g <= current; g++) {
+      const issuedAt = genesis + g * GENERATION_SECONDS;
+      const expiresAt = issuedAt + GENERATION_SECONDS + DAY;
+      const entries: DirectoryEntry[] = [];
+      for (let i = 1; i <= MIN_POOL_RELAYS; i++) {
+        const id = `R${i}` as RelayId;
+        const port = basePort + i - 1;
+        // ML-KEM takes a 64-byte seed. The epoch is the generation's start,
+        // so RelayDirectory sees it move forward each week and never back.
+        const keypair = generateRelayKeypair(issuedAt, new Uint8Array([...derive(master, 'relay-kem', id, g, 0n), ...derive(master, 'relay-kem', id, g, 1n)]));
+        if (g === current) { secretKeys.set(id, keypair.secretKey); ports.set(id, port); }
+        entries.push({
+          id, operatorId: `local-operator-${i}`, endpoint: endpointFor(id, i - 1, port), kemPublicKey: keypair.publicKey,
+          keyEpoch: keypair.keyEpoch, validFrom: issuedAt as UnixSeconds, validUntil: expiresAt as UnixSeconds,
+        });
+      }
+      chain.push(signDirectory({
+        version: g + 1n, issuedAt: issuedAt as UnixSeconds, expiresAt: expiresAt as UnixSeconds, entries,
+        nextSignerCommitment: signerCommitment(directorySigner(master, g + 1n).publicKey),
+      }, directorySigner(master, g)));
+    }
+    return {
+      signed: chain[chain.length - 1]!, root: meshRootAt(master), chain, secretKeys, ports,
+      generationEndsAt: genesis + (current + 1n) * GENERATION_SECONDS,
+    };
+  }
 
   for (let i = 1; i <= MIN_POOL_RELAYS; i++) {
     const id = `R${i}` as RelayId;
@@ -111,10 +178,12 @@ export function buildLocalMesh(
     entries,
     nextSignerCommitment: signerCommitment(keyGen().publicKey),
   };
+  const signed = signDirectory(directory, signer);
 
   return {
-    signed: signDirectory(directory, signer),
+    signed,
     root: { signerCommitment: signerCommitment(signer.publicKey), minVersion: 0n },
+    chain: [signed],
     secretKeys,
     ports,
   };

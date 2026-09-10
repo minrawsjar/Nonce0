@@ -10,10 +10,10 @@ real private payments on Arc testnet. This is how to run it.
 | Pool | **Real.** `PrivatePool` + `AttestedRingVerifier` on Arc, RING_8 |
 | Ring proof | **Real.** 219-rep ZKBoo, built in your browser; the note secret never leaves the page |
 | Attestation | **Real.** FORS+C, verified on chain by `PQKeyRegistry` |
-| Mesh | **Real onions, one operator.** Six relays on one machine collude by construction |
+| Mesh | **Real onions, one operator.** Six relays on one machine collude by construction. The directory's trust root is compiled into the wallet |
 | CRE | **Simulated.** An ordinary process holds `INTENT_KEY`; nothing it opens is confidential |
 | Credential authority | **Test.** Issues for any recipient |
-| PQ account | **Real.** FORS keys in IndexedDB, an ERC-4337 account from `PQAccountFactory`; its deposits are UserOperations only its FORS key signs |
+| PQ account | **Real.** FORS keys in IndexedDB, an ERC-4337 account from `PQAccountFactory`. Its deposits and withdrawals are UserOperations only its FORS key signs, sent to the bundler through the mesh |
 | Ring source | **Real deposits** from the pool's events, weighed by the subgraph's use counts and funding buckets |
 | Relay health | **Real, one operator.** Reported on chain to `RelayDirectory`, indexed by the subgraph, clamped before it weighs a path |
 
@@ -91,13 +91,42 @@ from the page's PQ account.
 - **Seeded notes.** `backend/chain/seed-ring.ts` put 8 in the pool; the two
   e2e runs spent two of them. Deposit more, or seed more, to keep a full ring.
 
+## What the page never sends directly
+
+Every read that names your account or a note, and every UserOperation, goes
+through the mesh as a `WALLET_RPC` query. The exit answers it against a strict
+allowlist (`backend/chain/wallet-rpc.ts`). Neither the RPC nor the bundler
+learns which wallet asked, and nobody learns which nullifier is yours before
+it is spent. What still goes direct:
+
+- **Pool-wide reads** that name nothing of yours, such as `capabilities()`.
+- **Funding-wallet transactions**: deploy, rotate, and deposits from the
+  funding wallet. They name that wallet on chain whatever route they take.
+
+## Your account's controls
+
+Under *Account details* and *Signing key*:
+
+- **Rotate key.** Promotes the pre-committed next key, which starts with a
+  fresh budget of 32, and commits another. The funding wallet pays for the
+  transaction. Two signatures are held back so a key can always rotate.
+- **Withdraw.** Sends everything the account holds, less the gas for the
+  withdrawal itself, to your funding wallet or any address you type. A few
+  cents of prepaid gas stay with the EntryPoint and pay for the account's
+  next operation.
+- **Backup / Restore.** One file holds the account's keys, with their signing
+  logs, and your private notes, encrypted under a passphrase (PBKDF2, then
+  AES-GCM). Restore writes into a fresh key store and never overwrites one.
+  - A backup older than the account's chain state restores, but the wallet
+    then refuses to sign with it: its signing log is behind, and signing
+    could reuse an index.
+  - Use a backup on one device at a time.
+
 ## Known gaps in this build
 
-- `isNullifierSpent` is read directly from the RPC, which tells it which spend
-  is yours. It should cross the mesh.
-- The proof is built on the main thread, so the page freezes for a few seconds.
-  It belongs in a Web Worker.
 - Notes live in `localStorage`. Any script on the origin can read them, and
-  clearing site data destroys them. See `frontend/src/lib/note-storage.ts`.
-- The trust root comes from `stack.json` for local development. A real build
-  must compile it in.
+  clearing site data destroys them unless you took a backup.
+  See `frontend/src/lib/note-storage.ts`.
+- CRE is simulated: an ordinary process on the Railway box holds the key that
+  opens sealed payments. It moves into a Chainlink enclave once deploy access
+  is granted.

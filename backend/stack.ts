@@ -24,9 +24,11 @@
 // those is labelled in the capabilities the wallet reads, and every one is a
 // deployment step, not a code change — see docs/deployment-arc-testnet.md.
 //
-// The trust root is loaded from stack.json for LOCAL development only. In a
-// real build it is a compile-time constant: a root fetched from a server that
-// an attacker controls is a root the attacker chose.
+// A built wallet pins the relay directory's trust root at compile time
+// (deployments/arc-testnet.json) and walks directoryChain from it: a root
+// fetched from a server an attacker controls is a root the attacker chose.
+// With MESH_MASTER set, this box derives that chain. Only a dev server's
+// wallet takes the root written here, for the random mesh an unset master gives.
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { createServer, type RequestListener } from 'node:http';
@@ -39,22 +41,24 @@ import { privateKeyToAccount } from 'viem/accounts';
 import type { ApprovedRelease, RelaySnapshot, RingSnapshot, TxHash, UnixSeconds } from '@opaque/protocol-types';
 import { asChainId, fromHex, spendHash, toHex } from '@opaque/protocol-types/codecs.js';
 
-import { deployment, poolFor, requireContract, requireService } from '../deployments/index.ts';
+import { deployment, meshTrustRoot, poolFor, requireContract, requireService } from '../deployments/index.ts';
 import { GraphHttpClient } from '../graph/src/client.ts';
 import { evaluatePublicReadiness } from '../graph/src/privacy-score.ts';
 import { registryAttesterKeys } from './chain/attester-registry.ts';
 import { ARC_TESTNET, createPoolClient, poolSubmitter } from './chain/pool.ts';
+import { ARC_AUTHORITY } from './chain/pq-wallet-chain.ts';
 import { relayDirectoryReporter } from './chain/relay-directory.ts';
 import { createChainRingSource } from './chain/ring-source.ts';
+import { createWalletRpcAnswerer } from './chain/wallet-rpc.ts';
 import { issueCredential } from './cre/credential.ts';
 import { createExecutorServer } from './cre/executor-server.ts';
 import { generateIntentKeypair } from './cre/seal-client.ts';
 import { createCreSimulator } from './cre/simulator.ts';
 import { createEgress } from './mesh/egress.ts';
 import type { DirectoryTrustRoot, SignedDirectory } from './mesh/contracts.ts';
-import { verify } from './mesh/directory.ts';
+import { chainTo, verify } from './mesh/directory.ts';
 import { createGraphHealth } from './mesh/graph-health.ts';
-import { buildLocalMesh, serveLocalMesh } from './mesh/local-mesh.ts';
+import { buildLocalMesh, meshRootAt, serveLocalMesh } from './mesh/local-mesh.ts';
 import type { MeshMessageKind } from './mesh/transport.ts';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -111,6 +115,13 @@ const poolAbi = parseAbi([
 // Relays on six other hosts: MESH_CONFIG=mesh/deploy/config, the directory and
 // root make-config.ts wrote for them. Unset: six relays in this process.
 const MESH_CONFIG = process.env['MESH_CONFIG'];
+// Set on a public deployment: every relay key and directory derives from this
+// one secret, week by week from the genesis in deployments/arc-testnet.json,
+// so the root compiled into the wallet verifies across restarts. Unset: a
+// fresh random mesh each boot, whose root only a dev server may hand out.
+// Public only: a loopback mesh from the same master would put a second
+// directory under each few-time signer, with endpoints no wallet can reach.
+const MESH_MASTER = PUBLIC_URL === undefined ? undefined : process.env['MESH_MASTER'];
 const readConfig = <T>(name: string): T => JSON.parse(readFileSync(join(MESH_CONFIG!, name), 'utf8'),
   (_k, v: unknown) => (typeof v === 'string' && /^\d+n$/.test(v) ? BigInt(v.slice(0, -1)) : v)) as T;
 const mesh = MESH_CONFIG === undefined
@@ -118,10 +129,26 @@ const mesh = MESH_CONFIG === undefined
     basePort: PORTS.relays,
     endpointFor: (_id, i, port) =>
       PUBLIC_URL === undefined ? `http://${LOOPBACK}:${port}/v1/relay` : `${PUBLIC_URL}/r${i + 1}/v1/relay`,
+    ...(MESH_MASTER === undefined ? {} : { master: fromHex(MESH_MASTER as `0x${string}`), genesis: BigInt(deployment.mesh.genesis) }),
   })
-  : { signed: readConfig<SignedDirectory>('directory.json'), root: readConfig<DirectoryTrustRoot>('trust-root.json') };
-// At boot, not at the first payment: an expired directory (7 days) stops here.
-verify(mesh.signed, mesh.root, nowS());
+  : (() => {
+    const signed = readConfig<SignedDirectory>('directory.json');
+    return { signed, root: readConfig<DirectoryTrustRoot>('trust-root.json'), chain: [signed] };
+  })();
+const pinned = meshTrustRoot();
+if (MESH_MASTER !== undefined) {
+  // Refuse to serve a mesh the deployed wallet cannot verify.
+  const derived = meshRootAt(fromHex(MESH_MASTER as `0x${string}`), pinned.minVersion);
+  if (derived.signerCommitment !== pinned.signerCommitment) {
+    throw new Error('MESH_MASTER does not derive the trust root pinned in deployments/arc-testnet.json');
+  }
+}
+// The links a wallet needs: from the pinned root to the directory in force.
+const directoryChain = MESH_MASTER === undefined ? mesh.chain : mesh.chain.filter((l) => l.directory.version > pinned.minVersion);
+// At boot, not at the first payment: an expired directory stops here, and so
+// does a chain the wallet could not walk.
+const inForce = chainTo(directoryChain, MESH_MASTER === undefined ? mesh.root : (pinned as DirectoryTrustRoot));
+verify(inForce.signed, inForce.root, nowS());
 
 // ── the Graph (§8), asked here at the exit and nowhere else ──────────────
 // The subgraph indexes RelayDirectory and the pool. Keys and ring membership
@@ -164,7 +191,15 @@ const egress = createEgress({
 });
 await egress.listen(PORTS.egress, LOOPBACK);
 
-const exit = createExecutorServer({ graph: ringSource });
+// WALLET_RPC (§7.5): the wallet's account and note reads, and its account's
+// UserOperations, so the RPC and the bundler see this box and not the wallet.
+const exit = createExecutorServer({
+  graph: ringSource,
+  walletRpc: createWalletRpcAnswerer({
+    publicClient: publicClient as never, bundlerUrl: ARC_AUTHORITY.bundlerUrl,
+    entryPoint: ARC_AUTHORITY.entryPoint, accountImplementation: ARC_AUTHORITY.accountImplementation,
+  }),
+});
 await exit.listen(PORTS.exit, LOOPBACK);
 
 const simulator = createCreSimulator({
@@ -233,9 +268,9 @@ if (PUBLIC_URL !== undefined && RELAY_OPERATOR_KEY !== undefined && relays.lengt
     relays,
   });
   // In the background: the wallet can use the mesh before the Graph sees it.
-  void reporter.announce().then(reporter.report).then(
-    () => {
-      log('  relays announced to RelayDirectory; reporting health every 10 min');
+  void reporter.announce().then(async (sent) => { await reporter.report(); return sent; }).then(
+    (sent) => {
+      log(`  relays ${sent === 0 ? 'already announced' : `announced (${sent})`} in RelayDirectory; reporting health every 10 min`);
       // ~0.0018 USDC a report: about 0.26 USDC a day at this cadence.
       setInterval(() => void reporter.report().catch((e: Error) => log(`  ! relay report failed: ${e.message}`)), 600_000).unref();
     },
@@ -272,7 +307,10 @@ await new Promise<void>((r) => credentials.listen(PORTS.credentials, LOOPBACK, r
 
 // ── what the wallet reads ────────────────────────────────────────────────
 const walletConfig = JSON.stringify({
-  $comment: 'Written by backend/stack.ts. Local development only — regenerated every start.',
+  $comment: 'Written by backend/stack.ts, every start.',
+  // A deployed wallet walks directoryChain from the root it compiled in and
+  // ignores trustRoot; only a dev server's wallet takes trustRoot from here.
+  directoryChain,
   signedDirectory: mesh.signed,
   trustRoot: mesh.root,
   cre: { publicKey: intentKeys.publicKey, encryptionKeyId: KEY_ID, policyVersion: POLICY },
@@ -311,6 +349,15 @@ log(`  relays     ${mesh.signed.directory.entries.map((e) => e.endpoint.replace(
 log(`  exit       http://127.0.0.1:${PORTS.exit}   egress :${PORTS.egress}   credentials :${PORTS.credentials}`);
 log(`  wallet cfg ${OUT}${router ? `  and ${PUBLIC_URL ?? ''}/stack.json (all routes on :${PORT})` : ''}`);
 log('  THIS IS ONE OPERATOR, AND CRE IS SIMULATED. Not an anonymity set.');
+
+// A derived mesh turns over weekly. The platform restarts a service that
+// exits non-zero, and the next boot derives the next generation, so the
+// directory in force never lapses while this runs.
+if ('generationEndsAt' in mesh && mesh.generationEndsAt !== undefined) {
+  const ms = Number(mesh.generationEndsAt - nowS()) * 1000;
+  setTimeout(() => { log('  directory generation over: exiting so the next boot serves the next one'); process.exit(75); }, Math.max(ms, 0)).unref();
+  log(`  directory  generation ends ${new Date(Number(mesh.generationEndsAt) * 1000).toISOString()} (${directoryChain.length} link${directoryChain.length === 1 ? '' : 's'} from the pinned root)`);
+}
 
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {
   process.on(signal, () => {

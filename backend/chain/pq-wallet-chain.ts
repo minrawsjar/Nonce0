@@ -13,24 +13,25 @@
 // the store, so the check reduces to "the registered key is one this wallet
 // holds", which the SDK also checks directly.
 //
-// Direct, not over the mesh (§7.5): registry reads for this account and the
-// bundler submission. Both name the account, which deposits in the open by
-// design (§4); neither names a note or a spend.
+// Over the mesh (§7.5), through WALLET_RPC (chain/wallet-rpc.ts): every read
+// that names the account, and every UserOperation. The RPC and the bundler
+// see the exit, not this wallet. What still goes direct is what the funding
+// wallet pays for (deploy, rotate, disable): its own transactions, which name
+// it on chain whatever route they take.
 
 import {
   decodeAbiParameters,
   encodeAbiParameters,
   encodeFunctionData,
-  http,
   keccak256,
   parseAbi,
   parseAbiParameters,
   type PublicClient,
   type WalletClient,
 } from 'viem';
-import { createBundlerClient, entryPoint07Abi, toPackedUserOperation, toSmartAccount } from 'viem/account-abstraction';
+import { formatUserOperationRequest, toPackedUserOperation } from 'viem/account-abstraction';
 
-import { ProtocolFailure, type Address, type Bytes32, type Hex, type PqWallet, type PrivatePoolContract, type TxHash } from '@opaque/protocol-types';
+import { ProtocolFailure, type Address, type Bytes32, type Hex, type NoteCommitment, type PoolScope, type PqWallet, type TxHash } from '@opaque/protocol-types';
 import { asAddress, asBytes32, asChainId } from '@opaque/protocol-types/codecs.js';
 import { createPqWallet, encodeSignature, FORS_C_DEFAULT, keyGen, pqDigest, sign } from '@opaque/pq-wallet';
 
@@ -45,6 +46,7 @@ import type { WalletStateStore } from '../../packages/pq-wallet/src/wallet-state
 
 import { accountSalt, predictAccount, userOperationPayload } from './pq-account.ts';
 import { ERC20_ABI } from './pool.ts';
+import { bundlerCall, readOne, readState, STATE_ABI, type WalletRpcSend } from './wallet-rpc.ts';
 
 /** The deployed account stack, as the SDK pins it. Changing any field is a different wallet. */
 export const ARC_AUTHORITY: AuthorityConfig = Object.freeze({
@@ -91,6 +93,8 @@ export interface LiveWalletChainOptions {
   readonly authority: AuthorityConfig;
   /** Pays for deploy, rotate and disable. Never signs for the account. */
   readonly payer: () => Promise<WalletClient>;
+  /** The account's reads: WALLET_RPC over the mesh in a browser. */
+  readonly walletRpc: WalletRpcSend;
   readonly maxUses: bigint;
   /** The initial deadline. Part of the account's salt, so fixed at create(). */
   readonly rotationDeadline: bigint;
@@ -129,9 +133,10 @@ export function createLiveWalletChain(options: LiveWalletChainOptions): WalletCh
     async observe(account): Promise<ChainObservation> {
       for (let attempt = 0; ; attempt++) {
         try {
-          const block = await publicClient.getBlock();
+          const read = await readOne(options.walletRpc, authority.registry, 'stateOf', [account]);
+          const block = { number: read.blockNumber, timestamp: read.timestamp };
           if (block.number < highest) throw new Error('a lagging node answered');
-          const s = await publicClient.readContract({ address: authority.registry, abi: REGISTRY, functionName: 'stateOf', args: [account], blockNumber: block.number });
+          const s = read.value as { pkCommitment: Hex; nextCommitment: Hex; useCount: bigint; maxUses: bigint; rotationDeadline: bigint; disableAfter: bigint };
           highest = block.number;
           const state = BigInt(s.pkCommitment) === 0n ? undefined : {
             pkCommitment: asBytes32(s.pkCommitment.toLowerCase()), nextCommitment: asBytes32(s.nextCommitment.toLowerCase()),
@@ -141,7 +146,7 @@ export function createLiveWalletChain(options: LiveWalletChainOptions): WalletCh
           const keyEpoch = state === undefined ? options.initialKeyEpoch : (await options.epochOf(state.pkCommitment)) ?? -1n;
           return { accountAddress: account, chainId: authority.chainId, blockNumber: block.number, now: block.timestamp, keyEpoch, state };
         } catch (error) {
-          if (attempt >= 4) throw new ProtocolFailure('STALE_OBSERVATION', `could not read the account from the chain: ${(error as Error).message}`, true);
+          if (attempt >= 2) throw new ProtocolFailure('STALE_OBSERVATION', `could not read the account from the chain: ${(error as Error).message}`, true);
           await new Promise((resolve) => setTimeout(resolve, 1_000));
         }
       }
@@ -195,11 +200,12 @@ export function createLivePqWallet(options: {
   readonly walletStore: WalletStateStore;
   readonly publicClient: PublicClient;
   readonly payer: () => Promise<WalletClient>;
+  readonly walletRpc: WalletRpcSend;
   readonly walletId?: string;
 }): PqWallet {
   const now = BigInt(Math.floor(Date.now() / 1000));
   const chain = createLiveWalletChain({
-    publicClient: options.publicClient, authority: ARC_AUTHORITY, payer: options.payer,
+    publicClient: options.publicClient, authority: ARC_AUTHORITY, payer: options.payer, walletRpc: options.walletRpc,
     maxUses: ACCOUNT_MAX_USES, rotationDeadline: now + YEAR, initialKeyEpoch: 0n,
     epochOf: async (pk) => (await options.signerStore.read(pk))?.keyEpoch,
   });
@@ -211,30 +217,30 @@ export function createLivePqWallet(options: {
   });
 }
 
+type Call = { readonly to: Address; readonly value?: bigint; readonly data?: Hex };
+type Op = {
+  sender: Address; nonce: bigint; callData: Hex; callGasLimit: bigint; verificationGasLimit: bigint;
+  preVerificationGas: bigint; maxFeePerGas: bigint; maxPriorityFeePerGas: bigint; signature: Hex;
+};
+const WEI_PER_USDC6 = 10n ** 12n;
+
 /**
- * The account's deposits, as UserOperations the PQ key signs. Everything but
- * deposit is the base pool's: spends are authorised by the ring proof and
- * submitted by the release egress, never by this account.
+ * What the account does by itself: deposit into a pool and withdraw, each a
+ * UserOperation its PQ key signs. Built here rather than by viem's smart
+ * account, which reads the account's code and nonce straight from the RPC;
+ * every read and bundler call below goes through `walletRpc`.
+ *
+ * Spends are not here: they are authorised by the ring proof and submitted by
+ * the release egress, never by this account.
  */
-export function createAccountPool(options: {
-  readonly base: PrivatePoolContract;
-  readonly publicClient: PublicClient;
+export function createPqAccountOps(options: {
   readonly wallet: PqWallet;
   readonly account: Address;
   readonly authority: AuthorityConfig;
-}): PrivatePoolContract {
-  const { publicClient, wallet, authority } = options;
-  const bundler = createBundlerClient({
-    client: publicClient,
-    transport: http(authority.bundlerUrl),
-    userOperation: {
-      // A bundler refuses an operation priced under its own quote.
-      async estimateFeesPerGas({ bundlerClient }) {
-        const quote = await bundlerClient.request({ method: 'pimlico_getUserOperationGasPrice' as never }) as { standard: { maxFeePerGas: Hex; maxPriorityFeePerGas: Hex } };
-        return { maxFeePerGas: BigInt(quote.standard.maxFeePerGas), maxPriorityFeePerGas: BigInt(quote.standard.maxPriorityFeePerGas) };
-      },
-    },
-  });
+  readonly walletRpc: WalletRpcSend;
+}) {
+  const { wallet, account, authority, walletRpc: send } = options;
+  const bundle = (method: string, params: readonly unknown[]) => bundlerCall(send, method, params);
 
   // A well-formed signature under a throwaway key. Validation runs the whole
   // FORS check on it and fails only at the last comparison — returning
@@ -248,52 +254,93 @@ export function createAccountPool(options: {
     return stub;
   };
 
-  const smartAccount = toSmartAccount({
-    client: publicClient,
-    entryPoint: { abi: entryPoint07Abi, address: authority.entryPoint, version: '0.7' },
-    getAddress: async () => options.account,
-    encodeCalls: async (calls) => encodeFunctionData({
-      abi: ACCOUNT, functionName: 'executeBatch',
-      args: [calls.map((c) => ({ target: c.to, value: c.value ?? 0n, data: c.data ?? '0x' }))],
-    }),
-    // Deployed by register(), from the funding wallet: never by an operation.
-    getFactoryArgs: async () => ({ factory: undefined, factoryData: undefined }),
-    getStubSignature: async () => stubSignature(),
-    signMessage: async () => { throw new ProtocolFailure('INVALID_INPUT', 'the PQ account signs UserOperations only'); },
-    signTypedData: async () => { throw new ProtocolFailure('INVALID_INPUT', 'the PQ account signs UserOperations only'); },
-    async signUserOperation(op) {
-      const packed = toPackedUserOperation({ ...op, sender: options.account, signature: '0x' });
-      const encoded = encodeAbiParameters(PACKED, [packed]) as Hex;
-      return (await wallet.signUserOperation(encoded)).signature;
-    },
-  });
+  const encodeCalls = (calls: readonly Call[]): Hex => encodeFunctionData({
+    abi: ACCOUNT, functionName: 'executeBatch',
+    args: [calls.map((c) => ({ target: c.to, value: c.value ?? 0n, data: c.data ?? '0x' }))],
+  }) as Hex;
+
+  /** EntryPoint v0.7's _getRequiredPrefund, with no paymaster. */
+  const prefundOf = (op: Op): bigint => (op.verificationGasLimit + op.callGasLimit + op.preVerificationGas) * op.maxFeePerGas;
+
+  /** What the account can spend: its USDC, and gas it has prepaid to the EntryPoint (18 decimals). */
+  async function funds(): Promise<{ readonly usdc6: bigint; readonly prepaidGas: bigint }> {
+    const { results } = await readState(send, [
+      { to: deployment.tokens.usdc.address as Address, data: encodeFunctionData({ abi: STATE_ABI, functionName: 'balanceOf', args: [account] }) as Hex },
+      { to: authority.entryPoint, data: encodeFunctionData({ abi: STATE_ABI, functionName: 'balanceOf', args: [account] }) as Hex },
+    ]);
+    return { usdc6: BigInt(results[0]!), prepaidGas: BigInt(results[1]!) };
+  }
+
+  async function prepare(calls: readonly Call[]): Promise<Op> {
+    const [nonce, quote] = await Promise.all([
+      readOne(send, authority.entryPoint, 'getNonce', [account, 0n]),
+      // A bundler refuses an operation priced under its own quote.
+      bundle('pimlico_getUserOperationGasPrice', []) as Promise<{ standard: { maxFeePerGas: Hex; maxPriorityFeePerGas: Hex } }>,
+    ]);
+    const base: Op = {
+      sender: account, nonce: nonce.value as bigint, callData: encodeCalls(calls),
+      maxFeePerGas: BigInt(quote.standard.maxFeePerGas), maxPriorityFeePerGas: BigInt(quote.standard.maxPriorityFeePerGas),
+      callGasLimit: 0n, verificationGasLimit: 0n, preVerificationGas: 0n, signature: stubSignature(),
+    };
+    const gas = await bundle('eth_estimateUserOperationGas', [formatUserOperationRequest(base as never), authority.entryPoint]) as Record<string, Hex>;
+    return {
+      ...base,
+      callGasLimit: BigInt(gas['callGasLimit']!),
+      // The stub stops before the real signature's useCount write and event.
+      verificationGasLimit: BigInt(gas['verificationGasLimit']!) + 60_000n,
+      preVerificationGas: BigInt(gas['preVerificationGas']!),
+    };
+  }
+
+  async function submit(op: Op): Promise<TxHash> {
+    const packed = toPackedUserOperation({ ...op, signature: '0x' } as never);
+    const signed = await wallet.signUserOperation(encodeAbiParameters(PACKED, [packed as never]) as Hex);
+    const hash = await bundle('eth_sendUserOperation', [formatUserOperationRequest({ ...op, signature: signed.signature } as never), authority.entryPoint]);
+    for (const deadline = Date.now() + 180_000; Date.now() < deadline;) {
+      const found = await bundle('eth_getUserOperationReceipt', [hash]) as { success: boolean; receipt: { transactionHash: TxHash } } | null;
+      if (found !== null) {
+        if (!found.success) throw new ProtocolFailure('SETTLEMENT_REVERTED', `the account's operation reverted in ${found.receipt.transactionHash}`);
+        return found.receipt.transactionHash;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 2_000));
+    }
+    throw new ProtocolFailure('MESH_UNAVAILABLE', `operation ${String(hash)} was sent but no receipt arrived; it may still land`, true);
+  }
+
+  const shortfall = (need18: bigint, have: { usdc6: bigint; prepaidGas: bigint }) =>
+    new ProtocolFailure('INVALID_INPUT',
+      `the account holds ${(Number(have.usdc6) / 1e6).toFixed(2)} USDC and needs about ${(Number(need18) / 1e18).toFixed(2)}; send it USDC first`);
 
   return {
-    ...options.base,
-    async deposit({ scope, commitment }) {
-      const [token, denomination] = await Promise.all([
-        publicClient.readContract({ address: scope.pool, abi: POOL, functionName: 'token' }),
-        publicClient.readContract({ address: scope.pool, abi: POOL, functionName: 'denomination' }),
+    funds,
+
+    /** A pool deposit: exactly one denomination approved, then deposited. */
+    async deposit({ scope, commitment }: { scope: PoolScope; commitment: NoteCommitment }): Promise<TxHash> {
+      const denomination = BigInt(scope.denomination);
+      const have = await funds();
+      if (have.usdc6 < denomination) throw shortfall(denomination * WEI_PER_USDC6, have);
+      const op = await prepare([
+        { to: deployment.tokens.usdc.address as Address, data: encodeFunctionData({ abi: ERC20_ABI, functionName: 'approve', args: [scope.pool, denomination] }) as Hex },
+        { to: scope.pool, data: encodeFunctionData({ abi: POOL, functionName: 'deposit', args: [commitment] }) as Hex },
       ]);
-      const held = await publicClient.readContract({ address: token, abi: ERC20_ABI, functionName: 'balanceOf', args: [options.account] });
-      if (held < denomination) {
-        throw new ProtocolFailure('INVALID_INPUT', `the account holds ${Number(held) / 1e6} USDC; send it at least ${Number(denomination) / 1e6} plus a little for gas`);
-      }
-      const calls = [
-        // Exactly one denomination, as the funding-wallet path approves.
-        { to: token, data: encodeFunctionData({ abi: ERC20_ABI, functionName: 'approve', args: [scope.pool, denomination] }) },
-        { to: scope.pool, data: encodeFunctionData({ abi: POOL, functionName: 'deposit', args: [commitment] }) },
-      ];
-      const account = await smartAccount;
-      const gas = await bundler.estimateUserOperationGas({ account, calls });
-      const hash = await bundler.sendUserOperation({
-        account, calls, ...gas,
-        // The stub stops before the real signature's useCount write and event.
-        verificationGasLimit: gas.verificationGasLimit + 60_000n,
-      });
-      const { success, receipt } = await bundler.waitForUserOperationReceipt({ hash, timeout: 180_000 });
-      if (!success) throw new ProtocolFailure('SETTLEMENT_REVERTED', `the deposit operation reverted in ${receipt.transactionHash}`);
-      return receipt.transactionHash as TxHash;
+      // Gas the EntryPoint already holds for the account is spent first.
+      const need = denomination * WEI_PER_USDC6 + (prefundOf(op) > have.prepaidGas ? prefundOf(op) - have.prepaidGas : 0n);
+      if (have.usdc6 * WEI_PER_USDC6 < need) throw shortfall(need, have);
+      return submit(op);
+    },
+
+    /**
+     * Everything the account holds, to `to`, less this operation's gas. What
+     * the EntryPoint refunds afterwards lands in the account's deposit there,
+     * a few cents that pay for its next operation.
+     */
+    async withdraw(to: Address): Promise<TxHash> {
+      const op = await prepare([{ to, value: 1n }]);
+      const have = await funds();
+      const fromBalance = prefundOf(op) > have.prepaidGas ? prefundOf(op) - have.prepaidGas : 0n;
+      const value = have.usdc6 * WEI_PER_USDC6 - fromBalance;
+      if (value <= 0n) throw new ProtocolFailure('INVALID_INPUT', 'the account holds too little to pay for its own withdrawal');
+      return submit({ ...op, callData: encodeCalls([{ to, value }]) });
     },
   };
 }

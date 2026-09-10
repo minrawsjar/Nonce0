@@ -21,6 +21,7 @@ set -a; . backend/.env; set +a
 printf %s "$EGRESS_PRIVATE_KEY" | railway variable set EGRESS_PRIVATE_KEY --stdin --skip-deploys
 printf %s "$ATTESTER_FORS_MASTER" | railway variable set ATTESTER_FORS_MASTER --stdin --skip-deploys
 printf %s "$RELAY_OPERATOR_KEY" | railway variable set RELAY_OPERATOR_KEY --stdin --skip-deploys
+printf %s "$MESH_MASTER" | railway variable set MESH_MASTER --stdin --skip-deploys
 
 # Railway ignored railway.json for a CLI-made service; this variable it honours.
 railway variable set RAILWAY_DOCKERFILE_PATH=backend/deploy/stack.Dockerfile --skip-deploys
@@ -37,12 +38,18 @@ The service is not connected to GitHub, so a push does not redeploy it:
 Check it: `https://opaque-stack-production.up.railway.app/stack.json` returns
 the config, and `POST /v1/release` (the egress) returns 404.
 
-What the three secrets do:
+What the four secrets do:
 
 - `EGRESS_PRIVATE_KEY` pays for settlements and for the attester's rotations.
 - `ATTESTER_FORS_MASTER` derives every generation of the attester's FORS key
   (`backend/cre/attester-keys.ts`); the stack rotates it when 4 signatures are
   left.
+- `MESH_MASTER` derives every relay key and every weekly relay directory,
+  starting from the genesis in `deployments/arc-testnet.json`. The wallet has
+  that chain's root compiled in, so a stack without this exact secret serves a
+  mesh no deployed wallet will accept, and the stack refuses to boot. It is
+  used only with `PUBLIC_URL` set, so a laptop never signs a second directory
+  under the same few-time key.
 - `RELAY_OPERATOR_KEY` announces the six relays to `RelayDirectory` and
   reports their aggregate health every 10 minutes, so the subgraph has health
   to index (§8.2). Each report costs about 0.0018 USDC, roughly 0.26 USDC a
@@ -53,10 +60,15 @@ What the three secrets do:
 
 Things to know:
 
-- **Each redeploy is a new mesh.** You get new relay keys, a new CRE key and a
-  new directory, announced on chain under a new key epoch. Payments still in
-  flight are lost; a wallet picks up the new config on reload.
-- **The directory lasts 7 days**, so redeploy at least weekly.
+- **The mesh turns over weekly, by itself.** Relay keys and the directory
+  belong to a week-long generation. At the end of it the stack exits with code
+  75, Railway restarts it on failure, and the next boot serves the next
+  generation. A redeploy within a week keeps the same relay keys. The CRE key
+  is still new on every boot, so payments in flight are lost; a wallet picks
+  up the new config on reload.
+- **To shorten the chain wallets walk,** pin a later generation when you ship
+  the frontend: set `mesh.trustRoot` to `meshRootAt(master, g)`
+  (`backend/mesh/local-mesh.ts`).
 - **Keep it at one replica.** There is one attester key, and two copies of
   the stack could sign with it at the same index.
 - **Railway logs requests at its own edge,** so on Railway it sees what you

@@ -29,14 +29,16 @@ import {
   type MeshQueryResult,
   type StatusHandle,
   type TxHash,
+  type WalletRpcOperation,
 } from '@opaque/protocol-types';
 import { asPoolScope, assertHex, encodeBigint, fromHex } from '@opaque/protocol-types/codecs.js';
 
 /**
- * Every kind the exit will answer. MESH_STATUS and WALLET_RPC are absent on
- * purpose: the first has no backing store yet and the second would make this
- * a general RPC proxy, which is a much larger thing to allowlist than a list
- * of questions. Asking for either is refused, not silently ignored.
+ * Every kind the exit will answer. MESH_STATUS is absent on purpose: it has no
+ * backing store yet, and asking for it is refused, not silently ignored.
+ * WALLET_RPC is answered only by an exit configured with a walletRpc, and only
+ * for its four operations, each an allowlist of its own (chain/wallet-rpc.ts):
+ * a list of questions, not a general RPC proxy.
  */
 const ANSWERED = new Set<MeshQuery['kind']>([
   'RING_SNAPSHOT',
@@ -44,7 +46,9 @@ const ANSWERED = new Set<MeshQuery['kind']>([
   'PRIVACY_CONDITIONS',
   'INTENT_STATUS',
   'POOL_RECEIPT',
+  'WALLET_RPC',
 ]);
+const WALLET_OPERATIONS = new Set<WalletRpcOperation>(['STATE', 'ESTIMATE', 'SUBMIT_USER_OPERATION', 'USER_OPERATION_RECEIPT']);
 
 const refuse = (message: string): never => {
   throw new ProtocolFailure('INVALID_INPUT', message);
@@ -79,6 +83,12 @@ export function decodeMeshQuery(raw: unknown): MeshQuery {
       if (fromHex(tx).length !== 32) refuse('txHash must be 32 bytes');
       return { kind: 'POOL_RECEIPT', txHash: tx as TxHash };
     }
+    case 'WALLET_RPC': {
+      const operation = q['operation'];
+      if (typeof operation !== 'string' || !WALLET_OPERATIONS.has(operation as WalletRpcOperation)) refuse(`no wallet operation ${String(operation)}`);
+      assertHex(q['encodedRequest'], 'encodedRequest');
+      return { kind: 'WALLET_RPC', operation: operation as WalletRpcOperation, encodedRequest: q['encodedRequest'] as Hex };
+    }
   }
   return refuse('unreachable');
 }
@@ -88,6 +98,8 @@ export interface QueryAnswererDeps {
   readonly intentStatus: (handle: StatusHandle) => Promise<IntentStatus>;
   /** Optional: eth_getTransactionReceipt against Arc, returned as hex JSON. */
   readonly receipt?: (txHash: TxHash) => Promise<Hex>;
+  /** Optional: chain/wallet-rpc.ts createWalletRpcAnswerer. Absent, WALLET_RPC is refused. */
+  readonly walletRpc?: (operation: WalletRpcOperation, encodedRequest: Hex) => Promise<Hex>;
 }
 
 export function createQueryAnswerer(deps: QueryAnswererDeps): (query: MeshQuery) => Promise<MeshQueryResult> {
@@ -106,6 +118,10 @@ export function createQueryAnswerer(deps: QueryAnswererDeps): (query: MeshQuery)
           throw new ProtocolFailure('MESH_UNAVAILABLE', 'this exit has no chain RPC configured', true);
         }
         return { kind: 'POOL_RECEIPT', value: await deps.receipt(query.txHash) };
+      }
+      case 'WALLET_RPC': {
+        if (deps.walletRpc === undefined) refuse('this exit does not answer WALLET_RPC');
+        return { kind: 'WALLET_RPC', value: await deps.walletRpc!(query.operation, query.encodedRequest) };
       }
       default:
         return refuse(`this exit does not answer ${query.kind}`);

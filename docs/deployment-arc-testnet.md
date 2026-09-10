@@ -89,6 +89,15 @@ At the exit:
 - Relay **keys** come from the signed directory. Graph health only weighs
   them, clamped so it cannot exclude a relay.
 
+### The relay directory's trust root
+
+The wallet compiles in `mesh.trustRoot` from `deployments/arc-testnet.json`:
+the FORS signer of the first weekly directory, derived from `MESH_MASTER`.
+Every week the stack serves a new directory, signed by the key the previous
+one committed to, and the wallet walks that chain from its compiled root.
+Neither `stack.json` nor anything else from the network can substitute a
+root. Genesis is `1789076990` (2026-09-10).
+
 ### Settled on this stack
 
 | | Tx | |

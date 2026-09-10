@@ -227,7 +227,11 @@ function assertSaneDirectory(directory: RelayDirectory): void {
 
 // ── verification ──────────────────────────────────────────────────────────
 
-export function verify(signed: SignedDirectory, root: DirectoryTrustRoot, now: UnixSeconds): RelayDirectory {
+/**
+ * Everything but the clock: the signer is the pinned one, the signature
+ * verifies, the version moves forward, and the successor is a fresh key.
+ */
+function verifyLink(signed: SignedDirectory, root: DirectoryTrustRoot): RelayDirectory {
   if (typeof signed !== 'object' || signed === null) untrusted('signed directory must be an object');
   const directory = signed.directory;
   assertSaneDirectory(directory);
@@ -252,9 +256,6 @@ export function verify(signed: SignedDirectory, root: DirectoryTrustRoot, now: U
     untrusted(`directory version ${directory.version} is not newer than the pinned ${root.minVersion}`);
   }
 
-  if (now < directory.issuedAt) untrusted('directory is not yet issued');
-  if (now >= directory.expiresAt) untrusted('directory has expired');
-
   // FORS+C is FEW-time: every extra signature under one key reveals more
   // leaves and raises the forgery probability. Chaining a version to its own
   // signer means that key signs twice, so the successor must be a fresh key.
@@ -263,6 +264,39 @@ export function verify(signed: SignedDirectory, root: DirectoryTrustRoot, now: U
   }
 
   return directory;
+}
+
+export function verify(signed: SignedDirectory, root: DirectoryTrustRoot, now: UnixSeconds): RelayDirectory {
+  const directory = verifyLink(signed, root);
+  if (now < directory.issuedAt) untrusted('directory is not yet issued');
+  if (now >= directory.expiresAt) untrusted('directory has expired');
+  return directory;
+}
+
+/**
+ * From a root compiled into the application to the directory in force: walks
+ * `links`, each signed by the key the one before committed to, and returns
+ * the last link with the root that signed it. Pass both to accept() or
+ * createMeshBootstrap, which check the last link's validity window.
+ *
+ * The links before the last are checked for everything BUT the clock. An
+ * expired directory still authenticates its successor's key, and that is all
+ * it is used for here; its relays are never contacted. Links at or below the
+ * root's version are skipped, so a client that pinned a later root reads only
+ * what came after it.
+ */
+export function chainTo(
+  links: readonly SignedDirectory[],
+  root: DirectoryTrustRoot,
+): { readonly signed: SignedDirectory; readonly root: DirectoryTrustRoot } {
+  const ahead = links.filter((link) => link?.directory?.version > root.minVersion);
+  if (ahead.length === 0) untrusted(`no directory newer than the pinned version ${root.minVersion}`);
+  let current = root;
+  for (const link of ahead.slice(0, -1)) {
+    const directory = verifyLink(link, current);
+    current = { signerCommitment: directory.nextSignerCommitment, minVersion: directory.version };
+  }
+  return { signed: ahead[ahead.length - 1]!, root: current };
 }
 
 /**

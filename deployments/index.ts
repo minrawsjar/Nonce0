@@ -56,6 +56,10 @@ export interface Deployment {
     readonly bundlerUrl: string;
     readonly bundlerApiKeyEnv: string;
   };
+  readonly mesh: {
+    readonly genesis: number;
+    readonly trustRoot: { readonly signerCommitment: `0x${string}`; readonly minVersion: number };
+  };
   readonly services: Readonly<Record<ServiceName, string | null>>;
 }
 
@@ -88,6 +92,9 @@ function validate(d: typeof raw): Deployment {
   });
   for (const [v, a] of Object.entries(d.erc4337.entryPoints)) address(a, `erc4337.entryPoints.${v}`);
   address(d.accounts.attester, 'accounts.attester');
+  if (!Number.isSafeInteger(d.mesh.genesis) || d.mesh.genesis <= 0) bad('mesh.genesis', 'must be unix seconds');
+  if (!/^0x[0-9a-f]{64}$/.test(d.mesh.trustRoot.signerCommitment)) bad('mesh.trustRoot.signerCommitment', 'must be 32 lower-case hex bytes');
+  if (!Number.isSafeInteger(d.mesh.trustRoot.minVersion) || d.mesh.trustRoot.minVersion < 0) bad('mesh.trustRoot.minVersion', 'must be a version');
   return d as unknown as Deployment;
 }
 
@@ -101,6 +108,15 @@ export function requireContract(name: ContractName): Address {
   }
   return c.address;
 }
+
+/**
+ * The relay directory's trust root, as the wallet compiles it in. A root that
+ * arrived over the network would be a root whoever answered chose.
+ */
+export const meshTrustRoot = (): { readonly signerCommitment: `0x${string}`; readonly minVersion: bigint } => ({
+  signerCommitment: deployment.mesh.trustRoot.signerCommitment,
+  minVersion: BigInt(deployment.mesh.trustRoot.minVersion),
+});
 
 /** An endpoint the caller cannot run without. */
 export function requireService(name: ServiceName): string {

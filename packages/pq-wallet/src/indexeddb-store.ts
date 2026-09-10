@@ -1,12 +1,12 @@
 import { ProtocolFailure, type Bytes32 } from '@opaque/protocol-types';
 import { asBytes32 } from '@opaque/protocol-types/codecs.js';
-import { validateSignerRecord, validateTransition, unsafeState, type SignerRecord, type SignerStore } from './signer-state.ts';
+import { validateSignerRecord, validateTransition, unsafeState, type RestorableSignerStore, type SignerRecord } from './signer-state.ts';
 import { validateWalletRecord, validateWalletTransition, type WalletRecord, type WalletStateStore } from './wallet-state.ts';
 
 const safeError = (error: unknown): ProtocolFailure => error instanceof ProtocolFailure ? error : unsafeState();
 
 /** One read-write transaction covers the entire read/validate/append/write operation. */
-export class IndexedDbSignerStore implements SignerStore, WalletStateStore {
+export class IndexedDbSignerStore implements RestorableSignerStore, WalletStateStore {
   #name: string;
   #factory: IDBFactory;
   #connection: Promise<IDBDatabase> | undefined;
@@ -80,6 +80,26 @@ export class IndexedDbSignerStore implements SignerStore, WalletStateStore {
         transaction.oncomplete = () => resolve(result);
         transaction.onabort = () => reject(safeError(failure));
         transaction.onerror = () => { /* onabort settles the promise */ };
+      });
+    } catch (error) { throw safeError(error); }
+  }
+
+  /** A key from a backup. Refused if this store already holds that key. */
+  async restore(id: Bytes32, record: SignerRecord): Promise<void> {
+    asBytes32(id);
+    try {
+      validateSignerRecord(record, id);
+      const db = await this.#open();
+      await new Promise<void>((resolve, reject) => {
+        const transaction = db.transaction('signers', 'readwrite', { durability: 'strict' });
+        const objectStore = transaction.objectStore('signers');
+        const request = objectStore.get(id);
+        request.onsuccess = () => {
+          if (request.result !== undefined) { transaction.abort(); return; }
+          objectStore.put(record, id);
+        };
+        transaction.oncomplete = () => resolve();
+        transaction.onabort = () => reject(unsafeState());
       });
     } catch (error) { throw safeError(error); }
   }

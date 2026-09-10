@@ -14,6 +14,7 @@ import type { Relay } from '../mesh/server.ts';
 import { ARC_TESTNET } from './pool.ts';
 
 const ABI = parseAbi([
+  'function nodes(bytes32) view returns (address operator, string endpoint, bytes32 kemKeyCommitment, uint64 epoch, uint16 reliabilityBps, uint16 batchOccupancy, uint32 recentSelections, uint64 updatedAt)',
   'function announce(bytes32 nodeId, string endpoint, bytes32 kemKeyCommitment, uint64 epoch)',
   'function report((bytes32 nodeId, uint16 reliabilityBps, uint16 batchOccupancy, uint32 recentSelections)[] reports)',
 ]);
@@ -68,11 +69,24 @@ export function relayDirectoryReporter(options: {
   const window = healthWindow(options.relays);
 
   return {
-    /** Once per boot. The epoch is the key's, and RelayDirectory only moves it forward. */
-    async announce(): Promise<void> {
+    /**
+     * Once per boot. The epoch is the key's, and RelayDirectory only moves it
+     * forward, so a restart within a generation (same keys, same epoch) finds
+     * its relays already announced and sends nothing.
+     */
+    async announce(): Promise<number> {
+      let sent = 0;
       for (const e of options.entries) {
-        await send('announce', [nodeId(e.id), e.endpoint, keccak256(e.kemPublicKey), e.keyEpoch]);
+        const id = nodeId(e.id);
+        const commitment = keccak256(e.kemPublicKey);
+        const [, endpoint, onChain, epoch] = await publicClient.readContract({ address: directory, abi: ABI, functionName: 'nodes', args: [id] });
+        if (epoch === e.keyEpoch && endpoint === e.endpoint && onChain.toLowerCase() === commitment.toLowerCase()) continue;
+        // Same epoch, different endpoint or key: RelayDirectory refuses it too.
+        if (epoch >= e.keyEpoch) throw new Error(`${e.id} is already announced under epoch ${epoch}, not before this directory's ${e.keyEpoch}`);
+        await send('announce', [id, e.endpoint, commitment, e.keyEpoch]);
+        sent++;
       }
+      return sent;
     },
     /** One transaction for all of this box's relays. */
     report: (): Promise<void> => send('report', [window()]),

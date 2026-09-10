@@ -11,7 +11,7 @@
 // vault, the ring and privacy score through the mesh, the path from the
 // verified relay directory, payment status through the mesh. Nothing is
 // simulated in the page — what IS simulated (the CRE enclave, a one-operator
-// mesh, the PQ account's chain) is named in #caps, read from the stack.
+// mesh) is named in #caps, read from the stack.
 
 import type { IntentStatus, NoteSummary, PrivacyScore, StatusHandle, UnixSeconds } from '@opaque/protocol-types';
 
@@ -166,12 +166,78 @@ async function renderBudget(): Promise<void> {
   code.textContent = state.pkCommitment.slice(0, 18) + '…';
   note.append('Account key ', code, ' — FORS+C, few-time, kept in this browser only. It signs deposits from the account; ring payments are authorised by the proof.');
 
-  const held = await rt.accountBalance(opaqueAddress as `0x${string}`).catch(() => undefined);
-  const balance = held === undefined ? '' : ` · ${held.toFixed(2)} USDC`;
+  const funds = await rt.accountFunds(opaqueAddress as `0x${string}`).catch(() => undefined);
+  const balance = funds === undefined ? '' : ` · ${funds.usdc.toFixed(2)} USDC`;
   el('account-state').textContent = state.active
     ? `Active${balance} · deposits are signed by its PQ key`
     : `Not activated${balance} · deposits come from your funding wallet`;
   el('activate').hidden = state.active;
+  el('withdraw-box').hidden = !state.active || (funds?.usdc ?? 0) === 0;
+  // Two signatures are held back for exactly this, so a key can always rotate.
+  const rotate = el<HTMLButtonElement>('rotate');
+  rotate.hidden = !state.active;
+  rotate.textContent = low ? 'Rotate key now: few signatures left' : 'Rotate key';
+}
+
+async function onRotate(): Promise<void> {
+  if (!await connectFundingWallet()) return;
+  const button = el<HTMLButtonElement>('rotate');
+  button.disabled = true;
+  setStatus('rotate-status', 'Signing the rotation with the current key; your funding wallet submits it…');
+  try {
+    await rt.app.rotateWallet();
+    setStatus('rotate-status', 'Rotated. The next key is active, with a fresh budget, and another is committed behind it.');
+    await renderBudget();
+  } catch (error) {
+    setStatus('rotate-status', isRejected(error) ? '' : `Could not rotate: ${(error as Error).message}`);
+  } finally { button.disabled = false; }
+}
+
+async function onWithdraw(): Promise<void> {
+  let to = el<HTMLInputElement>('withdraw-to').value.trim().toLowerCase();
+  if (to === '') {
+    if (!await connectFundingWallet()) return;
+    to = fundingAddress.toLowerCase();
+  }
+  if (!/^0x[0-9a-f]{40}$/.test(to)) { setStatus('wallet-status', 'Enter an Arc address to withdraw to.'); return; }
+  const button = el<HTMLButtonElement>('withdraw');
+  button.disabled = true;
+  setStatus('wallet-status', 'Signing the withdrawal with your PQ key; it goes to the bundler through the mesh…');
+  try {
+    const tx = await rt.withdraw(opaqueAddress as `0x${string}`, to as `0x${string}`);
+    setStatus('wallet-status', `Withdrawn to ${shortAddress(to)} in ${shortAddress(tx)}.`);
+    await renderBudget();
+  } catch (error) {
+    setStatus('wallet-status', `Could not withdraw: ${(error as Error).message}`);
+  } finally { button.disabled = false; }
+}
+
+async function onBackupExport(): Promise<void> {
+  const pass = el<HTMLInputElement>('backup-pass');
+  try {
+    const url = URL.createObjectURL(await rt.exportBackup(pass.value));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `opaque-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    link.click();
+    window.setTimeout(() => URL.revokeObjectURL(url), 10_000);
+    pass.value = '';
+    setStatus('backup-status', 'Saved. Keep the file and the passphrase in different places.');
+  } catch (error) {
+    setStatus('backup-status', (error as Error).message);
+  }
+}
+
+async function onBackupImport(file: File): Promise<void> {
+  // A key used from two browsers can sign one index twice; restore replaces, it does not copy.
+  if (!window.confirm('Restore switches this browser to the account in the backup. The current account stays in storage but is no longer shown. Use a backup on one device at a time. Continue?')) return;
+  try {
+    const added = await rt.restoreBackup(file, el<HTMLInputElement>('backup-pass').value);
+    setStatus('backup-status', `Restored, with ${added} note${added === 1 ? '' : 's'} new to this browser. Reloading…`);
+    window.setTimeout(() => window.location.reload(), 800);
+  } catch (error) {
+    setStatus('backup-status', `Could not restore: ${(error as Error).message}`);
+  }
 }
 
 async function onActivate(): Promise<void> {
@@ -442,6 +508,15 @@ async function init(): Promise<void> {
   el('refresh-balance').addEventListener('click', () => void refreshNotes());
   el('connect-wallet').addEventListener('click', () => void connectFundingWallet());
   el('activate').addEventListener('click', () => void onActivate());
+  el('rotate').addEventListener('click', () => void onRotate());
+  el('withdraw').addEventListener('click', () => void onWithdraw());
+  el('backup-export').addEventListener('click', () => void onBackupExport());
+  el('backup-import').addEventListener('click', () => el<HTMLInputElement>('backup-file').click());
+  el<HTMLInputElement>('backup-file').addEventListener('change', (event) => {
+    const file = (event.currentTarget as HTMLInputElement).files?.[0];
+    if (file !== undefined) void onBackupImport(file);
+    (event.currentTarget as HTMLInputElement).value = '';
+  });
   el('network-button').addEventListener('click', () => void connectFundingWallet());
   document.querySelectorAll<HTMLElement>('[data-back]').forEach((node) => node.addEventListener('click', () => showView('home')));
   renderRingSvg();

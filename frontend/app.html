@@ -51,7 +51,7 @@
           </section>
           <section class="panel">
             <div class="panel-head"><div><p class="eyebrow">Account security</p><h2>Signing key</h2></div><span class="local">Local</span></div>
-            <div class="budget" id="budget"><div><span>Signatures remaining</span><strong><b id="sig-left">—</b> <small id="sig-max"></small></strong></div><div class="meter" id="meter"></div><p id="budget-note"></p></div>
+            <div class="budget" id="budget"><div><span>Signatures remaining</span><strong><b id="sig-left">—</b> <small id="sig-max"></small></strong></div><div class="meter" id="meter"></div><p id="budget-note"></p><button class="secondary" id="rotate" type="button" hidden>Rotate key</button><p class="status" id="rotate-status" role="status"></p></div>
           </section>
         </div>
       </section>
@@ -100,7 +100,19 @@
   <div class="detail"><span>Account</span><strong id="account-state">—</strong></div>
   <div class="detail"><span>Funding wallet</span><strong id="funding-state">Not connected</strong></div>
   <button class="secondary" id="activate" type="button" hidden>Activate account</button>
+  <div id="withdraw-box" hidden>
+    <label class="field" for="withdraw-to"><span>Withdraw everything to</span><input id="withdraw-to" class="mono" type="text" placeholder="0x… (your funding wallet if empty)" autocomplete="off" spellcheck="false"></label>
+    <button class="secondary" id="withdraw" type="button">Withdraw</button>
+  </div>
   <button class="primary" id="connect-wallet" type="button">Connect funding wallet</button><p class="status" id="wallet-status" role="status"></p>
+  <div class="backup">
+    <p class="eyebrow">Backup</p>
+    <p>Your account keys and private notes exist only in this browser. A backup holds both, encrypted under this passphrase: without it nobody can open the file, you included.</p>
+    <label class="field" for="backup-pass"><span>Passphrase (12+ characters)</span><input id="backup-pass" type="password" autocomplete="new-password" minlength="12"></label>
+    <div class="dialog-actions"><button class="secondary" id="backup-export" type="button">Download backup</button><button class="secondary" id="backup-import" type="button">Restore from file</button></div>
+    <input id="backup-file" type="file" accept="application/json,.json" hidden>
+    <p class="status" id="backup-status" role="status"></p>
+  </div>
 </dialog>
 <script type="module" src="/src/app.ts"></script>
 </body>

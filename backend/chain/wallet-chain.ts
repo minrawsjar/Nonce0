@@ -1,16 +1,22 @@
-// The two chain touches a browser wallet makes, built on the one viem this
-// repo bundles. The frontend imports this rather than viem, so there is a
-// single copy of it in the page.
+// The chain touches a browser wallet makes, built on the one viem this repo
+// bundles. The frontend imports this rather than viem, so there is a single
+// copy of it in the page.
 //
-// ── What these reveal, stated so nobody has to work it out ──────────────
+// ── What the note vault's reads reveal, and to whom ──────────────────────
 //
-//   observeCommitment(mine)  Tells the RPC which commitment you care about.
-//                            Harmless: you deposited it from your own wallet,
-//                            and a deposit is attributable by design (§4).
-//   isNullifierSpent(mine)   Tells the RPC which SPEND is yours — the one
-//                            link the ring exists to hide. A direct read here
-//                            is a known leak in this build, kept visible
-//                            rather than buried: it should cross the mesh.
+// The page uses createMeshChainObserver, and neither read goes to an RPC
+// from the browser:
+//
+//   observeCommitment(mine)  Answered from the pool-wide RING_SNAPSHOT, the
+//                            question every wallet already asks. Nobody
+//                            learns which commitment is yours.
+//   isNullifierSpent(mine)   WALLET_RPC over the mesh. The exit learns a
+//                            nullifier was asked about, never by whom; asked
+//                            directly, the RPC would learn which SPEND is
+//                            yours, the one link the ring exists to hide.
+//
+// createChainObserver reads the RPC directly. It is for Node scripts, which
+// have no mesh and nobody to hide from.
 
 import type { EIP1193Provider, PublicClient, WalletClient } from 'viem';
 import { createWalletClient, custom, parseAbi, parseAbiItem } from 'viem';
@@ -21,9 +27,11 @@ import type {
   PoolScope,
   PrivatePoolContract,
   ProtocolCapabilities,
+  RingSnapshot,
 } from '@opaque/protocol-types';
 
 import { ARC_TESTNET, createPoolClient } from './pool.ts';
+import { readOne, type WalletRpcSend } from './wallet-rpc.ts';
 
 /** The funding wallet as the PQ account's payer: it pays, and signs nothing for the account. */
 export const browserPayer = (provider: EIP1193Provider | undefined) => async (): Promise<WalletClient> => {
@@ -61,6 +69,21 @@ export function createChainObserver(publicClient: PublicClient, deployedAtBlock:
     },
     isNullifierSpent: (scope, nullifier) =>
       publicClient.readContract({ address: scope.pool, abi: POOL, functionName: 'isNullifierSpent', args: [nullifier as `0x${string}`] }),
+  };
+}
+
+/** The note vault's evidence, with no read that names a note going to an RPC. See the header. */
+export function createMeshChainObserver(options: {
+  readonly walletRpc: WalletRpcSend;
+  readonly ringSnapshot: (scope: PoolScope) => Promise<RingSnapshot>;
+}): WalletChainObserver {
+  return {
+    async observeCommitment(scope, commitment) {
+      const member = (await options.ringSnapshot(scope)).candidates.find((c) => c.commitment.toLowerCase() === commitment.toLowerCase());
+      return member === undefined ? null : { blockNumber: member.enrolledAtBlock };
+    },
+    isNullifierSpent: async (scope, nullifier) =>
+      (await readOne(options.walletRpc, scope.pool, 'isNullifierSpent', [nullifier])).value as boolean,
   };
 }
 

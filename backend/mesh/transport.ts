@@ -126,8 +126,9 @@ export type PeelResult =
 
 // ── keys ──────────────────────────────────────────────────────────────────
 
-export function generateRelayKeypair(keyEpoch = 1n): RelayKeypair {
-  const { publicKey, secretKey } = ml_kem768.keygen();
+/** `seed` (64 bytes) makes it deterministic, for a mesh derived from a master secret. */
+export function generateRelayKeypair(keyEpoch = 1n, seed?: Uint8Array): RelayKeypair {
+  const { publicKey, secretKey } = ml_kem768.keygen(seed);
   return { publicKey: toHex(publicKey), secretKey: toHex(secretKey), keyEpoch };
 }
 

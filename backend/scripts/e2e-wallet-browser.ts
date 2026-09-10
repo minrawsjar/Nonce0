@@ -24,6 +24,9 @@
 // for another. E2E_PQ=1 deposits from the page's PQ account instead: the
 // funding wallet activates it, Node funds it (standing in for a transfer to
 // the Receive address), and the deposit is a UserOperation its FORS key signs.
+// That run then rotates the key, withdraws what is left, backs up, restores
+// the backup into a fresh browser, and checks that no read naming the account
+// or a note, and no bundler call, left the page except through the mesh.
 //
 // Uses the Playwright already installed for the wallet SDK's browser test, and
 // the machine's own Chrome (channel: 'chrome') rather than a downloaded build.
@@ -32,7 +35,7 @@
 // THE BROWSER and read `document`, and giving backend the DOM lib to allow them
 // would let server code touch `window` and `document` too.
 import { chromium } from '../../packages/pq-wallet/node_modules/playwright/index.mjs';
-import { createPublicClient, createWalletClient, http, parseAbiItem, parseEther } from 'viem';
+import { createPublicClient, createWalletClient, http, parseAbiItem, parseEther, toFunctionSelector } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 import { asChainId, fromHex } from '@opaque/protocol-types/codecs.js';
 import { deployment, poolFor } from '../../deployments/index.ts';
@@ -90,6 +93,9 @@ if (signer !== undefined) {
 }
 const errors: string[] = [];
 page.on('pageerror', (e: Error) => errors.push(e.message));
+// What the page itself sends, to check nothing that names the wallet goes direct.
+const direct: { url: string; body: string }[] = [];
+page.on('request', (r: { url(): string; postData(): string | null }) => { if (!r.url().includes('railway.app') && !r.url().includes('opaque.credit') && !r.url().includes('127.0.0.1')) direct.push({ url: r.url(), body: r.postData() ?? '' }); });
 // Drop polls 404 until the answer lands — deliberately: a relay that said
 // "exists but not ready" would be an oracle for which drops are live.
 page.on('console', (m: { type(): string; text(): string }) => { if (m.type() === 'error' && !/404/.test(m.text())) errors.push(m.text()); });
@@ -126,6 +132,40 @@ if (signer !== undefined && (await page.textContent('#balance')) === '0.00') {
   step(`private balance: ${await page.textContent('#balance')} USDC in ${await page.textContent('#note-count')}`);
 }
 
+if (signer !== undefined && process.env['E2E_PQ'] === '1') {
+  const address = (await page.textContent('#account-address')) as string;
+  // Rotate: the funding wallet pays; the key signs its own successor in.
+  await page.click('#rotate');
+  await page.waitForFunction(() => /Rotated|Could not rotate/.test(document.getElementById('rotate-status')?.textContent ?? ''), null, { timeout: 240_000 });
+  step(`rotate: ${await page.textContent('#rotate-status')} · signatures ${await page.textContent('#sig-left')} ${await page.textContent('#sig-max')}`);
+
+  // Withdraw what the deposit left, to the funding wallet.
+  await page.click('#account-button');
+  await page.waitForFunction(() => !document.getElementById('withdraw-box')?.hidden, null, { timeout: 60_000 });
+  await page.click('#withdraw');
+  await page.waitForFunction(() => /Withdrawn|Could not withdraw/.test(document.getElementById('wallet-status')?.textContent ?? ''), null, { timeout: 240_000 });
+  step(`withdraw: ${await page.textContent('#wallet-status')}`);
+
+  // Backup, then restore into a browser that has never seen this account.
+  await page.fill('#backup-pass', 'correct horse battery staple');
+  const [download] = await Promise.all([page.waitForEvent('download'), page.click('#backup-export')]);
+  const file = `${process.env['TMPDIR'] ?? '/tmp'}/opaque-e2e-backup.json`;
+  await download.saveAs(file);
+  await page.keyboard.press('Escape');
+  const fresh = await chromium.launch(launch).then((b: any) => b.newContext());
+  const other = await fresh.newPage();
+  other.on('dialog', (d: { accept(): Promise<void> }) => void d.accept());
+  await other.goto(APP_URL);
+  await other.waitForFunction(() => /0x[0-9a-f]{40}/.test(document.getElementById('account-address')?.textContent ?? ''), null, { timeout: 120_000 });
+  const before = await other.textContent('#account-address');
+  await other.click('#account-button');
+  await other.fill('#backup-pass', 'correct horse battery staple');
+  await other.setInputFiles('#backup-file', file);
+  await other.waitForFunction((a: string) => document.getElementById('account-address')?.textContent === a, address, { timeout: 180_000 });
+  step(`restore: a fresh browser's account ${before?.slice(0, 10)}… became ${address.slice(0, 10)}… (${await other.textContent('#sig-left')} ${await other.textContent('#sig-max')} signatures)`);
+  await fresh.close();
+}
+
 await page.click('#tab-ring');
 await page.waitForFunction(() => /deposits/.test(document.getElementById('pool-size')?.textContent ?? ''), null, { timeout: 90_000 });
 step(`ring view (through the mesh): ${await page.textContent('#pool-size')} · freshness ${await page.textContent('#freshness-now')} · path ${(await page.textContent('#hops'))?.replace(/\s+/g, ' ')}`);
@@ -142,6 +182,13 @@ const tx = await page.getAttribute('#intent-list a', 'href');
 step(`activity (status through the mesh): ${(await page.textContent('#intent-list .intent-state'))}  ${tx}`);
 step(`private balance after: ${await page.textContent('#balance')} USDC`);
 if (errors.length) step(`page errors: ${errors.slice(0, 3).join(' | ')}`);
+if (process.env['E2E_PQ'] === '1') {
+  const named = ['isNullifierSpent(bytes32)', 'isCommitmentKnown(bytes32)', 'stateOf(address)', 'getNonce(address,uint192)', 'balanceOf(address)'].map((f) => toFunctionSelector(f).slice(2));
+  const leaks = direct.filter((r) => /pimlico/.test(r.url) || named.some((sel) => r.body.includes(sel)) || /eth_getBalance|eth_getCode/.test(r.body));
+  step(`direct requests from the page: ${direct.length}; naming the account or a note, or to a bundler: ${leaks.length}`);
+  for (const l of leaks.slice(0, 3)) step(`  leak: ${l.url} ${l.body.slice(0, 160)}`);
+  if (leaks.length > 0) process.exitCode = 1;
+}
 await context.close();
 await context.browser()?.close();
 process.stdout.write(`TX ${tx?.split('/').pop()}\n`);

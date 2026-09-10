@@ -1,5 +1,5 @@
 import { ProtocolFailure, type Bytes32, type Hex } from '@opaque/protocol-types';
-import { asBytes32, assertHex } from '@opaque/protocol-types/codecs.js';
+import { asBytes32, assertHex, fromHex, toHex } from '@opaque/protocol-types/codecs.js';
 import { keyGen, pkCommitment, randomSeed, type ForsParams, type ForsPublicKey } from './fors.ts';
 import { uint64 } from './registry.ts';
 
@@ -118,6 +118,58 @@ export async function initializeSigner(store: SignerStore, input: {
   } finally { seed.fill(0); }
 }
 
+/** A store that can take a key back from a backup. Never overwrites a key it holds. */
+export interface RestorableSignerStore extends SignerStore {
+  restore(id: Bytes32, record: SignerRecord): Promise<void>;
+}
+
+/** A signer as a backup carries it: the seed in the clear, so encrypt the whole backup. */
+export interface ExportedSigner {
+  readonly id: Bytes32;
+  readonly keyEpoch: bigint;
+  readonly params: ForsParams;
+  readonly seed: Hex;
+  readonly maxUses: bigint;
+  readonly lifecycleReserve: bigint;
+  /** The whole signing log. A key restored without it could sign an index twice. */
+  readonly reservations: readonly Reservation[];
+}
+
+export async function exportSigner(store: SignerStore, id: Bytes32): Promise<ExportedSigner> {
+  const record = await store.read(id); validateSignerRecord(record, id);
+  const seed = new Uint8Array(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: record.iv,
+    additionalData: new TextEncoder().encode(id) }, record.encryptionKey, record.encryptedSeed));
+  try {
+    return { id, keyEpoch: record.keyEpoch, params: record.publicKey.params, seed: toHex(seed) as Hex,
+      maxUses: record.maxUses, lifecycleReserve: record.lifecycleReserve, reservations: structuredClone(record.reservations) };
+  } finally { seed.fill(0); }
+}
+
+/**
+ * Puts an exported signer into `store`, re-encrypted under a fresh
+ * non-extractable key. The seed must regenerate the key the backup names, and
+ * the signing log comes back whole: the wallet then refuses to sign if the
+ * chain has moved past it, which is how an OLD backup is caught.
+ */
+export async function restoreSigner(store: RestorableSignerStore, exported: ExportedSigner): Promise<Bytes32> {
+  const seed = new Uint8Array(fromHex(exported.seed));
+  try {
+    const pair = keyGen(seed, exported.params);
+    const id = pkCommitment(pair.publicKey);
+    pair.secretKey.seed.fill(0);
+    if (id !== asBytes32(exported.id)) throw unsafeState();
+    const encryptionKey = await crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const encryptedSeed = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv, additionalData: new TextEncoder().encode(id) }, encryptionKey, seed));
+    const record: SignerRecord = { version: 1, revision: BigInt(exported.reservations.length), id, keyEpoch: exported.keyEpoch,
+      publicKey: pair.publicKey, encryptedSeed, iv, encryptionKey, maxUses: exported.maxUses,
+      lifecycleReserve: exported.lifecycleReserve, reservations: structuredClone(exported.reservations) };
+    validateSignerRecord(record, id);
+    await store.restore(id, record);
+    return id;
+  } finally { seed.fill(0); }
+}
+
 export async function signerSummary(store: SignerStore, id: Bytes32): Promise<{
   keyEpoch: bigint; maxUses: bigint; localSigningReservations: bigint;
 }> {
@@ -126,8 +178,13 @@ export async function signerSummary(store: SignerStore, id: Bytes32): Promise<{
 }
 
 /** Explicit test/mock adapter. Not durable and never the browser wallet default. */
-export class MemorySignerStore implements SignerStore {
+export class MemorySignerStore implements RestorableSignerStore {
   #records = new Map<Bytes32, SignerRecord>();
+  async restore(id: Bytes32, record: SignerRecord): Promise<void> {
+    validateSignerRecord(record, id);
+    if (this.#records.has(id)) throw unsafeState();
+    this.#records.set(id, structuredClone(record));
+  }
   async read(id: Bytes32): Promise<SignerRecord | undefined> {
     const record = this.#records.get(id); return record && structuredClone(record);
   }

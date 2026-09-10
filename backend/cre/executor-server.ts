@@ -39,7 +39,7 @@ import {
 import { assertHex, fromHex, toHex } from '@opaque/protocol-types/codecs.js';
 
 import { ChunkStore, decodeChunkFrame, isChunkFrame, uploadIdFromHex } from '../mesh/chunks.ts';
-import { createQueryAnswerer, decodeMeshQuery, encodeAnswer } from '../mesh/queries.ts';
+import { createQueryAnswerer, decodeMeshQuery, encodeAnswer, type QueryAnswererDeps } from '../mesh/queries.ts';
 import { createExecutor, type OpaqueExecutor } from './executor.ts';
 
 const MAX_BODY_BYTES = 256 * 1024;
@@ -69,6 +69,8 @@ export interface ExecutorServerOptions {
   readonly graph?: GraphSelectionClient;
   /** eth_getTransactionReceipt for POOL_RECEIPT. Optional. */
   readonly receipt?: (txHash: TxHash) => Promise<Hex>;
+  /** WALLET_RPC (chain/wallet-rpc.ts). Optional; absent, it is refused. */
+  readonly walletRpc?: QueryAnswererDeps['walletRpc'];
 }
 
 export interface ExecutorServer {
@@ -205,6 +207,7 @@ export function createExecutorServer(options: ExecutorServerOptions = {}): Execu
         graph: options.graph,
         intentStatus: (handle) => executor.getStatus(handle),
         ...(options.receipt === undefined ? {} : { receipt: options.receipt }),
+        ...(options.walletRpc === undefined ? {} : { walletRpc: options.walletRpc }),
       });
 
   // Reassembles intents too large for one mesh message. See mesh/chunks.ts.
