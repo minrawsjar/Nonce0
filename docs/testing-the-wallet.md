@@ -46,20 +46,23 @@ wallet after restarting the stack.
    else needs funding.
 2. **Deposit.** Set *Deposit amount* (1 to 10 USDC) and press *Deposit*.
    Every note is exactly 1 USDC, because a note of any other size would stand
-   out in its ring (spec §6.6), so 3 USDC becomes three notes. From the
-   funding wallet that is one approval for the whole amount, then one
-   confirmation per note. The deposit is public by design — it is the *spend*
-   that is private. A note shows as spendable once the chain confirms it,
-   never before.
+   out in its ring (spec §6.6), so 3 USDC becomes three notes.
 
-   Or deposit from the **PQ account**. In *Account details*, press *Activate
-   account*: the funding wallet pays to deploy it and gets no power over it.
-   Then send the account a little more USDC than you mean to deposit;
-   *Receive* shows its address. From then on *Deposit* is one UserOperation
-   the account's FORS key signs, however many notes it makes, a public bundler
-   submits it, and no wallet popup appears. Each deposit uses one of the key's
-   32 signatures, shown under *Signing key*. The keys live in this browser
-   only, so clearing site data loses the account.
+   Deposits come from your **PQ account**, as one UserOperation its FORS key
+   signs however many notes it makes; a public bundler submits it. A plain
+   wallet would need one confirmation per note, since it cannot batch and the
+   pool takes one note per deposit. The first deposit asks your funding wallet
+   for two confirmations: one activates the account (it pays for the deploy
+   and gets no power over it), one moves the USDC in. After that it is one
+   confirmation per deposit, and none at all if the account already holds
+   enough: anything sent to the *Receive* address counts. Each deposit keeps
+   0.2 USDC in the account for gas, and what gas does not use pays for the
+   next one. Each deposit uses one of the key's 32 signatures, shown under
+   *Signing key*. The keys live in this browser only, so clearing site data
+   loses the account, unless you have a backup.
+
+   The deposit is public by design — it is the *spend* that is private. A
+   note shows as spendable once the chain confirms it, never before.
 3. **Send.** Set the amount in whole USDC, enter a recipient, and press
    *Review private transfer*. Each USDC is one note spent as its own payment:
    the page builds its proof in a worker (a few seconds each), seals it, and

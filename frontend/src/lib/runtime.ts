@@ -20,9 +20,10 @@
 //   status       a mesh query. The page never opens a connection to the exit.
 //   account      LIVE on Arc: FORS keys in IndexedDB, the account deployed by
 //                PQAccountFactory. The funding wallet only pays for that.
-//   deposit      from the account once activated (one UserOperation its PQ key
-//                signs, for any number of notes), from the funding wallet
-//                before (one approval, then a transaction per note).
+//   deposit      from the account: one UserOperation its PQ key signs, for
+//                any number of notes. The page activates the account on the
+//                first deposit and tops it up from the funding wallet, one
+//                confirmation each; an account holding enough needs none.
 //                Attributable either way.
 
 import type {
@@ -45,7 +46,7 @@ import { createGraphHealth } from '../../../backend/mesh/graph-health.ts';
 import type { DirectoryTrustRoot, SignedDirectory } from '../../../backend/mesh/contracts.ts';
 import { createIntentSealer } from '../../../backend/cre/seal-client.ts';
 import { ARC_AUTHORITY, createLivePqWallet, createPqAccountOps } from '../../../backend/chain/pq-wallet-chain.ts';
-import { browserPayer, createBrowserPool, createMeshChainObserver, type DepositMany } from '../../../backend/chain/wallet-chain.ts';
+import { browserPayer, createBrowserPool, createMeshChainObserver, sendFromFundingWallet, type DepositMany } from '../../../backend/chain/wallet-chain.ts';
 import { capabilitiesOf } from '../../../backend/chain/pool.ts';
 import { readOne, type WalletRpcSend } from '../../../backend/chain/wallet-rpc.ts';
 import { MarkovPathPolicy } from '../../../graph/src/path-policy.ts';
@@ -112,6 +113,8 @@ export interface WalletRuntime {
   accountFunds(address: `0x${string}`): Promise<{ readonly usdc: number; readonly prepaidGas: number }>;
   /** Everything the account holds, less this operation's gas, to `to`. */
   withdraw(address: `0x${string}`, to: `0x${string}`): Promise<TxHash>;
+  /** `usdc` from the funding wallet to the account: one confirmation. */
+  fundAccount(address: `0x${string}`, usdc: number): Promise<TxHash>;
   exportBackup(passphrase: string): Promise<Blob>;
   /** Into a new key store; reload the page to open it. Returns the notes it added. */
   restoreBackup(file: Blob, passphrase: string): Promise<number>;
@@ -250,6 +253,7 @@ export async function startWallet(config?: StackConfig): Promise<WalletRuntime> 
       return { usdc: Number(f.usdc6) / 1e6, prepaidGas: Number(f.prepaidGas) / 1e18 };
     },
     withdraw: (address, to) => opsFor(address).withdraw(to.toLowerCase() as never),
+    fundAccount: (address, usdc) => sendFromFundingWallet(provider, browserPool.publicClient, address, usdc),
     exportBackup: (passphrase) => exportBackup(keys, passphrase),
     restoreBackup,
   };

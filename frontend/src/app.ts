@@ -44,6 +44,12 @@ const provider = (): BrowserProvider | undefined =>
 const ARC_CHAIN_ID = 5_042_002;
 const ARC_HEX = `0x${ARC_CHAIN_ID.toString(16)}`;
 const ARC_EXPLORER = 'https://testnet.arcscan.app';
+/**
+ * USDC a deposit keeps in the account for its own gas. ponytail: a flat
+ * margin over the ~0.03 a one-note operation costs; what it leaves over stays
+ * in the account and pays for the next one.
+ */
+const DEPOSIT_GAS_USDC = 0.2;
 const shortAddress = (value: string) => value ? `${value.slice(0, 6)}…${value.slice(-4)}` : 'Not connected';
 const isRejected = (error: unknown) => typeof error === 'object' && error !== null && 'code' in error && (error as { code: unknown }).code === 4001;
 
@@ -253,15 +259,20 @@ async function settle(done: () => Promise<boolean>): Promise<void> {
   }
 }
 
+/** Deploys the account: the funding wallet pays, once, and gets no power over it. */
+async function activate(): Promise<void> {
+  await rt.app.registerWallet();
+  await settle(async () => (await rt.app.walletState()).active);
+}
+
 async function onActivate(): Promise<void> {
   const button = el<HTMLButtonElement>('activate');
   if (!await connectFundingWallet()) return;
   button.disabled = true;
   setStatus('wallet-status', 'Confirm in your funding wallet: it pays to deploy the account, and gets no power over it…');
   try {
-    await rt.app.registerWallet();
-    await settle(async () => (await rt.app.walletState()).active);
-    setStatus('wallet-status', 'Activated. Send USDC to the account address, and deposits come from it.');
+    await activate();
+    setStatus('wallet-status', 'Activated. Deposits come from the account; Deposit tops it up from your funding wallet when it needs to.');
     await renderBudget();
   } catch (error) {
     setStatus('wallet-status', isRejected(error) ? '' : `Could not activate: ${(error as Error).message}`);
@@ -291,23 +302,32 @@ async function onDeposit(): Promise<void> {
     return;
   }
   const notes = count === 1 ? 'one note' : `${count} notes`;
-  // An activated account deposits by itself; only the funding-wallet path needs one connected.
-  const fromAccount = (await rt.app.walletState().catch(() => undefined))?.active === true;
-  if (!fromAccount) {
-    if (!rt.hasWallet) {
-      await connectFundingWallet();
-      return;
-    }
-    // This also verifies/switches the chain when an account was already exposed.
-    if (!await connectFundingWallet()) return;
-  }
   button.disabled = true;
-  status.textContent = fromAccount
-    ? `Signing one deposit of ${notes} with your account's PQ key; a public bundler submits it…`
-    : count === 1
-      ? 'Approve exactly 1 USDC, then confirm the deposit in your funding wallet…'
-      : `Approve exactly ${count} USDC, then confirm ${count} deposits in your funding wallet…`;
   try {
+    // Deposits come from the account: ONE transaction however many notes,
+    // signed by its PQ key, where the funding wallet would need a
+    // confirmation per note (it cannot batch, and the pool takes one note per
+    // deposit). The funding wallet activates the account once and tops it up,
+    // one confirmation each; an account already holding enough needs neither.
+    let state = await rt.app.walletState();
+    const account = state.accountAddress as `0x${string}`;
+    const want = count + DEPOSIT_GAS_USDC;
+    const topUp = Math.ceil((want - (await rt.accountFunds(account)).usdc) * 100) / 100;
+    // This also verifies/switches the chain when an account was already exposed.
+    if ((!state.active || topUp > 0) && !await connectFundingWallet()) return;
+    if (!state.active) {
+      status.textContent = 'One-time: confirm in your funding wallet to activate your Opaque account. It pays to deploy it and gets no power over it…';
+      await activate();
+      state = await rt.app.walletState();
+      if (!state.active) throw new Error('the account is not active on chain yet — try again in a moment');
+    }
+    if (topUp > 0) {
+      status.textContent = `Confirm in your funding wallet: ${topUp.toFixed(2)} USDC to your account, for ${notes} and gas…`;
+      await rt.fundAccount(account, topUp);
+      // A lagging RPC node can still show the old balance; the deposit checks it.
+      await settle(async () => (await rt.accountFunds(account)).usdc >= want - 0.005);
+    }
+    status.textContent = `Signing one deposit of ${notes} with your account's PQ key; a public bundler submits it…`;
     const made = await rt.app.depositNotes(rt.scope, count);
     const waiting = made.filter((n) => n.state !== 'AVAILABLE').length;
     status.textContent = waiting === 0

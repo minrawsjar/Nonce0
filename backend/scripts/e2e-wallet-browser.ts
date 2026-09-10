@@ -76,6 +76,8 @@ if (WALLET_KEY === undefined) {
   }, [note]);
 }
 const signer = WALLET_KEY === undefined ? undefined : createWalletClient({ account: privateKeyToAccount(WALLET_KEY), chain: ARC_TESTNET, transport: http() });
+// Each eth_sendTransaction is one confirmation a real wallet would pop up.
+let confirmations = 0;
 if (signer !== undefined) {
   const account = signer.account;
   await page.exposeFunction('__e2eWallet', async (method: string, params: readonly any[]) => {
@@ -83,6 +85,7 @@ if (signer !== undefined) {
       case 'eth_accounts': case 'eth_requestAccounts': return [account.address];
       case 'eth_chainId': return `0x${ARC_TESTNET.id.toString(16)}`;
       case 'eth_sendTransaction': {
+        confirmations++;
         const t = params[0];
         return signer.sendTransaction({ to: t.to, data: t.data, ...(t.value ? { value: BigInt(t.value) } : {}) });
       }
@@ -130,9 +133,10 @@ if (signer !== undefined && process.env['E2E_PQ'] === '1') {
 
 if (signer !== undefined && (await page.textContent('#balance')) === '0.00') {
   await page.fill('#deposit-count', String(NOTES));
+  const before = confirmations;
   await page.click('#deposit');
   await page.waitForFunction(() => /Deposited|Deposit sent|Deposit failed/.test(document.getElementById('deposit-status')?.textContent ?? ''), null, { timeout: 300_000 });
-  step(`deposit (through the page's own button): ${await page.textContent('#deposit-status')}`);
+  step(`deposit (through the page's own button): ${await page.textContent('#deposit-status')} · funding-wallet confirmations: ${confirmations - before}`);
   await page.waitForFunction((n: number) => document.getElementById('balance')?.textContent === `${n}.00`, NOTES, { timeout: 120_000 });
   step(`private balance: ${await page.textContent('#balance')} USDC in ${await page.textContent('#note-count')}`);
 }

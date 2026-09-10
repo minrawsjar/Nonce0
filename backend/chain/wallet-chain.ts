@@ -19,7 +19,7 @@
 // have no mesh and nobody to hide from.
 
 import type { EIP1193Provider, PublicClient, WalletClient } from 'viem';
-import { createWalletClient, custom, parseAbi, parseAbiItem } from 'viem';
+import { createWalletClient, custom, parseAbi, parseAbiItem, parseUnits } from 'viem';
 
 import type {
   NoteCommitment,
@@ -39,6 +39,20 @@ export const browserPayer = (provider: EIP1193Provider | undefined) => async ():
   if (provider === undefined) throw new Error('no wallet: install MetaMask (or any EIP-1193 wallet) to pay for this');
   return createWalletClient({ chain: ARC_TESTNET, transport: custom(provider) });
 };
+
+/**
+ * USDC from the funding wallet to `to` (the PQ account): a plain transfer of
+ * Arc's native USDC, one confirmation. Returns once it is mined.
+ */
+export async function sendFromFundingWallet(provider: EIP1193Provider | undefined, publicClient: PublicClient, to: `0x${string}`, usdc: number): Promise<TxHash> {
+  const wallet = await browserPayer(provider)();
+  const [from] = await wallet.getAddresses();
+  if (from === undefined) throw new Error('connect a funding wallet first');
+  const hash = await wallet.sendTransaction({ account: from, chain: ARC_TESTNET, to, value: parseUnits(usdc.toFixed(6), 18) });
+  const receipt = await publicClient.waitForTransactionReceipt({ hash });
+  if (receipt.status !== 'success') throw new Error(`the transfer to the account reverted in ${hash}`);
+  return hash as TxHash;
+}
 
 const POOL = parseAbi([
   'function isCommitmentKnown(bytes32) view returns (bool)',
