@@ -165,7 +165,7 @@ function frameHeaderBytes(h: {
 /** The header IS the associated data — every routing field is authenticated. */
 const headerAad = (h: Parameters<typeof frameHeaderBytes>[0]): Uint8Array => frameHeaderBytes(h);
 
-export function encodeFrame(envelope: MeshEnvelope): Uint8Array {
+export function encodeFrame(envelope: MeshEnvelope): Uint8Array<ArrayBuffer> {
   const ct = fromHex(envelope.ciphertext);
   const header = frameHeaderBytes({ ...envelope, ciphertextLength: ct.length });
   const out = new Uint8Array(header.length + KEM_CIPHERTEXT_BYTES + NONCE_BYTES + ct.length);

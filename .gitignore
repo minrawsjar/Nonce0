@@ -38,3 +38,9 @@ skills-lock.json
 # these; the PNGs are the masters kept for re-encoding at another size or
 # quality. ~70 MB, and git keeps blobs forever, so they stay out of history.
 frontend/media/**/*.png
+
+# local stack (backend/stack.ts): dev-only CRE key, credential MAC and relay
+# keys — secrets, regenerated on demand — and the public config it writes for
+# the wallet, which changes every time the mesh is rebuilt.
+backend/.stack/
+frontend/public/stack.json

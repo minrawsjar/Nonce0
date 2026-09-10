@@ -61,6 +61,14 @@ export interface AdapterPorts {
   readonly wallet: PqWallet;
   readonly ring: RingClient;
   readonly pool: PrivatePoolContract;
+  /**
+   * getRelaySnapshot() MUST return relay keys from the VERIFIED, PINNED
+   * directory — createMeshBootstrap(...).snapshot() — and never from a network
+   * Graph client. meshPath() below encrypts every onion layer to the keys this
+   * returns, so a snapshot fetched from the Graph would let whoever answers
+   * that request choose the keys every payment is sealed to. Health may come
+   * from the Graph (see backend/mesh/graph-health.ts); keys may not.
+   */
   readonly graph: GraphSelectionClient;
   readonly transport: PrivacyTransport;
   readonly executor: PrivacyTimedExecutor;
@@ -121,8 +129,13 @@ export function createPaymentApplication(ports: AdapterPorts): PaymentApplicatio
       // where the reverse order would lose the secret for funded money.
       const note = await ports.ring.createNote(scope);
       const txHash = await ports.pool.deposit({ scope, commitment: note.commitment });
-      // Pending, not funded. AVAILABLE waits for matching pool evidence.
-      return ports.ring.recordDeposit(note.id, txHash);
+      // Recorded as pending first: a tx hash is a claim, not evidence.
+      await ports.ring.recordDeposit(note.id, txHash);
+      // Then reconciled against the chain. Without this a deposit stopped at
+      // DEPOSIT_PENDING forever — and reserve() requires AVAILABLE, so a note
+      // the user had paid for could never be spent. The pool port returns once
+      // the deposit is mined, so the evidence is there to find.
+      return ports.ring.reconcileNote(note.id);
     },
 
     listNotes: (scope: PoolScope): Promise<readonly NoteSummary[]> => ports.ring.listNotes(scope),

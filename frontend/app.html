@@ -45,9 +45,10 @@
 
     <form id="send-form">
       <div class="field amount">
-        <label for="amount">Amount — USDC</label>
-        <input id="amount" type="text" inputmode="decimal" value="50.00" autocomplete="off">
-        <p class="field-hint">Balance <b id="balance">—</b> USDC. On Arc this same asset pays the gas, so nothing has to be funded separately.</p>
+        <label>Pay with — one note</label>
+        <p class="field-hint">Private balance <b id="balance">—</b> USDC, in <b id="note-count">—</b>.
+          Every note is the same size: that is how the amount stays hidden.</p>
+        <button class="btn btn-wide" id="deposit" type="button">Deposit 1 USDC</button>
       </div>
 
       <div class="field">
@@ -73,7 +74,8 @@
         </div>
       </div>
 
-      <button class="btn btn-primary btn-wide" id="arm" type="submit">Arm intent</button>
+      <button class="btn btn-primary btn-wide" id="arm" type="submit">Send 1 USDC privately</button>
+      <p class="field-hint" id="send-status" role="status"></p>
     </form>
 
     <p class="unwired" id="fee-note"></p>
@@ -111,13 +113,10 @@
     <div id="intent-list"></div>
   </section>
 
-  <p class="unwired">
-    <b>Not wired to a chain.</b> State below this build is local: no contracts are
-    deployed, no FORS+C key exists yet, and the freshness score is simulated so the
-    waiting-intent behaviour is visible. Every seam that needs a real call is marked
-    <code>WIRE:</code> in <code>src/chain.ts</code>.
-    <a href="index.html">← back to opaque</a>
-  </p>
+  <!-- Read from the pool and the stack, never assumed (T12): a capability this
+       build does not have is named here rather than implied by the UI. -->
+  <p class="unwired" id="caps">Connecting…</p>
+  <p class="unwired"><a href="index.html">← back to opaque</a></p>
 
 </main>
 

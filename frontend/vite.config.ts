@@ -22,6 +22,11 @@ export default defineConfig({
   },
   server: {
     port: 5173,
+    // The wallet imports the mesh, the sealer, the pool client and the ring
+    // client from their home packages rather than copying them, so the dev
+    // server must be allowed to read the repo above frontend/. `vite build`
+    // is unaffected — this only governs what the dev server will serve.
+    fs: { allow: ['..'] },
     // The UI runs standalone; this is only live once `npm run api` is up in a
     // second terminal. Proxying rather than pointing the browser straight at
     // :8402 keeps everything same-origin, so there is no CORS to configure.

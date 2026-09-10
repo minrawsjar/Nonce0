@@ -1,0 +1,212 @@
+#!/usr/bin/env node
+// The whole backend a wallet needs, on one machine, against the REAL Arc pool.
+//
+//   cd backend && set -a && . ./.env && set +a && node stack.ts
+//
+// Six relays, the mesh exit (executor + query answering + the CRE stand-in),
+// the release egress, and a test credential authority. Writes the wallet's
+// public config to frontend/public/stack.json — the signed relay directory,
+// its trust root, the CRE's public key — so `npm run dev` in frontend/ talks to
+// this and nothing else.
+//
+// ── What this is NOT ─────────────────────────────────────────────────────
+//
+// One machine is one operator: six relays here collude by construction. The
+// CRE stand-in holds INTENT_KEY in an ordinary process, so nothing it opens is
+// confidential. The credential authority issues for any recipient. Every one of
+// those is labelled in the capabilities the wallet reads, and every one is a
+// deployment step, not a code change — see docs/deployment-arc-testnet.md.
+//
+// The trust root is loaded from stack.json for LOCAL development only. In a
+// real build it is a compile-time constant: a root fetched from a server that
+// an attacker controls is a root the attacker chose.
+
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { createServer } from 'node:http';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+import { createPublicClient, http, parseAbi, parseEventLogs } from 'viem';
+import { privateKeyToAccount } from 'viem/accounts';
+
+import type { ApprovedRelease, PrivacyScore, RelaySnapshot, TxHash, UnixSeconds } from '@opaque/protocol-types';
+import { asChainId, fromHex, spendHash, toHex } from '@opaque/protocol-types/codecs.js';
+
+import { deployment, poolFor, requireContract } from '../deployments/index.ts';
+import { evaluatePublicReadiness } from '../graph/src/privacy-score.ts';
+import { ARC_TESTNET, createPoolClient, poolSubmitter } from './chain/pool.ts';
+import { createChainRingSource } from './chain/ring-source.ts';
+import { issueCredential } from './cre/credential.ts';
+import { createExecutorServer } from './cre/executor-server.ts';
+import { generateIntentKeypair } from './cre/seal-client.ts';
+import { createCreSimulator } from './cre/simulator.ts';
+import { createEgress } from './mesh/egress.ts';
+import { buildLocalMesh, serveLocalMesh } from './mesh/local-mesh.ts';
+import type { MeshMessageKind } from './mesh/transport.ts';
+
+const HERE = dirname(fileURLToPath(import.meta.url));
+const STATE = join(HERE, '.stack');
+const OUT = join(HERE, '..', 'frontend', 'public', 'stack.json');
+const PORTS = { relays: 18_101, exit: 18_200, egress: 18_201, credentials: 18_202 } as const;
+const KEY_ID = 'opaque-intent-key-v1';
+const POLICY = 'opaque-policy-v1';
+
+const env = (name: string): string => {
+  const v = process.env[name];
+  if (v === undefined) throw new Error(`${name} must be set — run with: set -a && . ./.env && set +a`);
+  return v;
+};
+const nowS = (): UnixSeconds => BigInt(Math.floor(Date.now() / 1000)) as UnixSeconds;
+const log = (s: string) => process.stdout.write(`${s}\n`);
+const bigintReplacer = (_k: string, v: unknown) => (typeof v === 'bigint' ? `${v}n` : v);
+
+// ── dev secrets, persisted so a sealed intent survives a restart ─────────
+mkdirSync(STATE, { recursive: true, mode: 0o700 });
+const intentKeyFile = join(STATE, 'intent-key.json');
+const macFile = join(STATE, 'credential.mac');
+if (!existsSync(intentKeyFile)) {
+  const k = generateIntentKeypair();
+  writeFileSync(intentKeyFile, JSON.stringify({ publicKey: k.publicKey, secretKey: k.secretKey }), { mode: 0o600 });
+}
+if (!existsSync(macFile)) writeFileSync(macFile, toHex(crypto.getRandomValues(new Uint8Array(32))), { mode: 0o600 });
+const intentKeys = JSON.parse(readFileSync(intentKeyFile, 'utf8')) as { publicKey: `0x${string}`; secretKey: `0x${string}` };
+const credentialMac = fromHex(readFileSync(macFile, 'utf8').trim() as `0x${string}`);
+
+// ── chain ────────────────────────────────────────────────────────────────
+const ring8 = poolFor(1_000_000, 'RING_8');
+const REGISTRY = requireContract('pqKeyRegistry');
+const ATTESTER = deployment.accounts.attester;
+const scope = { chainId: asChainId(BigInt(deployment.network.chainId)), pool: ring8.address, denomination: ring8.denomination } as never;
+const publicClient = createPublicClient({ chain: ARC_TESTNET, transport: http() });
+const registryAbi = parseAbi(['function stateOf(address) view returns ((bytes32,bytes32,uint64,uint64,uint64,uint64))']);
+const poolAbi = parseAbi([
+  'function isNullifierSpent(bytes32) view returns (bool)',
+  'event Spent(bytes32 indexed nullifier, address indexed recipient, uint256 amount)',
+]);
+
+// ── the mesh ─────────────────────────────────────────────────────────────
+const mesh = buildLocalMesh(PORTS.relays);
+const relaySnapshot = (): RelaySnapshot => ({
+  // Keys from the SIGNED directory. Health is a flat prior until a Graph feed
+  // is wired: this is what the wallet's path policy weighs, not a measurement.
+  nodes: mesh.signed.directory.entries.map((e) => ({
+    id: e.id, endpoint: e.endpoint, kemPublicKey: e.kemPublicKey, keyEpoch: e.keyEpoch, operatorId: e.operatorId,
+    reliabilityScore: 9_000 as PrivacyScore, batchOccupancy: 1, recentSelectionCount: 0, lastSeenAt: nowS(),
+  })),
+  directoryVersion: mesh.signed.directory.version.toString(),
+  observedAt: nowS(),
+});
+const ringSource = createChainRingSource({
+  publicClient: publicClient as never, scope, deployedAtBlock: BigInt(ring8.deployedAtBlock), relaySnapshot,
+});
+
+// ── egress, exit, stand-in ───────────────────────────────────────────────
+const egress = createEgress({
+  secret: credentialMac,
+  submitter: poolSubmitter(createPoolClient({
+    account: privateKeyToAccount(env('EGRESS_PRIVATE_KEY') as `0x${string}`),
+    offChain: { pqWallet: 'MOCK', graph: 'LIVE', confidentialExecution: 'SIMULATED', policyScope: 'CRE_WORKFLOW_ONLY' },
+  })),
+});
+await egress.listen(PORTS.egress);
+
+const exit = createExecutorServer({ graph: ringSource });
+await exit.listen(PORTS.exit);
+
+const simulator = createCreSimulator({
+  executor: exit.executor,
+  intentSecretKey: intentKeys.secretKey,
+  encryptionKeyId: KEY_ID,
+  credentialMac,
+  policyVersion: POLICY,
+  releaseTtlSeconds: 900n,
+  async readFreshScore() {
+    const c = evaluatePublicReadiness(await ringSource.getRingSnapshot(scope), relaySnapshot());
+    return { score: c.privacyScore, observedAt: c.observedAt };
+  },
+  attester: {
+    identity: { chainId: BigInt(deployment.network.chainId), registry: REGISTRY as never, attester: ATTESTER as never, pool: ring8.address as never, denomination: ring8.denomination },
+    forsSeed: fromHex(env('ATTESTER_FORS_SEED') as `0x${string}`),
+    useCount: async () => (await publicClient.readContract({ address: REGISTRY, abi: registryAbi, functionName: 'stateOf', args: [ATTESTER] }))[2],
+  },
+  async deliver(release: ApprovedRelease) {
+    const response = await fetch(`http://127.0.0.1:${PORTS.egress}/v1/release`, {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(release, (_k, v) => (typeof v === 'bigint' ? v.toString(10) : v)),
+    });
+    const body = (await response.json()) as { txHash?: string; message?: string };
+    if (body.txHash === undefined) throw new Error(`egress refused: ${response.status} ${body.message}`);
+    return body.txHash as TxHash;
+  },
+  // Evidence from the chain: the receipt succeeded and the pool emitted a
+  // Spent for exactly this nullifier and recipient.
+  async evidence(txHash, release) {
+    const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash as `0x${string}` });
+    const spent = parseEventLogs({ abi: poolAbi, logs: receipt.logs, eventName: 'Spent' }).find(
+      (l) => l.args.nullifier.toLowerCase() === (release.spend.nullifier as string).toLowerCase()
+        && l.args.recipient.toLowerCase() === (release.spend.recipient as string).toLowerCase(),
+    );
+    log(`  settled ${txHash} (${receipt.status})`);
+    return { txHash, spendHash: spendHash(release.spend), succeeded: receipt.status === 'success' && spent !== undefined };
+  },
+  nullifierSpent: async (s) => publicClient.readContract({ address: ring8.address, abi: poolAbi, functionName: 'isNullifierSpent', args: [s.nullifier as `0x${string}`] }),
+  onError: (id, error) => log(`  ! intent ${String(id).slice(0, 8)}… will retry: ${(error as Error).message}`),
+});
+simulator.start(3_000);
+
+const relays = await serveLocalMesh(mesh, new Map<MeshMessageKind, string>([
+  ['PAYMENT', `http://127.0.0.1:${PORTS.exit}/v1/mesh/payment`],
+  ['QUERY', `http://127.0.0.1:${PORTS.exit}/v1/mesh/query`],
+]));
+
+// ── test credential authority ────────────────────────────────────────────
+// Issues for ANY recipient: a stand-in for a real policy authority, which the
+// wallet asks once, out of band, before paying — never during a payment.
+const credentials = createServer((req, res) => {
+  res.setHeader('access-control-allow-origin', '*');
+  res.setHeader('access-control-allow-headers', 'content-type');
+  if (req.method === 'OPTIONS') { res.writeHead(204); res.end(); return; }
+  const chunks: Buffer[] = [];
+  req.on('data', (c: Buffer) => chunks.push(c));
+  req.on('end', () => {
+    try {
+      const { recipient } = JSON.parse(Buffer.concat(chunks).toString('utf8')) as { recipient?: string };
+      if (typeof recipient !== 'string' || !/^0x[0-9a-f]{40}$/.test(recipient)) throw new Error('recipient must be a lower-case address');
+      const credential = issueCredential({ recipient: recipient as never, policyVersion: POLICY, expiresAt: (nowS() + 86_400n) as UnixSeconds }, credentialMac);
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify(credential, (_k, v) => (typeof v === 'bigint' ? v.toString(10) : v)));
+    } catch (e) {
+      res.writeHead(400, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ message: (e as Error).message }));
+    }
+  });
+});
+await new Promise<void>((r) => credentials.listen(PORTS.credentials, '127.0.0.1', r));
+
+// ── what the wallet reads ────────────────────────────────────────────────
+mkdirSync(dirname(OUT), { recursive: true });
+writeFileSync(OUT, JSON.stringify({
+  $comment: 'Written by backend/stack.ts. Local development only — regenerated every start.',
+  signedDirectory: mesh.signed,
+  trustRoot: mesh.root,
+  cre: { publicKey: intentKeys.publicKey, encryptionKeyId: KEY_ID, policyVersion: POLICY },
+  credentialUrl: `http://127.0.0.1:${PORTS.credentials}/v1/credential`,
+  pool: { address: ring8.address, denomination: ring8.denomination, proofMode: ring8.proofMode },
+  capabilities: { pqWallet: 'MOCK', graph: 'LIVE', confidentialExecution: 'SIMULATED', policyScope: 'CRE_WORKFLOW_ONLY' },
+}, bigintReplacer, 2));
+
+const snap = await ringSource.getRingSnapshot(scope);
+log('opaque local stack — against the REAL Arc pool');
+log(`  pool       ${ring8.address}  (${ring8.proofMode}, ${snap.candidates.length} deposits)`);
+log(`  relays     ${mesh.signed.directory.entries.map((e) => e.endpoint.replace('/v1/relay', '')).join('  ')}`);
+log(`  exit       http://127.0.0.1:${PORTS.exit}   egress :${PORTS.egress}   credentials :${PORTS.credentials}`);
+log(`  wallet cfg ${OUT}`);
+log('  THIS IS ONE OPERATOR, AND CRE IS SIMULATED. Not an anonymity set.');
+
+for (const signal of ['SIGINT', 'SIGTERM'] as const) {
+  process.on(signal, () => {
+    simulator.stop();
+    void Promise.all([...relays.map((r) => r.close()), exit.close(), egress.close(), new Promise((r) => credentials.close(r))])
+      .then(() => process.exit(0));
+  });
+}

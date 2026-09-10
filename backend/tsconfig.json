@@ -25,6 +25,7 @@
     "mesh",
     "cre",
     "zk",
-    "chain"
+    "chain",
+    "stack.ts"
   ]
 }
