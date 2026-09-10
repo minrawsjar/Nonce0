@@ -94,12 +94,18 @@ At the exit:
 | | Tx | |
 |---|---|---|
 | Private payment, from opaque.credit | `0xf83b2cf4e750b2dab07922b79449635f69a5ee98b7945268ff72087dee821170` | block 61452895, 559,566 gas, 9,764 bytes of calldata; `RingUsed` names all 8 members |
+| Private payment of a note the page's PQ account deposited, from opaque.credit | `0x42b7f49ae1a3c1e9ab2138b440f6e27920e6ae7afc1fe77e1296edc193005936` | block 61459041, 560,604 gas; the deposit was a FORS-signed UserOperation and the note settled in an 8-member ring 73 s after the page loaded |
 | PQ account deposit (`backend/chain/e2e-pq-account.ts`) | `0x7d5e9cbd35535018000f09193a3c07a8387f95ada94b857650fe44d510a5ea64` | a UserOperation signed by the account's FORS key alone, bundled by Pimlico, 666,729 gas paid by the account; key use 0 → 1 of 32 |
 
 The pool was seeded with 8 decoy notes by `backend/chain/seed-ring.ts`, all
 from one address. That does not reveal which member a spend used, because the
 proof is zero knowledge. But it is a test ring, not an anonymity set. Their
 secrets are in `backend/.env`.
+
+One member is junk: an early `e2e-pq-account.ts` run deposited a fully random
+bytes32, which can never sit in a ring of 128-bit images. The pool accepts any
+bytes32, so anyone could do this on purpose. Decoy selection skips such
+members (`packages/ring-client/src/selection.ts`) instead of failing the spend.
 
 ### Retired
 
