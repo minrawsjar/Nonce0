@@ -28,9 +28,6 @@
   --display: "Poppins", system-ui, sans-serif;
   --mark:    "Quicksand", "Poppins", system-ui, sans-serif;
 
-  /* Film grain over the closing section's gradients, so they don't read as
-     flat vector bands next to the photographic hero above them. */
-  --grain: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200"><filter id="n"><feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="4" stitchTiles="stitch"/><feColorMatrix type="saturate" values="0"/></filter><rect width="200" height="200" filter="url(%23n)" opacity="0.55"/></svg>');
 }
 
 * { box-sizing: border-box; }
@@ -509,17 +506,6 @@ body:not(.in-hero) .fs { opacity: 0; visibility: hidden; pointer-events: none; }
   color: #9c8d84;
 }
 
-/* Attribution for the CC-BY photographs. Not decoration — the licence needs it. */
-.credits {
-  border-top: 1px solid var(--rule);
-  padding-block: var(--gap-6) clamp(48px, 6vw, 84px);
-  font-size: 11.5px;
-  font-weight: 300;
-  line-height: 1.8;
-  color: var(--faint);
-}
-.credits a { color: #8b7f77; border-bottom: 1px solid rgba(139, 127, 119, 0.4); }
-.credits a:hover { color: var(--ember-lit); border-bottom-color: var(--ember); }
 
 @media (max-width: 860px) {
   .compare, .built { grid-template-columns: 1fr; }
@@ -528,27 +514,9 @@ body:not(.in-hero) .fs { opacity: 0; visibility: hidden; pointer-events: none; }
 
 /* ── The theatre ───────────────────────────────────────────────────────── */
 
-/* A giant ghosted figure behind each section, clipped by the section box. It
-   sits under everything and is invisible to assistive tech — the readable
-   number is the one in .sec-n. */
+/* Sections clip their own decoration — the drawn rules and the reveal offsets
+   both overflow slightly before they settle. */
 .slab { position: relative; overflow: hidden; }
-.slab[data-fig]::before {
-  content: attr(data-fig);
-  position: absolute;
-  top: -0.34em;
-  right: -0.06em;
-  z-index: 0;
-  font-family: var(--mark);
-  font-size: clamp(180px, 26vw, 420px);
-  font-weight: 700;
-  line-height: 0.8;
-  letter-spacing: -0.04em;
-  color: var(--ember);
-  opacity: 0.045;
-  pointer-events: none;
-  user-select: none;
-}
-.slab > * { position: relative; z-index: 1; }
 
 /* A rule that draws itself across the top of each pillar as it arrives. */
 .pillar { position: relative; padding-top: var(--gap-6); }
@@ -661,126 +629,129 @@ body:not(.in-hero) .fs { opacity: 0; visibility: hidden; pointer-events: none; }
   .tilt__glow { opacity: 0.25; }
 }
 
-/* ── Section 4: the dawn ───────────────────────────────────────────────── */
-
-.dawn {
-  position: relative;
-  min-height: 108vh;
-  display: grid;
-  align-items: center;
-  overflow: hidden;
-  isolation: isolate;
-  background:
-    radial-gradient(34% 17% at 50% 71%, rgba(255, 206, 142, 0.62), transparent 70%),
-    radial-gradient(70% 26% at 50% 73%, rgba(255, 146, 46, 0.42), transparent 72%),
-    radial-gradient(140% 46% at 50% 78%, rgba(196, 78, 14, 0.26), transparent 68%),
-    linear-gradient(180deg, #07060a 0%, #09070b 34%, #1c0f0b 56%, #2a150c 70%, #120a08 84%, #07060a 100%);
-}
-.dawn__scape { position: absolute; inset: 0; width: 100%; height: 100%; z-index: -2; }
-/* The ridges are drawn to the bottom of their own box, which leaves a visible
-   seam where two dark slabs meet the lit gap between them. This sinks the
-   whole scape into black at both ends so the section joins the hero above it
-   and the footer below it without an edge. */
-.dawn::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  pointer-events: none;
-  background:
-    linear-gradient(180deg, var(--ink) 0%, transparent 20%),
-    linear-gradient(180deg, transparent 62%, rgba(7, 6, 10, 0.62) 86%, var(--ink) 100%);
-}
-.dawn__grain {
-  position: absolute; inset: 0; z-index: -1;
-  background-image: var(--grain);
-  opacity: 0.14;
-  mix-blend-mode: overlay;
-  pointer-events: none;
-}
-/* The arc of light lying on the plain. */
-.dawn__ring {
-  position: absolute;
-  left: 50%; top: 79%;
-  width: 92%;
-  aspect-ratio: 5.2 / 1;
-  transform: translateX(-50%);
-  border-radius: 50%;
-  border: 2px solid rgba(255, 190, 118, 0.8);
-  box-shadow: 0 0 52px rgba(255, 140, 40, 0.5), inset 0 0 110px rgba(255, 120, 20, 0.12);
-  filter: blur(0.7px);
-  z-index: -1;
-  /* Only the near half of the ellipse is light catching a surface; the far
-     edge has to fall away or the whole thing reads as an oval drawn on top of
-     the landscape. */
-  -webkit-mask-image: linear-gradient(180deg, transparent 4%, rgba(0,0,0,.28) 34%, #000 72%);
-          mask-image: linear-gradient(180deg, transparent 4%, rgba(0,0,0,.28) 34%, #000 72%);
-}
-
-.dawn__inner { text-align: center; padding-block: clamp(90px, 12vh, 150px); }
-.dawn .wordmark { --mark-size: clamp(52px, 8vw, 104px); }
-.dawn__lede {
-  margin: clamp(26px, 4vh, 44px) auto 0;
-  max-width: 22ch;
-  font-size: clamp(19px, 2.1vw, 30px);
-  font-weight: 300;
-  line-height: 1.42;
-}
-.dawn__sub {
-  margin: clamp(18px, 2.6vh, 30px) auto 0;
-  max-width: 46ch;
-  font-size: 13.5px;
-  font-weight: 300;
-  line-height: 1.85;
-  /* Reference had this near-grey on a busy gradient; lifted so it survives a
-     laptop screen in daylight. */
-  color: #d3c9c1;
-}
-.dawn__cta {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  gap: clamp(18px, 3vw, 46px);
-  margin-top: clamp(30px, 5vh, 56px);
-  flex-wrap: wrap;
-}
-.dawn__corner { position: absolute; bottom: clamp(28px, 5vh, 58px); z-index: 2; }
-.dawn__corner--l { left: clamp(20px, 4vw, 64px); }
-.dawn__corner--r { right: clamp(20px, 4vw, 64px); text-align: right; }
-
 /* ── Footer ────────────────────────────────────────────────────────────── */
 
-.foot { border-top: 1px solid var(--rule); padding-block: clamp(30px, 4vh, 46px); background: var(--ink); }
-.foot__top {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 28px;
-  flex-wrap: wrap;
+/* Not a strip of links. The page opens on a wave and closes on its mirror, and
+   between them the last thing anyone reads gets the room it deserves. */
+.foot {
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(180deg, #0c0910 0%, var(--band-deep) 100%);
 }
-.foot .wordmark { --mark-size: 26px; }
-.foot__links { display: flex; gap: clamp(18px, 2.4vw, 40px); flex-wrap: wrap; }
-.foot__links a { font-size: 13px; font-weight: 300; color: var(--muted); transition: color 0.2s ease; }
-.foot__links a:hover { color: var(--text); }
-.foot__social { display: flex; gap: 20px; }
-.foot__social a { color: var(--muted); transition: color 0.2s ease, transform 0.2s ease; }
-.foot__social a:hover { color: var(--ember); transform: translateY(-2px); }
-.foot__social svg { width: 17px; height: 17px; fill: currentColor; }
+
+/* The header's wave turned over — same amplitude, opposite phase. */
+.foot__wave {
+  display: block;
+  width: 100%;
+  height: clamp(18px, 2.4vw, 34px);
+  margin-bottom: -1px;
+}
+.foot__wave-fill { fill: #0c0910; }
+.foot__wave-lip {
+  fill: none;
+  stroke: var(--ember);
+  stroke-width: 1.4;
+  stroke-opacity: 0.4;
+  vector-effect: non-scaling-stroke;
+}
+
+.foot__inner {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: 1.5fr 1fr;
+  gap: clamp(32px, 6vw, 90px);
+  align-items: start;
+  padding-block: clamp(48px, 8vh, 86px) clamp(28px, 4vh, 44px);
+}
+
+.foot__line {
+  margin: 0 0 clamp(22px, 3.5vh, 34px);
+  font-size: clamp(22px, 3vw, 38px);
+  font-weight: 300;
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+}
+/* The turn in the sentence, and the only ember in it. */
+.foot__line em {
+  font-style: normal;
+  color: var(--ember-lit);
+  text-shadow: 0 0 34px rgba(255, 122, 24, 0.4);
+}
+
+.foot__cols {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: clamp(24px, 3vw, 44px);
+}
+.foot__col { display: grid; gap: 11px; align-content: start; }
+.foot__col .label { margin-bottom: 4px; }
+/* An underline that grows from the left rather than appearing whole. */
+.foot__col a {
+  position: relative;
+  width: fit-content;
+  padding-bottom: 2px;
+  font-size: 13.5px;
+  font-weight: 300;
+  color: var(--muted);
+  transition: color 0.2s ease;
+}
+.foot__col a::after {
+  content: "";
+  position: absolute;
+  inset: auto 0 0 0;
+  height: 1px;
+  background: var(--ember);
+  transform: scaleX(0);
+  transform-origin: 0 50%;
+  transition: transform 0.25s ease;
+}
+.foot__col a:hover { color: var(--text); }
+.foot__col a:hover::after { transform: scaleX(1); }
+
+/* The wordmark as the floor of the page — oversized, clipped by the footer, and
+   sitting under everything. It reads as ground rather than as a logo dropped on
+   top, which is why it is cut off rather than fitted. */
+.foot__floor {
+  position: relative;
+  margin-top: clamp(-18px, -1vw, -8px);
+  font-family: var(--mark);
+  font-weight: 700;
+  font-size: clamp(88px, 21vw, 300px);
+  line-height: 0.78;
+  letter-spacing: -0.035em;
+  text-align: center;
+  color: transparent;
+  background: linear-gradient(180deg, rgba(255, 122, 24, 0.26), rgba(255, 122, 24, 0.02) 76%);
+  -webkit-background-clip: text;
+          background-clip: text;
+  user-select: none;
+  pointer-events: none;
+}
+
 .foot__base {
+  position: relative;
+  z-index: 1;
   display: flex;
   justify-content: space-between;
-  gap: 20px;
+  align-items: flex-start;
+  gap: clamp(18px, 3vw, 48px);
   flex-wrap: wrap;
-  margin-top: clamp(26px, 4vh, 44px);
+  padding-block: clamp(18px, 2.6vh, 26px) clamp(26px, 4vh, 40px);
+  border-top: 1px solid var(--rule);
 }
-.foot__base p { margin: 0; font-size: 11.5px; font-weight: 300; color: var(--faint); }
+.foot__base p { margin: 0; font-size: 11.5px; font-weight: 300; line-height: 1.75; color: var(--faint); }
+.foot__credits { max-width: 62ch; }
+.foot__credits a { color: var(--muted); border-bottom: 1px solid rgba(255, 122, 24, 0.3); }
+.foot__credits a:hover { color: var(--ember-lit); border-bottom-color: var(--ember); }
 
 /* ── Narrow screens ────────────────────────────────────────────────────── */
 
 @media (max-width: 900px) {
   .nav__links { display: none; }
   .rail { top: 62%; right: 14px; }
-  .foot__top { justify-content: flex-start; }
+  .foot__inner { grid-template-columns: 1fr; gap: clamp(28px, 6vh, 44px); }
+  .foot__base { flex-direction: column; }
 
   /* Keep tablet artwork centered. Phones use the full composition below. */
   .plate { object-position: 50% 50%; }
@@ -833,11 +804,12 @@ body:not(.in-hero) .fs { opacity: 0; visibility: hidden; pointer-events: none; }
   .nav__brand img { height: 40px; }
   .nav .btn--outline { padding: 8px 15px; }
   .slab { padding-block: 64px; }
-  .dawn__corner { bottom: 24px; }
 }
 
 /* Static, readable opening and settled content when motion is disabled. */
 @media (prefers-reduced-motion: reduce) {
   .hero__line, .rail { display: none; }
-  .nav, .btn, .fs, .foot__social a, .card, .tag { transition: none; }
-}
+  .nav, .btn, .fs, .card, .tag { transition: none; }
+  /* The footer's social icons became named links; their underline grows on
+     hover, and that growth is the thing being opted out of here. */
+  .foot__col a::after { transition: none; }}

@@ -64,6 +64,13 @@ async function renderBudget(): Promise<void> {
   // One cell per signature, not a percentage bar. With a few-time scheme the
   // count is small enough to be countable, and "2 left" versus "3 left"
   // matters far more than twelve percent of a bar does.
+  // How far through the key we are, 0 → 1. The panel draws a fracture across
+  // itself from this: the landing page's argument is that everything breaks
+  // eventually, and for a few-time key that is not a metaphor — it is the
+  // number above. Spent budget is literally how far the crack has got.
+  const spent = key.maxUses === 0 ? 1 : (key.maxUses - left) / key.maxUses;
+  el('budget').style.setProperty('--spent', spent.toFixed(3));
+
   const meter = el('meter');
   meter.classList.toggle('low', low);
   meter.replaceChildren(...Array.from({ length: max }, (_, i) => {
