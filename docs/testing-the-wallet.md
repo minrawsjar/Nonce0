@@ -61,10 +61,11 @@ wallet after restarting the stack.
 4. **Watch Activity.** It settles when the privacy score clears your threshold,
    or at the deadline. A *view settlement* link appears when it lands.
 
-The console shows a stream of `404`s from `/v1/status/…` while a payment is in
-flight. Those are the wallet polling for an answer that has not arrived yet.
-They are deliberate: a relay that answered "exists, not ready" differently from
-"no such drop" would tell anyone probing which drops are live.
+The network tab shows a stream of `204`s from `/v1/status/…` while a payment is
+in flight. Those are the wallet polling for an answer that has not arrived yet.
+A relay gives the same empty `204` for "not yet", "no such drop" and "already
+collected": answering them differently would tell anyone probing which drops
+are live.
 
 ## Run it without clicking
 
@@ -93,15 +94,18 @@ from the page's PQ account.
 
 ## What the page never sends directly
 
-Every read that names your account or a note, and every UserOperation, goes
-through the mesh as a `WALLET_RPC` query. The exit answers it against a strict
-allowlist (`backend/chain/wallet-rpc.ts`). Neither the RPC nor the bundler
-learns which wallet asked, and nobody learns which nullifier is yours before
-it is spent. What still goes direct:
+The page opens no connection to an RPC, a bundler or the subgraph. Every read
+it makes, and every UserOperation, goes through the mesh as a `WALLET_RPC`
+query. The exit answers it against a strict allowlist
+(`backend/chain/wallet-rpc.ts`). Neither the RPC nor the bundler learns which
+wallet asked, and nobody learns which nullifier is yours before it is spent.
+The browser e2e fails if the page sends any such request itself.
 
-- **Pool-wide reads** that name nothing of yours, such as `capabilities()`.
-- **Funding-wallet transactions**: deploy, rotate, and deposits from the
-  funding wallet. They name that wallet on chain whatever route they take.
+The one exception is the **funding wallet**: deploy, rotate, and deposits made
+before activation. Those transactions, and the reads they need, go through the
+wallet's own provider (MetaMask's RPC). They name that wallet on chain
+whatever route they take. A content blocker that blocks `rpc.testnet.arc.io`
+in the page no longer breaks anything.
 
 ## Your account's controls
 

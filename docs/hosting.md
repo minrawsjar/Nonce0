@@ -165,7 +165,7 @@ of client address beside request is the one record the relays exist not to
 keep. The image contains no keys (`.dockerignore`); the key is mounted.
 
 Check it: `curl https://rN.example.com/v1/status/00000000000000000000000000000000`
-answers 404. That is the liveness probe; there is no `/health`.
+answers an empty 204. That is the liveness probe; there is no `/health`.
 
 ## 4. The backend (`api`)
 
