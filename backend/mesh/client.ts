@@ -34,7 +34,7 @@ import {
   type PrivacyTransport,
   type RelayPath,
 } from '@opaque/protocol-types';
-import { encodeBigint, fromHex, toHex } from '@opaque/protocol-types/codecs.js';
+import { asMeshQueryResult, encodeBigint, toHex } from '@opaque/protocol-types/codecs.js';
 
 import { createChannel } from './return-path.ts';
 import { buildOnion, encodeFrame, type FinalPayload, type MeshMessageKind } from './transport.ts';
@@ -146,17 +146,11 @@ export function createMeshTransport(options: MeshClientOptions = {}): PrivacyTra
       } catch {
         throw new ProtocolFailure('MESH_UNAVAILABLE', 'the mesh returned an unreadable answer');
       }
-      // Checked here, at the trust boundary, and again by the adapter. These
-      // bytes came off a relay: a result whose kind does not match the request
-      // would be read by the caller as whatever it hoped for.
-      if (
-        typeof parsed !== 'object' ||
-        parsed === null ||
-        (parsed as { kind?: unknown }).kind !== request.kind
-      ) {
-        throw new ProtocolFailure('INVALID_INPUT', `asked for ${request.kind} and got something else`);
-      }
-      return parsed as MeshQueryResult;
+      // DECODED here, at the trust boundary — not cast. These bytes came off a
+      // relay: the kind must match what was asked, and every bigint arrives as
+      // a decimal string that has to be revived before anyone does arithmetic
+      // on it. A cast used to return strings typed as bigints.
+      return asMeshQueryResult(request, parsed);
     },
 
     async submitIntent(input: EncryptedIntent, path: RelayPath): Promise<IntentRef> {
@@ -205,10 +199,4 @@ export function createMeshTransport(options: MeshClientOptions = {}): PrivacyTra
   };
 }
 
-/** The bytes a relay's egress must return for a query. Exported for stubs. */
-export const encodeQueryAnswer = (result: MeshQueryResult): Uint8Array =>
-  utf8(JSON.stringify(result));
 
-/** Hex→bytes for an egress that has to read what the client sent. */
-export const decodeQueryRequest = (body: Hex): MeshQuery =>
-  JSON.parse(text(fromHex(body))) as MeshQuery;

@@ -24,10 +24,21 @@ import {
   type NoteCommitment,
   type PoolScope,
   type PrivacyScore,
+  type IntentState,
+  type IntentStatus,
+  type MeshQuery,
+  type MeshQueryResult,
+  type PrivacyConditions,
   type PrivateSpend,
   type ProofMode,
+  type RelayId,
+  type RelayNode,
   type RelayPath,
+  type RelaySnapshot,
   type Ring8,
+  type RingCandidate,
+  type RingSnapshot,
+  type TxHash,
   type UnixSeconds,
   type Usdc6,
 } from './index.ts';
@@ -292,5 +303,158 @@ export function assertRelayPath(path: unknown): asserts path is RelayPath {
   const operators = new Set(path.map((n) => (n as { operatorId?: unknown }).operatorId));
   if (operators.size !== 3) {
     throw new ProtocolFailure('INSUFFICIENT_RELAYS', 'a path must not repeat an operator');
+  }
+}
+
+
+// ── mesh query answers ────────────────────────────────────────────────────
+//
+// A query answer crosses the mesh as JSON, and JSON has no bigint: the far end
+// sends observedAt, indexedThroughBlock, keyEpoch and chainId as decimal
+// strings. Casting the parsed object to MeshQueryResult therefore produced
+// values TYPED as bigint that were actually strings — and the first piece of
+// arithmetic on one (`now - observedAt`) throws "Cannot mix BigInt and other
+// types". Nothing caught it because nothing had ever received a real answer.
+//
+// So each answer is decoded, not cast. These accept a value already in native
+// form as well, so an in-process answerer and a wire one decode identically.
+
+const obj = (value: unknown, label: string): Record<string, unknown> => {
+  if (typeof value !== 'object' || value === null) fail(`${label} must be an object`);
+  return value as Record<string, unknown>;
+};
+const str = (value: unknown, label: string): string => {
+  if (typeof value !== 'string') fail(`${label} must be a string`);
+  return value as string;
+};
+const int = (value: unknown, label: string): number => {
+  if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) fail(`${label} must be a non-negative integer`);
+  return value as number;
+};
+const arr = (value: unknown, label: string): readonly unknown[] => {
+  if (!Array.isArray(value)) fail(`${label} must be an array`);
+  return value as readonly unknown[];
+};
+const big = (value: unknown, label: string): bigint =>
+  typeof value === 'bigint' ? value : decodeBigint(value, label);
+
+function asRingCandidate(value: unknown): RingCandidate {
+  const c = obj(value, 'ring candidate');
+  const cluster = c['fundingCluster'];
+  const activity = c['hasOtherActivity'];
+  return {
+    commitment: asNoteCommitment(c['commitment']),
+    enrolledAtBlock: big(c['enrolledAtBlock'], 'enrolledAtBlock'),
+    timesUsedInRing: int(c['timesUsedInRing'], 'timesUsedInRing'),
+    // Null means unknown and must stay null — never coerced to zero or false.
+    fundingCluster: cluster === null ? null : str(cluster, 'fundingCluster'),
+    hasOtherActivity: activity === null ? null : Boolean(activity),
+  };
+}
+
+export function asRingSnapshot(value: unknown): RingSnapshot {
+  const r = obj(value, 'ring snapshot');
+  return {
+    scope: asPoolScope(r['scope']),
+    candidates: arr(r['candidates'], 'candidates').map(asRingCandidate),
+    indexedThroughBlock: big(r['indexedThroughBlock'], 'indexedThroughBlock'),
+    observedAt: asUnixSeconds(r['observedAt'], 'observedAt'),
+    policyVersion: str(r['policyVersion'], 'policyVersion'),
+  };
+}
+
+function asRelayNode(value: unknown): RelayNode {
+  const n = obj(value, 'relay node');
+  const kem = n['kemPublicKey'];
+  assertHex(kem, 'kemPublicKey');
+  return {
+    id: str(n['id'], 'relay id') as RelayId,
+    endpoint: str(n['endpoint'], 'endpoint'),
+    kemPublicKey: kem,
+    keyEpoch: big(n['keyEpoch'], 'keyEpoch'),
+    operatorId: str(n['operatorId'], 'operatorId'),
+    reliabilityScore: asPrivacyScore(n['reliabilityScore']),
+    batchOccupancy: typeof n['batchOccupancy'] === 'number' && Number.isFinite(n['batchOccupancy'])
+      ? (n['batchOccupancy'] as number)
+      : fail('batchOccupancy must be a finite number'),
+    recentSelectionCount: int(n['recentSelectionCount'], 'recentSelectionCount'),
+    lastSeenAt: asUnixSeconds(n['lastSeenAt'], 'lastSeenAt'),
+  };
+}
+
+export function asRelaySnapshot(value: unknown): RelaySnapshot {
+  const r = obj(value, 'relay snapshot');
+  return {
+    nodes: arr(r['nodes'], 'nodes').map(asRelayNode),
+    directoryVersion: str(r['directoryVersion'], 'directoryVersion'),
+    observedAt: asUnixSeconds(r['observedAt'], 'observedAt'),
+  };
+}
+
+export function asPrivacyConditions(value: unknown): PrivacyConditions {
+  const p = obj(value, 'privacy conditions');
+  const source = p['source'];
+  if (source !== 'LIVE' && source !== 'FIXTURE') fail('privacy conditions source must be LIVE or FIXTURE');
+  return {
+    scope: asPoolScope(p['scope']),
+    privacyScore: asPrivacyScore(p['privacyScore']),
+    ringFreshnessScore: asPrivacyScore(p['ringFreshnessScore']),
+    meshHealthScore: asPrivacyScore(p['meshHealthScore']),
+    observedAt: asUnixSeconds(p['observedAt'], 'observedAt'),
+    formulaVersion: str(p['formulaVersion'], 'formulaVersion'),
+    source: source as 'LIVE' | 'FIXTURE',
+  };
+}
+
+const INTENT_STATES: readonly IntentState[] = [
+  'WAITING_FOR_PRIVACY', 'POLICY_CHECKING', 'READY_TO_RELEASE', 'RELEASING',
+  'SETTLEMENT_PENDING', 'RETRYING', 'SETTLED', 'FAILED',
+];
+
+export function asIntentStatus(value: unknown): IntentStatus {
+  const s = obj(value, 'intent status');
+  const state = s['state'];
+  if (!INTENT_STATES.includes(state as IntentState)) fail(`unknown intent state ${String(state)}`);
+  const out: Record<string, unknown> = {
+    state,
+    deadlineReached: s['deadlineReached'] === true,
+    updatedAt: asUnixSeconds(s['updatedAt'], 'updatedAt'),
+  };
+  if (s['privacyScore'] !== undefined) out['privacyScore'] = asPrivacyScore(s['privacyScore']);
+  if (s['scoreObservedAt'] !== undefined) out['scoreObservedAt'] = asUnixSeconds(s['scoreObservedAt'], 'scoreObservedAt');
+  if (s['txHash'] !== undefined) {
+    const tx = s['txHash'];
+    assertHex(tx, 'txHash');
+    out['txHash'] = tx as TxHash;
+  }
+  if (s['error'] !== undefined) out['error'] = s['error'];
+  return out as unknown as IntentStatus;
+}
+
+/**
+ * Decodes an answer for the query that was actually asked. The kind is checked
+ * FIRST: a relay that returns a RELAY_SNAPSHOT where a RING_SNAPSHOT was asked
+ * for must not be read as whatever the caller hoped for.
+ */
+export function asMeshQueryResult(request: MeshQuery, value: unknown): MeshQueryResult {
+  const r = obj(value, 'query answer');
+  if (r['kind'] !== request.kind) {
+    throw new ProtocolFailure('INVALID_INPUT', `asked for ${request.kind} and got ${String(r['kind'])}`);
+  }
+  const v = r['value'];
+  switch (request.kind) {
+    case 'RING_SNAPSHOT': return { kind: 'RING_SNAPSHOT', value: asRingSnapshot(v) };
+    case 'RELAY_SNAPSHOT': return { kind: 'RELAY_SNAPSHOT', value: asRelaySnapshot(v) };
+    case 'PRIVACY_CONDITIONS': return { kind: 'PRIVACY_CONDITIONS', value: asPrivacyConditions(v) };
+    case 'INTENT_STATUS': return { kind: 'INTENT_STATUS', value: asIntentStatus(v) };
+    case 'WALLET_RPC':
+    case 'POOL_RECEIPT': {
+      assertHex(v, `${request.kind} value`);
+      return { kind: request.kind, value: v } as MeshQueryResult;
+    }
+    case 'MESH_STATUS': {
+      const m = obj(v, 'mesh status');
+      return { kind: 'MESH_STATUS', value: { ...m, updatedAt: asUnixSeconds(m['updatedAt'], 'updatedAt') } as never };
+    }
   }
 }

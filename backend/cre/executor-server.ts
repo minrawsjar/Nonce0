@@ -29,10 +29,16 @@ import {
   ProtocolFailure,
   type EncryptedIntent,
   type ErrorCode,
+  type GraphSelectionClient,
+  type Hex,
+  type IntentRef,
   type StatusHandle,
+  type TxHash,
   type UnixSeconds,
 } from '@opaque/protocol-types';
+import { assertHex, fromHex } from '@opaque/protocol-types/codecs.js';
 
+import { createQueryAnswerer, decodeMeshQuery, encodeAnswer } from '../mesh/queries.ts';
 import { createExecutor, type OpaqueExecutor } from './executor.ts';
 
 const MAX_BODY_BYTES = 256 * 1024;
@@ -55,6 +61,13 @@ export interface ExecutorServerOptions {
    */
   readonly triggerUrl?: string;
   readonly fetchImpl?: typeof fetch;
+  /**
+   * Answers mesh QUERY messages. Without it the query route refuses, which is
+   * a visible gap rather than a relay quietly dropping every read.
+   */
+  readonly graph?: GraphSelectionClient;
+  /** eth_getTransactionReceipt for POOL_RECEIPT. Optional. */
+  readonly receipt?: (txHash: TxHash) => Promise<Hex>;
 }
 
 export interface ExecutorServer {
@@ -113,13 +126,40 @@ function reviveIntent(raw: unknown): EncryptedIntent {
   } as unknown as EncryptedIntent;
 }
 
+/**
+ * What hop 3 actually sends: `{"kind", "body"}` with the message as hex. The
+ * relay's contract is shared by both egress kinds, so this unwraps it rather
+ * than asking the relay to special-case the executor.
+ *
+ * This is the envelope /v1/intent never accepted. It parsed the body as a raw
+ * intent, so an intent that crossed the mesh arrived as {kind, body} and was
+ * refused — the mesh-to-executor hop had never once delivered anything. The
+ * local-mesh test used a stub egress that recorded bytes, so it never tried.
+ */
+function unwrapMesh(raw: unknown, expected: 'PAYMENT' | 'QUERY'): unknown {
+  if (typeof raw !== 'object' || raw === null) {
+    throw new ProtocolFailure('INVALID_INPUT', 'a mesh delivery must be an object');
+  }
+  const envelope = raw as Record<string, unknown>;
+  if (envelope['kind'] !== expected) {
+    throw new ProtocolFailure('INVALID_INPUT', `this route carries ${expected} only`);
+  }
+  const body = envelope['body'];
+  assertHex(body, 'mesh body');
+  try {
+    return JSON.parse(new TextDecoder().decode(fromHex(body)));
+  } catch {
+    throw new ProtocolFailure('INVALID_INPUT', 'mesh body is not JSON');
+  }
+}
+
 export function createExecutorServer(options: ExecutorServerOptions = {}): ExecutorServer {
   const executor = options.executor ?? createExecutor(options.now === undefined ? {} : { now: options.now });
   const now = options.now ?? (() => BigInt(Math.floor(Date.now() / 1000)) as UnixSeconds);
   const fetchImpl = options.fetchImpl ?? fetch;
 
-  async function submit(req: IncomingMessage, res: ServerResponse): Promise<void> {
-    const intent = reviveIntent(JSON.parse(await readBody(req)));
+  /** Queues an intent and forwards its ciphertext to the confidential workflow. */
+  async function submitIntent(intent: EncryptedIntent): Promise<IntentRef> {
     const ref = await executor.submit(intent);
 
     if (options.triggerUrl !== undefined) {
@@ -144,7 +184,40 @@ export function createExecutorServer(options: ExecutorServerOptions = {}): Execu
         }),
       });
     }
-    send(res, 202, ref);
+    return ref;
+  }
+
+  async function submit(req: IncomingMessage, res: ServerResponse): Promise<void> {
+    send(res, 202, await submitIntent(reviveIntent(JSON.parse(await readBody(req)))));
+  }
+
+  // The executor's own status lookup answers INTENT_STATUS, so a status read
+  // crosses the mesh and never becomes a per-intent connection to this host.
+  const answer = options.graph === undefined
+    ? undefined
+    : createQueryAnswerer({
+        graph: options.graph,
+        intentStatus: (handle) => executor.getStatus(handle),
+        ...(options.receipt === undefined ? {} : { receipt: options.receipt }),
+      });
+
+  async function meshPayment(req: IncomingMessage, res: ServerResponse): Promise<void> {
+    const ref = await submitIntent(reviveIntent(unwrapMesh(JSON.parse(await readBody(req)), 'PAYMENT')));
+    send(res, 200, ref);
+  }
+
+  async function meshQuery(req: IncomingMessage, res: ServerResponse): Promise<void> {
+    if (answer === undefined) {
+      throw new ProtocolFailure('MESH_UNAVAILABLE', 'this exit answers no queries: no graph configured', true);
+    }
+    const query = decodeMeshQuery(unwrapMesh(JSON.parse(await readBody(req)), 'QUERY'));
+    const bytes = encodeAnswer(await answer(query));
+    res.writeHead(200, {
+      'content-type': 'application/json',
+      'content-length': bytes.length,
+      'cache-control': 'no-store',
+    });
+    res.end(bytes);
   }
 
   const handler = (req: IncomingMessage, res: ServerResponse): void => {
@@ -152,6 +225,9 @@ export function createExecutorServer(options: ExecutorServerOptions = {}): Execu
     void (async () => {
       try {
         if (path === '/v1/intent' && req.method === 'POST') return await submit(req, res);
+        // What relays call. Point --egress-payment and --egress-query here.
+        if (path === '/v1/mesh/payment' && req.method === 'POST') return await meshPayment(req, res);
+        if (path === '/v1/mesh/query' && req.method === 'POST') return await meshQuery(req, res);
         if (path.startsWith('/v1/intent/') && req.method === 'GET') {
           // The handle is the capability. An unknown one and a wrong one are
           // the same refusal, so this is not an oracle for which exist.

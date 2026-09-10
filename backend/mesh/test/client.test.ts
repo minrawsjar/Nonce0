@@ -5,7 +5,10 @@ import test from 'node:test';
 
 import { ProtocolFailure, type MeshQuery, type PrivacyScore, type RelayNode, type RelayPath, type UnixSeconds } from '@opaque/protocol-types';
 
-import { createMeshTransport, decodeQueryRequest, encodeQueryAnswer } from '../client.ts';
+import { fromHex } from '@opaque/protocol-types/codecs.js';
+
+import { createMeshTransport } from '../client.ts';
+import { encodeAnswer } from '../queries.ts';
 import { buildLocalMesh, serveLocalMesh } from '../local-mesh.ts';
 import type { MeshMessageKind } from '../transport.ts';
 
@@ -31,10 +34,15 @@ async function liveMesh(basePort: number, answer: (request: MeshQuery) => unknow
     req.on('data', (c: Buffer) => chunks.push(c));
     req.on('end', () => {
       const { body } = JSON.parse(Buffer.concat(chunks).toString('utf8')) as { body: any };
-      const request = decodeQueryRequest(body);
+      // Deliberately LOOSE: this stub hands back malformed answers on purpose
+      // so the client's handling of them is what gets tested. It only decodes
+      // the request to record what reached it. The production exit, in
+      // queries.ts, is strict about both directions.
+      const request = JSON.parse(new TextDecoder().decode(fromHex(body))) as MeshQuery;
       seen.push(request);
       res.writeHead(200);
-      res.end(Buffer.from(encodeQueryAnswer(answer(request) as any)));
+      // encodeAnswer, not JSON.stringify: a real answer carries bigints.
+      res.end(Buffer.from(encodeAnswer(answer(request) as any)));
     });
   });
   await new Promise<void>((r) => egress.listen(0, r));
@@ -57,17 +65,26 @@ async function liveMesh(basePort: number, answer: (request: MeshQuery) => unknow
 }
 
 test('a query goes out through three relays and the answer comes back', async () => {
+  const scope = { chainId: 5042002n, pool: '0x' + '11'.repeat(20), denomination: 1_000_000 };
+  // A COMPLETE answer. This used to be {privacyScore, formulaVersion} alone —
+  // not a PrivacyConditions at all — and the client, which cast rather than
+  // decoded, accepted it. Anything the wallet then read off it was undefined.
   const conditions = {
     kind: 'PRIVACY_CONDITIONS',
-    value: { privacyScore: 8_500, formulaVersion: 'v1' },
+    value: {
+      scope, privacyScore: 8_500, ringFreshnessScore: 7_000, meshHealthScore: 9_000,
+      observedAt: 1_760_000_000n, formulaVersion: 'v1', source: 'FIXTURE',
+    },
   };
   const mesh = await liveMesh(19101, () => conditions);
   try {
     const transport = createMeshTransport({ pollIntervalMs: 50 });
-    const scope = { chainId: 5042002n, pool: '0x' + '11'.repeat(20), denomination: 1_000_000 };
     const result = await transport.query({ kind: 'PRIVACY_CONDITIONS', scope } as any, mesh.path);
 
+    // Equal to the NATIVE form — bigints and all — after a trip across the
+    // wire as decimal strings. Revival is part of what this now proves.
     assert.deepEqual(result, conditions);
+    assert.equal(typeof (result as any).value.observedAt, 'bigint');
     // The egress saw the query. It did NOT see a browser: the request reached
     // it from hop 3, which is the entire point of the exercise.
     assert.equal(mesh.seen.length, 1);
@@ -85,7 +102,10 @@ test('a query goes out through three relays and the answer comes back', async ()
 });
 
 test('two queries share no drop and no key, so a relay cannot join them', async () => {
-  const mesh = await liveMesh(19111, (request) => ({ kind: request.kind, value: { ok: true } }));
+  const mesh = await liveMesh(19111, (request) => ({
+    kind: request.kind,
+    value: { nodes: [], directoryVersion: 'v1', observedAt: 1_760_000_000n },
+  }));
   try {
     const transport = createMeshTransport({ pollIntervalMs: 50 });
     const query = { kind: 'RELAY_SNAPSHOT' } as MeshQuery;
