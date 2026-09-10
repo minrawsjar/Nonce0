@@ -184,8 +184,9 @@ await page.click('#arm');
 await page.waitForFunction(() => /Sent across the mesh|Not sent/.test(document.getElementById('send-status')?.textContent ?? ''), null, { timeout: 420_000 });
 step(`send: ${await page.textContent('#send-status')}`);
 
-await page.waitForFunction(() => /view settlement/.test(document.getElementById('intent-list')?.textContent ?? ''), null, { timeout: 420_000 });
-const tx = await page.getAttribute('#intent-list a', 'href');
+// The newest row is first; an older settled row must not stand in for this one.
+await page.waitForFunction(() => /view settlement/.test(document.querySelector('#intent-list .intent')?.textContent ?? ''), null, { timeout: 420_000 });
+const tx = await page.getAttribute('#intent-list .intent a', 'href');
 step(`activity (status through the mesh): ${(await page.textContent('#intent-list .intent-state'))}  ${tx}`);
 step(`private balance after: ${await page.textContent('#balance')} USDC`);
 if (errors.length) step(`page errors: ${errors.slice(0, 3).join(' | ')}`);
