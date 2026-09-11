@@ -35,7 +35,7 @@ import { createServer, type RequestListener } from 'node:http';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { createPublicClient, http, nonceManager, parseAbi, parseEventLogs } from 'viem';
+import { createPublicClient, nonceManager, parseAbi, parseEventLogs } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 
 import { ProtocolFailure, type ApprovedRelease, type GraphSelectionClient, type PoolScope, type RelaySnapshot, type RingSnapshot, type TxHash, type UnixSeconds } from '@opaque/protocol-types';
@@ -45,7 +45,7 @@ import { deployment, meshTrustRoot, poolFor, requireContract, requireService, ty
 import { GraphHttpClient } from '../graph/src/client.ts';
 import { evaluatePublicReadiness } from '../graph/src/privacy-score.ts';
 import { registryAttesterKeys } from './chain/attester-registry.ts';
-import { ARC_TESTNET, createPoolClient, poolSubmitter } from './chain/pool.ts';
+import { ARC_TESTNET, createPoolClient, poolSubmitter, rpcTransport } from './chain/pool.ts';
 import { ARC_AUTHORITY } from './chain/pq-wallet-chain.ts';
 import { relayDirectoryReporter } from './chain/relay-directory.ts';
 import { createChainRingSource } from './chain/ring-source.ts';
@@ -130,7 +130,7 @@ const poolAt = (s: PoolScope): PoolDeployment => {
   if (pool === undefined) throw new ProtocolFailure('INVALID_INPUT', `no RING_8 pool at ${s.pool}`);
   return pool;
 };
-const publicClient = createPublicClient({ chain: ARC_TESTNET, transport: http() });
+const publicClient = createPublicClient({ chain: ARC_TESTNET, transport: rpcTransport() });
 const poolAbi = parseAbi([
   'function isNullifierSpent(bytes32) view returns (bool)',
   'event Spent(bytes32 indexed nullifier, address indexed recipient, uint256 amount)',

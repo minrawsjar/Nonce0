@@ -34,6 +34,7 @@ import {
   createPublicClient,
   createWalletClient,
   custom,
+  fallback,
   getAddress,
   http,
   parseAbi,
@@ -41,6 +42,7 @@ import {
   type Chain,
   type EIP1193Provider,
   type PublicClient,
+  type Transport,
   type WalletClient,
 } from 'viem';
 
@@ -72,6 +74,19 @@ export const ARC_TESTNET: Chain = {
   rpcUrls: { default: { http: [deployment.network.rpcUrl] } },
   blockExplorers: { default: { name: 'Arcscan', url: deployment.network.explorer } },
 };
+
+/**
+ * Arc's public RPCs, in order. Each limits requests per IP, and one box's boot
+ * burst went past the primary's and crash-looped the stack: on a refusal the
+ * next one answers. For servers; a browser reads through its wallet's provider.
+ */
+export const ARC_RPC_URLS = [deployment.network.rpcUrl, 'https://rpc.quicknode.testnet.arc.io', 'https://rpc.blockdaemon.testnet.arc.io'];
+
+/** The transport for `chain`: Arc's RPCs in fallback order, or the one URL asked for. */
+export const rpcTransport = (chain: Chain = ARC_TESTNET, url?: string): Transport =>
+  url === undefined && chain === ARC_TESTNET
+    ? fallback(ARC_RPC_URLS.map((u) => http(u, { retryCount: 0 })))
+    : http(url ?? chain.rpcUrls.default.http[0]);
 
 export const POOL_ABI = parseAbi([
   'function capabilities() view returns ((uint8 proofMode, uint8 ringSize, bytes32 verifierId, uint256 denomination, bool requiresCommitReveal))',
@@ -169,7 +184,7 @@ export function createPoolClient(options: PoolClientOptions): OpaquePoolClient {
   // own: every read here serves a transaction that wallet is about to sign.
   const publicClient = createPublicClient({
     chain,
-    transport: options.provider !== undefined ? custom(options.provider) : http(options.rpcUrl ?? chain.rpcUrls.default.http[0]),
+    transport: options.provider !== undefined ? custom(options.provider) : rpcTransport(chain, options.rpcUrl),
   }) as PublicClient;
 
   const wallet = (): WalletClient => {
@@ -180,7 +195,7 @@ export function createPoolClient(options: PoolClientOptions): OpaquePoolClient {
       return createWalletClient({
         chain,
         account: options.account,
-        transport: http(options.rpcUrl ?? chain.rpcUrls.default.http[0]),
+        transport: rpcTransport(chain, options.rpcUrl),
       });
     }
     // Refused rather than silently read-only: a caller that thinks it

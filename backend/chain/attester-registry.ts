@@ -3,13 +3,13 @@
 // alone, so any account may submit them; the egress pays, as it pays for
 // settlements.
 
-import { createWalletClient, http, parseAbi, type Account, type PublicClient } from 'viem';
+import { createWalletClient, parseAbi, type Account, type PublicClient } from 'viem';
 
 import type { Address } from '@opaque/protocol-types';
 import { asBytes32 } from '@opaque/protocol-types/codecs.js';
 
 import { createAttesterKeys, type AttesterKeys } from '../cre/attester-keys.ts';
-import { ARC_TESTNET } from './pool.ts';
+import { ARC_TESTNET, rpcTransport } from './pool.ts';
 
 const REGISTRY_ABI = parseAbi([
   'function stateOf(address) view returns ((bytes32,bytes32,uint64,uint64,uint64,uint64))',
@@ -27,7 +27,7 @@ export function registryAttesterKeys(options: {
   readonly chainId: bigint;
 }): AttesterKeys {
   const { publicClient, registry, attester } = options;
-  const wallet = createWalletClient({ account: options.payer, chain: ARC_TESTNET, transport: http() });
+  const wallet = createWalletClient({ account: options.payer, chain: ARC_TESTNET, transport: rpcTransport() });
 
   async function send(functionName: 'rotate' | 'takeover', args: readonly unknown[]): Promise<void> {
     const hash = await wallet.writeContract({ address: registry, abi: REGISTRY_ABI, functionName, args } as never);

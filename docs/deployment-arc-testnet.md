@@ -35,7 +35,8 @@ pre-committed successor instead of locking the pool (see *The attester* below).
 | Service | Where |
 |---|---|
 | Subgraph (Subgraph Studio, `arc-testnet`) | `https://api.studio.thegraph.com/query/1760100/opaque/v0.3.0` |
-| Stack: six relays, exit, CRE stand-in, egress | `https://opaque-stack-production.up.railway.app` ([hosting.md](hosting.md)) |
+| Stack: six relays, exit, egress | `https://opaque-stack-production.up.railway.app` ([hosting.md](hosting.md)) |
+| CRE workflow `opaque-confidential-release` (decides every payment, in a Nitro enclave) | [`opaque-cre/`](../opaque-cre/README.md), polls the stack every 30 s |
 | Bundler (EntryPoint v0.7) | Pimlico's keyless public endpoint, `https://public.pimlico.io/v2/5042002/rpc` |
 | Relay operator (announces and reports health) | `0x07b31f4c273a2b034a57ab6c563d546cb2b56d20` |
 

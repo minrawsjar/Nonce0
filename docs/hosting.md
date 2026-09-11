@@ -7,9 +7,11 @@
 through `VITE_STACK_URL`, which is set for Vercel's production and preview
 builds.
 
-The whole stack runs as one Railway service: six relays, the exit, the CRE
-stand-in, the egress and the credential authority. Every public route is
-served on Railway's one port. How it was set up, from the repo root:
+The whole stack runs as one Railway service: six relays, the exit (the
+executor), the egress and the credential authority. Every public route is
+served on Railway's one port. It does not decide payments: the Chainlink CRE
+workflow in `opaque-cre/` does, polling `GET /v1/cre/pending` and posting to
+`POST /v1/cre/release` (`CRE_MODE=workflow`; see `opaque-cre/README.md`). How it was set up, from the repo root:
 
 ```bash
 railway login
@@ -38,7 +40,7 @@ The service is not connected to GitHub, so a push does not redeploy it:
 Check it: `https://opaque-stack-production.up.railway.app/stack.json` returns
 the config, and `POST /v1/release` (the egress) returns 404.
 
-What the four secrets do:
+What the secrets do:
 
 - `EGRESS_PRIVATE_KEY` pays for settlements and for the attester's rotations.
 - `ATTESTER_FORS_MASTER` derives every generation of the attester's FORS key
@@ -57,15 +59,23 @@ What the four secrets do:
   other power. It is
   used only when `PUBLIC_URL` is set: a laptop's loopback relays are never
   announced.
+- `CREDENTIAL_MAC` is shared with the CRE workflow. It issues and checks
+  recipient credentials, and authenticates CRE's decisions and the releases
+  the egress trusts. With it, `CRE_INTENT_PUBLIC_KEY` (public: the half of the
+  CRE key the wallet seals to) and `CRE_MODE=workflow`. All three come from the
+  key ceremony in `opaque-cre/README.md`. Without `CRE_MODE`, a stand-in
+  decides in-process with a key it keeps in `.stack`, which is what a laptop
+  runs.
 
 Things to know:
 
 - **The mesh turns over weekly, by itself.** Relay keys and the directory
   belong to a week-long generation. At the end of it the stack exits with code
   75, Railway restarts it on failure, and the next boot serves the next
-  generation. A redeploy within a week keeps the same relay keys. The CRE key
-  is still new on every boot, so payments in flight are lost; a wallet picks
-  up the new config on reload.
+  generation. A redeploy within a week keeps the same relay keys, and the CRE
+  key lives in the Vault DON, so the wallet's config holds across restarts.
+  The executor keeps intents in memory, though: a payment in flight at a
+  restart is lost, and its note stays unspent.
 - **To shorten the chain wallets walk,** pin a later generation when you ship
   the frontend: set `mesh.trustRoot` to `meshRootAt(master, g)`
   (`backend/mesh/local-mesh.ts`).

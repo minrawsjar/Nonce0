@@ -5,13 +5,13 @@
 // directory; the kemKeyCommitment announced here is what lets a reader of the
 // Graph check that it agrees with that directory (graph/src/client.ts).
 
-import { createWalletClient, http, keccak256, parseAbi, stringToHex, type Account, type PublicClient } from 'viem';
+import { createWalletClient, keccak256, parseAbi, stringToHex, type Account, type PublicClient } from 'viem';
 
 import type { Address } from '@opaque/protocol-types';
 
 import type { DirectoryEntry } from '../mesh/contracts.ts';
 import type { Relay } from '../mesh/server.ts';
-import { ARC_TESTNET } from './pool.ts';
+import { ARC_TESTNET, rpcTransport } from './pool.ts';
 
 const ABI = parseAbi([
   'function nodes(bytes32) view returns (address operator, string endpoint, bytes32 kemKeyCommitment, uint64 epoch, uint16 reliabilityBps, uint16 batchOccupancy, uint32 recentSelections, uint64 updatedAt)',
@@ -60,7 +60,7 @@ export function relayDirectoryReporter(options: {
   readonly relays: readonly Counters[];
 }) {
   const { publicClient, directory } = options;
-  const wallet = createWalletClient({ account: options.operator, chain: ARC_TESTNET, transport: http() });
+  const wallet = createWalletClient({ account: options.operator, chain: ARC_TESTNET, transport: rpcTransport() });
   const send = async (functionName: 'announce' | 'report', args: readonly unknown[]): Promise<void> => {
     const hash = await wallet.writeContract({ address: directory, abi: ABI, functionName, args } as never);
     const receipt = await publicClient.waitForTransactionReceipt({ hash });
