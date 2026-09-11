@@ -647,12 +647,15 @@ async function onSend(event: SubmitEvent): Promise<void> {
     status.textContent = count === 1
       ? 'Building the ring proof in this browser (a few seconds — the note secret never leaves the page)…'
       : `Building ${count} ring proofs in this browser and sending each across the mesh (the note secrets never leave the page)…`;
+    // Immediate: settle on arrival (score 0), with a deadline taken per note
+    // so a long queue cannot outlive it. Waiting: the user's score and time.
+    const waitForPrivacy = el<HTMLInputElement>('wait-for-privacy').checked;
     const results = await runPaymentLanes(queue, PAYMENT_LANES, async (note) => {
       const ref = await rt.app.submitPayment({
           noteId: note.id,
           recipient: recipient as never,
-          minPrivacyScore: (MIN_FRESHNESS * 100) as PrivacyScore,
-          deadline,
+          minPrivacyScore: (waitForPrivacy ? MIN_FRESHNESS * 100 : 0) as PrivacyScore,
+          deadline: waitForPrivacy ? deadline : requestedDeadline(),
           credentialHandle,
           idempotencyKey: `pay-${note.id}-${Date.now()}` as never,
       });

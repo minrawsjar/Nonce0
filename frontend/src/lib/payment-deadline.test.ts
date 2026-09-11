@@ -3,8 +3,10 @@ import test from 'node:test';
 
 import { paymentDeadline } from './payment-deadline.ts';
 
-test('uses an immediate deadline when privacy waiting is off', () => {
-  assert.equal(paymentDeadline({ waitForPrivacy: false, nowMs: 1_700_000_000_450 }), 1_700_000_001n);
+test('leaves an immediate payment time to arrive when privacy waiting is off', () => {
+  // The executor refuses a deadline that has passed on arrival; a ring
+  // payment's upload alone takes 20–40 s.
+  assert.equal(paymentDeadline({ waitForPrivacy: false, nowMs: 1_700_000_000_450 }), 1_700_000_600n);
 });
 
 test('uses the user-selected latest settlement time when privacy waiting is on', () => {
