@@ -57,8 +57,12 @@ const DEPOSIT_GAS_USDC = 0.2;
  * look unhealthy or their health is unknown, for MAX_WAIT_SECONDS at most.
  */
 const MIN_FRESHNESS = 70;
-/** Payments of one send in flight at once. ponytail: fixed; tune to the relays' capacity if sends grow. */
-const PAYMENT_LANES = 3;
+/**
+ * Payments of one send in flight at once. One: three at once overloaded the
+ * single-machine mesh (a commit went unanswered past its deadline), and was
+ * slower than one at a time. Raise it when the relays run on more machines.
+ */
+const PAYMENT_LANES = 1;
 const MAX_WAIT_SECONDS = 3_600;
 const shortAddress = (value: string) => value ? `${value.slice(0, 6)}…${value.slice(-4)}` : 'Not connected';
 const isRejected = (error: unknown) => typeof error === 'object' && error !== null && 'code' in error && (error as { code: unknown }).code === 4001;
@@ -441,9 +445,8 @@ async function onSend(event: SubmitEvent): Promise<void> {
     status.textContent = 'Getting a policy credential for this recipient…';
     const credentialHandle = await rt.obtainCredential(recipient as `0x${string}`);
 
-    // Each note is its own payment, with its own proof and upload. A few at
-    // once: the proof of one overlaps the ~1 MB upload of another, and the
-    // relays see several unrelated uploads rather than one long one.
+    // Each note is its own payment, with its own proof and ~1 MB upload,
+    // PAYMENT_LANES at a time.
     const group = `send-${Date.now()}`;
     const queue = available.slice(0, count);
     status.textContent = count === 1

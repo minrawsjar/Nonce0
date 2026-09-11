@@ -1,78 +1,92 @@
 # opaque — browser extension
 
-The wallet as a Chrome/Edge/Brave extension. It is not a second codebase: the
-popup is `frontend/app.html`, the same page served at `/app.html`, built by the
-same Vite build.
+The wallet as a Chrome, Brave or Edge extension, in the browser's **side
+panel**. It is not a second codebase: the panel shows `frontend/app.html`, the
+same page served at opaque.credit, from the same Vite build.
 
-## Install it
+It needs no other wallet. MetaMask cannot reach an extension's pages, so this
+one does not use it: you fund your Opaque address by sending USDC to it from
+anywhere (a wallet, an exchange, the faucet), and the first deposit deploys the
+account and deposits in one operation its post-quantum key signs. After that,
+deposits, payments and withdrawals involve no popup at all.
+
+## Build and install
 
 ```sh
 cd frontend && npm install && npm run ext
 ```
 
-Then open `chrome://extensions`, turn on **Developer mode**, choose **Load
-unpacked**, and select `extension/dist`.
+That builds the page against the hosted backend (`VITE_STACK_URL`, default the
+Railway stack) and assembles `extension/dist`, plus
+`extension/opaque-extension-<version>.zip` for the Chrome Web Store.
 
-`dist/` is generated and git-ignored. Rebuild it after any frontend change.
+Load it: open `chrome://extensions` (or `brave://extensions`), turn on
+**Developer mode**, choose **Load unpacked**, and pick `extension/dist`. Click
+the toolbar icon to open the panel.
+
+`dist/` and the zip are generated and git-ignored.
+
+## Publish it on the Chrome Web Store
+
+Brave and Edge install from the Chrome Web Store too. What the store needs:
+
+1. A developer account: <https://chrome.google.com/webstore/devconsole>, a
+   one-time US$5 registration, paid by you.
+2. The zip from `npm run ext`. Bump `version` in `manifest.json` for every
+   upload.
+3. The listing: a description, a 128×128 icon (`icons/128.png`), at least one
+   1280×800 screenshot, and a category.
+4. A privacy policy URL. A wallet handles financial data, so the store
+   requires one. It should say that keys and notes stay in the browser, and
+   what goes to the mesh (sealed payment intents, account reads).
+5. Justify the `sidePanel` permission ("opens the wallet in the side panel").
+   There is no remote code: the extension fetches configuration and data,
+   never scripts.
+
+Wallets get a manual review, typically days. A store install has a different
+extension id from an unpacked one, so it starts with empty storage: move an
+account between them with **Backup** and **Restore**.
 
 ## Why one codebase works
 
 Manifest V3 bans inline `<script>` and inline handlers such as `onclick=`. A
 page that respects that rule runs unmodified in both places, so `app.html`
-respects it from the first line and every handler is attached in `src/app.ts`.
+respects it and every handler is attached in `src/app.ts`. The symptom of
+breaking the rule is a **silently blank panel**, so `build.mjs` scans the
+built HTML and refuses to assemble `dist/` if the rule is broken.
 
-The rule is easy to break by accident and Chrome's symptom is a **silently
-blank popup** — no error dialog, nothing on screen, the reason buried in a
-console nobody has open. So `build.mjs` scans the built HTML and refuses to
-assemble `dist/` if the rule is broken, naming what broke it.
+## What the build does
 
-## What the build changes, and why
-
-Three edits, none of them cosmetic:
-
-**Remote fonts are stripped.** `styles.css` imports Cormorant Garamond and Lora
-from Google Fonts. On a web page that is unremarkable. In a wallet it is a leak:
-the popup would contact `fonts.googleapis.com` every single time it opens,
-handing a third party a request-per-use log of when someone reaches for private
-payments — from the one product that exists to prevent exactly that. The design
-tokens already declare `system-ui` fallbacks, so the extension simply renders in
-the system face. The build **fails** if any remote font reference survives,
-because that check asserts the shipped bytes rather than trusting a regex.
-
-**`crossorigin` is removed.** Vite emits it on script and stylesheet tags. On a
-`chrome-extension://` origin it turns same-origin loads into CORS requests,
-which Chrome then fails.
-
-**The back-link is rewritten.** The hosted page links to the landing page; inside
-the extension that would dead-end on a blank tab.
-
-Only the assets `app.html` actually references are copied, so the landing page's
-~2 MB of photography stays out. The whole extension is about 60 KB.
+- **Follows references.** It copies `app.html`, then every file the page
+  loads, found by following names from the HTML into the JS and CSS: the
+  proof worker, viem's lazy chunks, the fonts. The landing page's ~2 MB of
+  photography stays out; the whole extension is about 290 KB zipped.
+- **Refuses a build without its backend.** Without `VITE_STACK_URL` the page
+  would look for `stack.json` inside the extension and never start.
+- **Asserts no remote fonts.** The wallet serves its own; the build fails if
+  any Google Fonts reference survives, since a wallet that phones a font CDN
+  on every open leaks when someone reaches for private payments.
+- **Removes `crossorigin`**, which turns same-origin loads into CORS requests
+  on a `chrome-extension://` origin, and **rewrites the back-link** to
+  opaque.credit.
 
 ## Permissions
 
-`storage` only. No host permissions, no content scripts, no background service
-worker — the wallet does not inject a provider into pages and does not read any
-site. Add permissions when a feature genuinely needs them, not before; every one
-of them is shown to the user at install time.
+`sidePanel` only. No host permissions, no content scripts: the wallet does not
+inject a provider into pages and reads no site. The background worker only
+tells the browser to open the panel on the toolbar click (or a tab, where the
+browser has no side panel).
+
+## Not done yet
+
+**Key rotation** is still paid by a funding wallet, which the extension does
+not have. Each deposit or withdrawal uses one of the account key's 32
+signatures, and the panel shows how many are left. Until rotation goes through
+the account itself, rotate by restoring a backup on opaque.credit, rotating
+there with MetaMask, and restoring back.
 
 ## Icons
 
 `icons/*.png` are generated by `make-icons.mjs` — the ring of eight, drawn into
-a pixel buffer and encoded with Node's built-in zlib. No image dependency, and
-regenerating them is `node extension/make-icons.mjs`.
-
-## Not done yet
-
-The signer. There is no FORS+C key in this build, and there is a real obstacle
-in the way: **WebCrypto has no Keccak, SHA-3, SHAKE or any relative** — only
-SHA-1, SHA-256, SHA-384 and SHA-512. Spec §5.1 selects Keccak256 to match the
-EVM opcode cost, so the extension must ship its own hash, and a few-time
-signature evaluates thousands of them per signature.
-
-Manifest V3 permits `wasm-unsafe-eval`, which `manifest.json` already declares,
-so a WASM Keccak is the viable route. Worth measuring before committing: SHA-256
-is hardware-accelerated in every browser and costs 2× per word on-chain
-(precompile `0x02` at 60 + 12/word against the Keccak opcode's 30 + 6/word).
-That is a real trade between client speed and the 30M-gas ceiling, and §6.3's
-spike should measure both rather than assume.
+a pixel buffer and encoded with Node's built-in zlib. Regenerate with
+`node extension/make-icons.mjs`.

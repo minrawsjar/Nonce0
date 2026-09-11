@@ -27,7 +27,10 @@
 // That run then rotates the key, withdraws what is left, backs up, and restores
 // the backup into a fresh browser. E2E_NOTES=<n> sets both amount fields: it
 // deposits n notes at once and sends n USDC as n payments, and waits for all n
-// to settle. Every run fails if the page sent a request
+// to settle. E2E_EXTENSION=<extension/dist> runs the wallet as the extension
+// (Playwright's Chromium, which still loads unpacked extensions): no wallet in
+// the page at all, and Node sends USDC to the account's address before the
+// first deposit, which deploys it. Every run fails if the page sent a request
 // to anyone but its own origin and the stack: no RPC, bundler, subgraph or CDN.
 //
 // Uses the Playwright already installed for the wallet SDK's browser test, and
@@ -48,7 +51,8 @@ import { ARC_TESTNET } from '../chain/pool.ts';
 
 const ring8 = poolFor(1_000_000, 'RING_8');
 const scope = { chainId: asChainId(BigInt(deployment.network.chainId)), pool: ring8.address, denomination: ring8.denomination } as never;
-const APP_URL = process.env['APP_URL'] ?? 'http://127.0.0.1:5173/app.html';
+let APP_URL = process.env['APP_URL'] ?? 'http://127.0.0.1:5173/app.html';
+const EXTENSION = process.env['E2E_EXTENSION'];
 const WALLET_KEY = process.env['E2E_WALLET_KEY'] as `0x${string}` | undefined;
 const pc = createPublicClient({ chain: ARC_TESTNET, transport: http() });
 const RECIPIENT = deployment.accounts.attester;
@@ -56,9 +60,20 @@ const NOTES = Number(process.env['E2E_NOTES'] ?? 1);
 
 const PROFILE = process.env['E2E_PROFILE'];
 const launch = { channel: 'chrome', headless: true };
-const context = PROFILE === undefined
-  ? await chromium.launch(launch).then((b: any) => b.newContext())
-  : await chromium.launchPersistentContext(PROFILE, launch);
+const context = EXTENSION !== undefined
+  // E2E_CHROMIUM: a Chromium or Chrome for Testing binary, if Playwright's own is not installed.
+  ? await chromium.launchPersistentContext(PROFILE ?? '', {
+    ...(process.env['E2E_CHROMIUM'] ? { executablePath: process.env['E2E_CHROMIUM'] } : { channel: 'chromium' }),
+    headless: true, args: [`--disable-extensions-except=${EXTENSION}`, `--load-extension=${EXTENSION}`],
+  })
+  : PROFILE === undefined
+    ? await chromium.launch(launch).then((b: any) => b.newContext())
+    : await chromium.launchPersistentContext(PROFILE, launch);
+if (EXTENSION !== undefined) {
+  // The extension's id is in its service worker's URL.
+  const worker = context.serviceWorkers()[0] ?? await context.waitForEvent('serviceworker');
+  APP_URL = `chrome-extension://${new URL(worker.url()).host}/app.html`;
+}
 const page = await context.newPage();
 
 if (WALLET_KEY === undefined) {
@@ -78,7 +93,8 @@ if (WALLET_KEY === undefined) {
 const signer = WALLET_KEY === undefined ? undefined : createWalletClient({ account: privateKeyToAccount(WALLET_KEY), chain: ARC_TESTNET, transport: http() });
 // Each eth_sendTransaction is one confirmation a real wallet would pop up.
 let confirmations = 0;
-if (signer !== undefined) {
+// The extension's page has no wallet: MetaMask does not inject into extensions.
+if (signer !== undefined && EXTENSION === undefined) {
   const account = signer.account;
   await page.exposeFunction('__e2eWallet', async (method: string, params: readonly any[]) => {
     switch (method) {
@@ -103,7 +119,7 @@ const errors: string[] = [];
 page.on('pageerror', (e: Error) => errors.push(e.message));
 // What the page itself sends, to check nothing that names the wallet goes direct.
 const direct: { url: string; body: string }[] = [];
-page.on('request', (r: { url(): string; postData(): string | null }) => { if (!r.url().includes('railway.app') && !r.url().includes('opaque.credit') && !r.url().includes('127.0.0.1')) direct.push({ url: r.url(), body: r.postData() ?? '' }); });
+page.on('request', (r: { url(): string; postData(): string | null }) => { if (!r.url().includes('railway.app') && !r.url().includes('opaque.credit') && !r.url().includes('127.0.0.1') && !r.url().startsWith('chrome-extension://')) direct.push({ url: r.url(), body: r.postData() ?? '' }); });
 page.on('console', (m: { type(): string; text(): string }) => { if (m.type() === 'error') errors.push(m.text()); });
 const t0 = Date.now();
 const step = (s: string) => process.stdout.write(`[${((Date.now() - t0) / 1000).toFixed(1).padStart(5)}s] ${s}\n`);
@@ -116,12 +132,7 @@ step(`private balance: ${await page.textContent('#balance')} USDC in ${await pag
 
 if (signer !== undefined && process.env['E2E_PQ'] === '1') {
   await page.click('#account-button');
-  await page.waitForFunction(() => /Active|Not activated/.test(document.getElementById('account-state')?.textContent ?? ''), null, { timeout: 60_000 });
-  if (/Not activated/.test((await page.textContent('#account-state')) ?? '')) {
-    await page.click('#activate');
-    await page.waitForFunction(() => /Activated|Could not activate/.test(document.getElementById('wallet-status')?.textContent ?? ''), null, { timeout: 180_000 });
-    step(`activate (funding wallet pays PQAccountFactory): ${await page.textContent('#wallet-status')}`);
-  }
+  await page.waitForFunction(() => /Active|Not on chain/.test(document.getElementById('account-state')?.textContent ?? ''), null, { timeout: 60_000 });
   const address = (await page.textContent('#account-address')) as `0x${string}`;
   if ((await pc.getBalance({ address })) < parseEther(String(NOTES + 0.1))) {
     const hash = await signer.sendTransaction({ to: address, value: parseEther(String(NOTES + 0.2)) });
@@ -132,6 +143,15 @@ if (signer !== undefined && process.env['E2E_PQ'] === '1') {
 }
 
 if (signer !== undefined && (await page.textContent('#balance')) === '0.00') {
+  if (EXTENSION !== undefined) {
+    // What a user does from any wallet or exchange: USDC to the Receive address.
+    await page.waitForFunction(() => /^0x[0-9a-f]{40}$/.test(document.getElementById('account-address')?.textContent ?? ''), null, { timeout: 60_000 });
+    const address = (await page.textContent('#account-address')) as `0x${string}`;
+    if ((await pc.getBalance({ address })) < parseEther(String(NOTES + 0.2))) {
+      await pc.waitForTransactionReceipt({ hash: await signer.sendTransaction({ to: address, value: parseEther(String(NOTES + 0.25)) }) });
+    }
+    step(`funded ${address} from outside the wallet: ${Number(await pc.getBalance({ address })) / 1e18} USDC`);
+  }
   await page.fill('#deposit-count', String(NOTES));
   const before = confirmations;
   await page.click('#deposit');
@@ -194,18 +214,17 @@ await page.fill('#send-amount', String(NOTES));
 const rowsBefore = await page.locator('#intent-list .intent').count();
 const balanceAfter = `${Number(await page.textContent('#balance')) - NOTES}.00`;
 await page.click('#arm');
-await page.waitForFunction(() => /across the mesh|Not sent|were not sent/.test(document.getElementById('send-status')?.textContent ?? ''), null, { timeout: 420_000 });
+await page.waitForFunction(() => /Sent across the mesh|payments across the mesh|Not sent|were not sent/.test(document.getElementById('send-status')?.textContent ?? ''), null, { timeout: 420_000 });
 step(`send: ${await page.textContent('#send-status')}`);
 
-// The newest rows are first; an older settled row must not stand in for these.
+// One row per send, newest first: it is settled when it links every settlement.
 await page.waitForFunction(([n, before]: number[]) => {
-  const rows = [...document.querySelectorAll('#intent-list .intent')];
-  return rows.length >= before! + n! && rows.slice(0, n).every((r) => /view settlement/.test(r.textContent ?? ''));
+  const rows = document.querySelectorAll('#intent-list .intent');
+  return rows.length >= before! + 1 && rows[0]!.querySelectorAll('a').length === n;
 }, [NOTES, rowsBefore], { timeout: 420_000 });
 await page.waitForFunction((b: string) => document.getElementById('balance')?.textContent === b, balanceAfter, { timeout: 60_000 });
-const txs: string[] = await page.$$eval('#intent-list .intent', (rows: Element[], n: number) =>
-  rows.slice(0, n).map((r) => r.querySelector('a')?.getAttribute('href') ?? ''), NOTES);
-step(`activity (status through the mesh): ${txs.length} settled  ${txs.join('  ')}`);
+const txs: string[] = await page.$$eval('#intent-list .intent:first-child a', (links: Element[]) => links.map((a) => a.getAttribute('href') ?? ''));
+step(`activity (status through the mesh): one row, ${await page.textContent('#intent-list .intent-amt')} ${await page.textContent('#intent-list .intent-state')}  ${txs.join('  ')}`);
 step(`private balance after: ${await page.textContent('#balance')} USDC`);
 if (errors.length) step(`page errors: ${errors.slice(0, 3).join(' | ')}`);
 // The page talks to its own origin and the stack, and to nobody else: its reads
