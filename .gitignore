@@ -21,6 +21,7 @@ nonce0-*.tgz
 
 # assembled unpacked extension — rebuild with `node extension/build.mjs`
 extension/dist/
+extension/*.zip
 
 # vite build output
 frontend/dist/

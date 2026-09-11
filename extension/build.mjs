@@ -8,7 +8,8 @@
 // codebase: the popup is the same page served at /app.html, which is the whole
 // reason app.ts is written to Manifest V3's rules in the first place.
 
-import { readFileSync, writeFileSync, mkdirSync, copyFileSync, rmSync, existsSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, copyFileSync, rmSync, existsSync, readdirSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, basename } from 'node:path';
 
@@ -53,12 +54,29 @@ if (violations.length) {
 
 // ── copy only what the page references ────────────────────────────────────
 //
-// The landing page's photography is ~2MB and the popup never shows it. Reading
-// the refs out of the HTML rather than copying dist/ wholesale keeps the
-// extension at a few tens of kilobytes and needs no allow-list to maintain.
+// The landing page's photography is ~2MB and the wallet never shows it. The
+// HTML names the entry script and stylesheet; those name the rest (the proof
+// worker, viem's lazy chunks, the fonts), so references are followed file to
+// file until nothing new turns up. No allow-list to maintain, and nothing the
+// page loads is left behind.
 
+const available = readdirSync(join(BUILT, 'assets'));
 const refs = [...html.matchAll(/(?:src|href)="\.\/(assets\/[^"]+)"/g)].map((m) => m[1]);
-for (const ref of refs) copyFileSync(join(BUILT, ref), join(DIST, basename(ref) === ref ? ref : ref));
+for (let i = 0; i < refs.length; i++) {
+  if (!/\.(js|css)$/.test(refs[i])) continue;
+  const body = readFileSync(join(BUILT, refs[i]), 'utf8');
+  for (const name of available) if (body.includes(name) && !refs.includes(`assets/${name}`)) refs.push(`assets/${name}`);
+}
+for (const ref of refs) copyFileSync(join(BUILT, ref), join(DIST, ref));
+
+// The wallet finds its backend through stack.json. A build without
+// VITE_STACK_URL looks for it next to app.html, which inside the extension is
+// a file that does not exist, and the wallet would open to "Could not start".
+const code = refs.filter((r) => r.endsWith('.js')).map((r) => readFileSync(join(BUILT, r), 'utf8')).join('\n');
+if (!/https:\/\/[^"'`\s]+\/stack\.json/.test(code)) {
+  console.error('The build does not name its backend. Build with VITE_STACK_URL set (npm run ext does).');
+  process.exit(1);
+}
 
 // ── three required edits ──────────────────────────────────────────────────
 
@@ -114,9 +132,20 @@ if (leaks.length) {
 }
 
 copyFileSync(join(HERE, 'manifest.json'), join(DIST, 'manifest.json'));
+copyFileSync(join(HERE, 'background.js'), join(DIST, 'background.js'));
 for (const size of [16, 32, 48, 128]) {
   copyFileSync(join(HERE, 'icons', `${size}.png`), join(DIST, 'icons', `${size}.png`));
 }
 
-console.log(`built ${DIST}  (${refs.length + 5} files)`);
-console.log('load it: chrome://extensions → Developer mode → Load unpacked');
+// The file the Chrome Web Store takes: dist/'s contents, manifest at the root.
+const { version } = JSON.parse(readFileSync(join(HERE, 'manifest.json'), 'utf8'));
+const zip = join(HERE, `opaque-extension-${version}.zip`);
+rmSync(zip, { force: true });
+try {
+  execFileSync('zip', ['-qr', '-X', zip, '.'], { cwd: DIST });
+} catch {
+  console.warn('no zip command: extension/dist is built, but not zipped for the store');
+}
+
+console.log(`built ${DIST}  (${refs.length + 6} files)${existsSync(zip) ? `, and ${basename(zip)} for the Chrome Web Store` : ''}`);
+console.log('load it: chrome://extensions → Developer mode → Load unpacked → extension/dist');

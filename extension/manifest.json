@@ -1,12 +1,19 @@
 {
   "manifest_version": 3,
   "name": "opaque",
-  "version": "0.1.0",
-  "description": "A private payment wallet whose spend key is post-quantum today.",
+  "version": "0.2.0",
+  "description": "Private USDC payments on Arc: a post-quantum account, ring-signed notes, and a relay mesh.",
 
   "action": {
-    "default_popup": "app.html",
-    "default_title": "opaque"
+    "default_title": "Open opaque"
+  },
+
+  "side_panel": {
+    "default_path": "app.html"
+  },
+
+  "background": {
+    "service_worker": "background.js"
   },
 
   "icons": {
@@ -16,7 +23,7 @@
     "128": "icons/128.png"
   },
 
-  "permissions": ["storage"],
+  "permissions": ["sidePanel"],
 
   "content_security_policy": {
     "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'"
