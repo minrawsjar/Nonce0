@@ -16,6 +16,8 @@ export type ContractName =
   | 'pqKeyRegistry'
   | 'singleNotePqVerifier'
   | 'attestedRingVerifier'
+  | 'attestedRingVerifier10'
+  | 'attestedRingVerifier100'
   | 'relayDirectory'
   | 'crePolicyGate'
   | 'creBatchSettlement'

@@ -20,6 +20,15 @@ import {Deployments} from "./Deployments.sol";
 /// ATTESTER_EOA_KEY — never from a command argument, where they would sit in a
 /// process list and shell history.
 ///
+/// Another denomination, same attester (already registered, so no attester key):
+///
+///   REGISTER_ATTESTER=false DENOMINATION=10000000 \
+///     forge script script/DeployRingPool.s.sol --rpc-url arc_testnet --broadcast
+///
+/// One attester serves any number of pools: each verifier binds its own pool id
+/// and denomination into what the attester signs, and PQKeyRegistry.consume is
+/// open to any verifier, so the attester's key budget and rotation are shared.
+///
 /// TWO SENDERS, deliberately. The deployer deploys and pays. The attester
 /// registers from its OWN address, because PQKeyRegistry binds a key to
 /// msg.sender at registration — and that is the ONLY thing msg.sender ever
@@ -33,18 +42,12 @@ contract DeployRingPool is Deployments {
     function run() external {
         _assertChain();
         uint256 deployerPk = vm.envUint("PRIVATE_KEY");
-        uint256 attesterPk = vm.envUint("ATTESTER_EOA_KEY");
         address deployer = vm.addr(deployerPk);
-        address attester = vm.addr(attesterPk);
-        require(attester == vm.envAddress("ATTESTER"), "ATTESTER does not match ATTESTER_EOA_KEY");
+        bool registerAttester = vm.envOr("REGISTER_ATTESTER", true);
+        uint256 attesterPk = registerAttester ? vm.envUint("ATTESTER_EOA_KEY") : 0;
+        address attester = registerAttester ? vm.addr(attesterPk) : vm.parseJsonAddress(_config(), ".accounts.attester");
+        if (registerAttester) require(attester == vm.envAddress("ATTESTER"), "ATTESTER does not match ATTESTER_EOA_KEY");
         require(attester != deployer, "the attester must not be the deployer");
-
-        bytes32 pk = vm.envBytes32("ATTESTER_PK_COMMITMENT");
-        bytes32 next = vm.envBytes32("ATTESTER_NEXT_COMMITMENT");
-        // FORS+C k=32,a=8: forgery odds ~1e-30 at 32 signatures, ~52% at 1000.
-        // The registry refuses the 33rd, so the attester MUST rotate by then.
-        uint64 maxUses = uint64(vm.envOr("ATTESTER_MAX_USES", uint256(32)));
-        uint64 rotationDeadline = uint64(block.timestamp + 30 days);
         uint256 denomination = vm.envOr("DENOMINATION", uint256(1_000_000));
 
         IPQKeyRegistry registry = IPQKeyRegistry(_contract("pqKeyRegistry"));
@@ -65,24 +68,32 @@ contract DeployRingPool is Deployments {
         );
         AttestedRingVerifier verifier = new AttestedRingVerifier(registry, attester, poolId, denomination);
         PrivatePool pool = new PrivatePool(IERC20(usdc), denomination, verifier);
-        (bool funded,) = payable(attester).call{value: ATTESTER_GAS_FUND}("");
-        require(funded, "funding the attester failed");
+        if (registerAttester) {
+            (bool funded,) = payable(attester).call{value: ATTESTER_GAS_FUND}("");
+            require(funded, "funding the attester failed");
+        }
         vm.stopBroadcast();
 
         require(address(pool) == predictedPool, "pool address prediction failed");
         require(pool.poolId() == poolId, "pool id disagreement");
 
         // ── attester: one registration, then its ECDSA key is irrelevant ──
-        vm.startBroadcast(attesterPk);
-        PQKeyRegistry(address(registry)).register(pk, next, maxUses, rotationDeadline);
-        vm.stopBroadcast();
+        if (registerAttester) {
+            // FORS+C k=32,a=8: forgery odds ~1e-30 at 32 signatures, ~52% at 1000.
+            // The registry refuses the 33rd, so the attester MUST rotate by then.
+            uint64 maxUses = uint64(vm.envOr("ATTESTER_MAX_USES", uint256(32)));
+            vm.startBroadcast(attesterPk);
+            PQKeyRegistry(address(registry)).register(
+                vm.envBytes32("ATTESTER_PK_COMMITMENT"), vm.envBytes32("ATTESTER_NEXT_COMMITMENT"), maxUses, uint64(block.timestamp + 30 days)
+            );
+            vm.stopBroadcast();
+        }
 
         console2.log("chainId              ", block.chainid);
         console2.log("AttestedRingVerifier ", address(verifier));
         console2.log("PrivatePool (RING_8) ", address(pool));
         console2.log("attester             ", attester);
         console2.log("denomination         ", denomination);
-        console2.log("attester maxUses     ", maxUses);
         console2.logBytes32(poolId);
     }
 }

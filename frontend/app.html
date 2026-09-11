@@ -41,7 +41,7 @@
           <button id="action-send" type="button"><i>↗</i><span>Send</span></button>
           <button id="action-receive" type="button"><i>↙</i><span>Receive</span></button>
           <button id="deposit" type="button"><i>↓</i><span>Deposit</span></button>
-          <label class="deposit-amount" for="deposit-count"><span>Deposit amount</span><span class="amount-input"><input id="deposit-count" type="number" autocomplete="off" min="1" max="10" step="1" value="1" inputmode="numeric"><span class="unit">USDC</span></span><small>As 1-USDC notes, so none stands out in a ring</small></label>
+          <label class="deposit-amount" for="deposit-count"><span>Deposit amount</span><span class="amount-input"><input id="deposit-count" type="number" autocomplete="off" min="1" step="1" value="1" inputmode="numeric"><span class="unit">USDC</span></span><small id="deposit-split">As 100-, 10- and 1-USDC notes, each hidden among notes its size</small></label>
         </div>
         <p class="status" id="deposit-status" role="status"></p>
 
@@ -60,7 +60,7 @@
       <section class="view narrow" id="view-send" aria-labelledby="tab-send" hidden>
         <div class="title"><button class="back" data-back type="button">←</button><div><p class="eyebrow">Private transfer</p><h1>Send USDC</h1><p>Equal-sized notes, each sent privately across the mesh.</p></div></div>
         <form class="panel send-form" id="send-form">
-          <label class="amount" for="send-amount"><span>Amount</span><strong><input id="send-amount" type="number" autocomplete="off" min="1" step="1" value="1" inputmode="numeric" aria-describedby="send-amount-note"> <small>USDC</small></strong><p id="send-amount-note">Whole USDC. Each one is its own note and its own private payment; several sent together to one address are easier to link than one.</p></label>
+          <label class="amount" for="send-amount"><span>Amount</span><strong><input id="send-amount" type="number" autocomplete="off" min="1" step="1" value="1" inputmode="numeric" aria-describedby="send-amount-note"> <small>USDC</small></strong><p id="send-amount-note">Whole USDC, paid with your 100-, 10- and 1-USDC notes: each note is one private payment, so 100 is one and 123 is six. Several to one address are easier to link than one.</p></label>
           <label class="field" for="recipient"><span>Recipient</span><input id="recipient" class="mono" type="text" placeholder="0x0000…" autocomplete="off" spellcheck="false"><small>Arc testnet address</small></label>
           <div class="privacy-note"><b>Timing protection is on</b><p>Usually settles within seconds. If the relays look unhealthy, the payment waits, sealed, for up to an hour rather than go out with thin cover.</p></div>
           <button class="primary" id="arm" type="submit">Review private transfer</button>
@@ -72,7 +72,7 @@
         <div class="title"><button class="back" data-back type="button">←</button><div><p class="eyebrow">Privacy route</p><h1>Your cover set</h1><p>Every member is shown identically. The wallet never reveals which one belongs to you.</p></div></div>
         <div class="privacy-grid">
           <section class="panel ring-panel"><div id="ring-wrap"></div><p>One member signed. No member is singled out.</p></section>
-          <div class="privacy-side"><dl class="stats"><div><dt>Pool freshness</dt><dd id="freshness-now">—</dd></div><div><dt>Eligible members</dt><dd id="pool-size">—</dd></div></dl><section class="panel route"><p class="eyebrow">Relay path · 3 hops</p><div id="hops"></div><p>Each payment draws a fresh route from the verified relay directory.</p></section></div>
+          <div class="privacy-side"><dl class="stats"><div><dt>Pool freshness</dt><dd id="freshness-now">—</dd></div><div><dt>Deposits per pool</dt><dd id="pool-size">—</dd></div></dl><section class="panel route"><p class="eyebrow">Relay path · 3 hops</p><div id="hops"></div><p>Each payment draws a fresh route from the verified relay directory.</p></section></div>
         </div>
       </section>
 

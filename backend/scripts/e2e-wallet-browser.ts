@@ -27,7 +27,10 @@
 // That run then rotates the key, withdraws what is left, backs up, and restores
 // the backup into a fresh browser. E2E_NOTES=<n> sets both amount fields: it
 // deposits n notes at once and sends n USDC as n payments, and waits for all n
-// to settle. E2E_EXTENSION=<extension/dist> runs the wallet as the extension
+// to settle. E2E_DEPOSIT and E2E_SEND set the two amounts apart, in whole USDC:
+// the page splits each into 100-, 10- and 1-USDC notes, so E2E_SEND=11 is two
+// payments. E2E_REFUSE=<usdc> first tries a send the notes cannot make and
+// expects the page to refuse it. E2E_EXTENSION=<extension/dist> runs the wallet as the extension
 // (Playwright's Chromium, which still loads unpacked extensions): no wallet in
 // the page at all, and Node sends USDC to the account's address before the
 // first deposit, which deploys it. Every run fails if the page sent a request
@@ -57,6 +60,10 @@ const WALLET_KEY = process.env['E2E_WALLET_KEY'] as `0x${string}` | undefined;
 const pc = createPublicClient({ chain: ARC_TESTNET, transport: http() });
 const RECIPIENT = deployment.accounts.attester;
 const NOTES = Number(process.env['E2E_NOTES'] ?? 1);
+const DEPOSIT = Number(process.env['E2E_DEPOSIT'] ?? NOTES);
+const SEND = Number(process.env['E2E_SEND'] ?? NOTES);
+/** One payment per note: 1, 10 and 100 USDC notes, so the digits' sum. */
+const PAYMENTS = [...String(SEND)].reduce((sum, d) => sum + Number(d), 0);
 
 const PROFILE = process.env['E2E_PROFILE'];
 const launch = { channel: 'chrome', headless: true };
@@ -134,8 +141,8 @@ if (signer !== undefined && process.env['E2E_PQ'] === '1') {
   await page.click('#account-button');
   await page.waitForFunction(() => /Active|Not on chain/.test(document.getElementById('account-state')?.textContent ?? ''), null, { timeout: 60_000 });
   const address = (await page.textContent('#account-address')) as `0x${string}`;
-  if ((await pc.getBalance({ address })) < parseEther(String(NOTES + 0.1))) {
-    const hash = await signer.sendTransaction({ to: address, value: parseEther(String(NOTES + 0.2)) });
+  if ((await pc.getBalance({ address })) < parseEther(String(DEPOSIT + 0.1))) {
+    const hash = await signer.sendTransaction({ to: address, value: parseEther(String(DEPOSIT + 0.2)) });
     await pc.waitForTransactionReceipt({ hash });
   }
   step(`PQ account ${address}: ${await page.textContent('#account-state')}`);
@@ -147,17 +154,18 @@ if (signer !== undefined && (await page.textContent('#balance')) === '0.00') {
     // What a user does from any wallet or exchange: USDC to the Receive address.
     await page.waitForFunction(() => /^0x[0-9a-f]{40}$/.test(document.getElementById('account-address')?.textContent ?? ''), null, { timeout: 60_000 });
     const address = (await page.textContent('#account-address')) as `0x${string}`;
-    if ((await pc.getBalance({ address })) < parseEther(String(NOTES + 0.2))) {
-      await pc.waitForTransactionReceipt({ hash: await signer.sendTransaction({ to: address, value: parseEther(String(NOTES + 0.25)) }) });
+    if ((await pc.getBalance({ address })) < parseEther(String(DEPOSIT + 0.2))) {
+      await pc.waitForTransactionReceipt({ hash: await signer.sendTransaction({ to: address, value: parseEther(String(DEPOSIT + 0.25)) }) });
     }
     step(`funded ${address} from outside the wallet: ${Number(await pc.getBalance({ address })) / 1e18} USDC`);
   }
-  await page.fill('#deposit-count', String(NOTES));
+  await page.fill('#deposit-count', String(DEPOSIT));
+  step(`deposit preview: ${await page.textContent('#deposit-split')}`);
   const before = confirmations;
   await page.click('#deposit');
   await page.waitForFunction(() => /Deposited|Deposit sent|Deposit failed/.test(document.getElementById('deposit-status')?.textContent ?? ''), null, { timeout: 300_000 });
   step(`deposit (through the page's own button): ${await page.textContent('#deposit-status')} · funding-wallet confirmations: ${confirmations - before}`);
-  await page.waitForFunction((n: number) => document.getElementById('balance')?.textContent === `${n}.00`, NOTES, { timeout: 120_000 });
+  await page.waitForFunction((n: number) => document.getElementById('balance')?.textContent === `${n}.00`, DEPOSIT, { timeout: 120_000 });
   step(`private balance: ${await page.textContent('#balance')} USDC in ${await page.textContent('#note-count')}`);
 }
 
@@ -203,16 +211,23 @@ if (signer !== undefined && process.env['E2E_PQ'] === '1') {
 }
 
 await page.click('#tab-ring');
-await page.waitForFunction(() => /deposits/.test(document.getElementById('pool-size')?.textContent ?? ''), null, { timeout: 90_000 });
+await page.waitForFunction(() => /USDC/.test(document.getElementById('pool-size')?.textContent ?? ''), null, { timeout: 90_000 });
 step(`ring view (through the mesh): ${await page.textContent('#pool-size')} · freshness ${await page.textContent('#freshness-now')} · path ${(await page.textContent('#hops'))?.replace(/\s+/g, ' ')}`);
 
 await page.click('#tab-send');
 await page.fill('#recipient', RECIPIENT);
-await page.fill('#send-amount', String(NOTES));
+if (process.env['E2E_REFUSE'] !== undefined) {
+  await page.fill('#send-amount', process.env['E2E_REFUSE']);
+  await page.click('#arm');
+  await page.waitForFunction(() => /can't make/.test(document.getElementById('send-status')?.textContent ?? ''), null, { timeout: 120_000 });
+  step(`refused, as it should be: ${await page.textContent('#send-status')}`);
+  await page.fill('#recipient', RECIPIENT);
+}
+await page.fill('#send-amount', String(SEND));
 // The page adds its rows and refreshes its balance only after the last
 // payment is out, while its own poll may render earlier ones: wait for both.
 const rowsBefore = await page.locator('#intent-list .intent').count();
-const balanceAfter = `${Number(await page.textContent('#balance')) - NOTES}.00`;
+const balanceAfter = `${Number(await page.textContent('#balance')) - SEND}.00`;
 await page.click('#arm');
 await page.waitForFunction(() => /Sent across the mesh|payments across the mesh|Not sent|were not sent/.test(document.getElementById('send-status')?.textContent ?? ''), null, { timeout: 420_000 });
 step(`send: ${await page.textContent('#send-status')}`);
@@ -221,7 +236,7 @@ step(`send: ${await page.textContent('#send-status')}`);
 await page.waitForFunction(([n, before]: number[]) => {
   const rows = document.querySelectorAll('#intent-list .intent');
   return rows.length >= before! + 1 && rows[0]!.querySelectorAll('a').length === n;
-}, [NOTES, rowsBefore], { timeout: 420_000 });
+}, [PAYMENTS, rowsBefore], { timeout: 420_000 });
 await page.waitForFunction((b: string) => document.getElementById('balance')?.textContent === b, balanceAfter, { timeout: 60_000 });
 const txs: string[] = await page.$$eval('#intent-list .intent:first-child a', (links: Element[]) => links.map((a) => a.getAttribute('href') ?? ''));
 step(`activity (status through the mesh): one row, ${await page.textContent('#intent-list .intent-amt')} ${await page.textContent('#intent-list .intent-state')}  ${txs.join('  ')}`);

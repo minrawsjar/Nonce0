@@ -24,6 +24,9 @@
 //                any number of notes. The first deploys the account too, from
 //                USDC at its address; a funding wallet, where there is one,
 //                tops it up in one confirmation. Attributable either way.
+//   pools        one RING_8 pool per denomination (1, 10, 100 USDC), compiled
+//                in from deployments/ like the relay root: a server that
+//                could name the pools could take the deposits.
 
 import type {
   CredentialHandle,
@@ -65,7 +68,6 @@ export interface StackConfig {
   readonly trustRoot: DirectoryTrustRoot;
   readonly cre: { readonly publicKey: `0x${string}`; readonly encryptionKeyId: string; readonly policyVersion: string };
   readonly credentialUrl: string;
-  readonly pool: { readonly address: `0x${string}`; readonly denomination: number; readonly proofMode: string };
   readonly capabilities: { readonly pqWallet: 'MOCK' | 'LIVE'; readonly graph: 'LIVE' | 'FIXTURE'; readonly confidentialExecution: 'ATTESTED' | 'SIMULATED'; readonly policyScope: 'CRE_WORKFLOW_ONLY' };
 }
 
@@ -99,14 +101,15 @@ export async function loadStack(url: string = import.meta.env['VITE_STACK_URL'] 
 
 export interface WalletRuntime {
   readonly app: ReturnType<typeof createPaymentApplication>;
-  readonly scope: PoolScope;
+  /** Every ring pool, largest denomination first. */
+  readonly scopes: readonly PoolScope[];
   readonly config: StackConfig;
   /** A fresh 3-hop path, drawn from the verified directory. */
   pathFor(): Promise<RelayPath>;
   /** Asks the policy authority for a credential ONCE, before paying. */
   obtainCredential(recipient: `0x${string}`): Promise<CredentialHandle>;
-  readRing(): Promise<RingSnapshot>;
-  readPrivacy(): Promise<PrivacyConditions>;
+  readRing(scope: PoolScope): Promise<RingSnapshot>;
+  readPrivacy(scope: PoolScope): Promise<PrivacyConditions>;
   readStatus(handle: StatusHandle): Promise<IntentStatus>;
   /** The account's USDC, and the gas it has prepaid to the EntryPoint. */
   accountFunds(address: `0x${string}`): Promise<{ readonly usdc: number; readonly prepaidGas: number }>;
@@ -122,11 +125,14 @@ export interface WalletRuntime {
 
 export async function startWallet(config?: StackConfig): Promise<WalletRuntime> {
   const cfg = config ?? (await loadStack());
-  const scope: PoolScope = {
-    chainId: BigInt(deployment.network.chainId) as PoolScope['chainId'],
-    pool: cfg.pool.address.toLowerCase() as PoolScope['pool'],
-    denomination: cfg.pool.denomination as PoolScope['denomination'],
-  };
+  const scopes: readonly PoolScope[] = deployment.pools
+    .filter((p) => p.proofMode === 'RING_8')
+    .sort((a, b) => b.denomination - a.denomination)
+    .map((p) => ({
+      chainId: BigInt(deployment.network.chainId) as PoolScope['chainId'],
+      pool: p.address as PoolScope['pool'],
+      denomination: p.denomination as PoolScope['denomination'],
+    }));
 
   // §8.2 health from the Graph, asked through the mesh (the exit queries the
   // subgraph) and clamped: it weighs the directory's relays, never adds one.
@@ -173,15 +179,12 @@ export async function startWallet(config?: StackConfig): Promise<WalletRuntime> 
   });
   // Deposits come from the account: one UserOperation its PQ key signs,
   // however many notes, and no wallet popup. The first also deploys it.
-  const depositMany: DepositMany = async (input) => {
-    const state = await wallet.getState();
-    const hash = await opsFor(state.accountAddress as `0x${string}`).deposit(input);
-    return input.commitments.map(() => hash);
-  };
+  const depositMany: DepositMany = async (groups) =>
+    opsFor((await wallet.getState()).accountAddress as `0x${string}`).deposit(groups);
   const pool: AdapterPorts['pool'] = {
     ...browserPool,
     depositMany,
-    deposit: async ({ scope, commitment }) => (await depositMany({ scope, commitments: [commitment] }))[0]!,
+    deposit: async ({ scope, commitment }) => depositMany([{ scope, commitments: [commitment] }]),
     isNullifierSpent: (s, nullifier) => chain.isNullifierSpent(s, nullifier),
     capabilities: async (p) => capabilitiesOf((await readOne(walletRpc, p, 'capabilities', [])).value as never, cfg.capabilities),
   };
@@ -217,8 +220,8 @@ export async function startWallet(config?: StackConfig): Promise<WalletRuntime> 
     // Keys from the verified directory — the rule on AdapterPorts.graph.
     graph: {
       getRelaySnapshot: async () => bootstrap.snapshot(),
-      getRingSnapshot: async () => (await query<RingSnapshot>({ kind: 'RING_SNAPSHOT', scope })).value,
-      getPrivacyConditions: async () => (await query<PrivacyConditions>({ kind: 'PRIVACY_CONDITIONS', scope })).value,
+      getRingSnapshot: async (scope) => (await query<RingSnapshot>({ kind: 'RING_SNAPSHOT', scope })).value,
+      getPrivacyConditions: async (scope) => (await query<PrivacyConditions>({ kind: 'PRIVACY_CONDITIONS', scope })).value,
     },
     transport: bootstrap.transport,
     executor: {
@@ -228,12 +231,16 @@ export async function startWallet(config?: StackConfig): Promise<WalletRuntime> 
     },
     pathPolicy: new MarkovPathPolicy(),
     sealIntent,
-    resolveNoteScope: async () => scope,
+    resolveNoteScope: async (noteId) => {
+      const note = (await vault.list()).find((n) => n.id === noteId);
+      if (note === undefined) throw new Error('unknown note');
+      return note.scope;
+    },
   };
 
   return {
     app: createPaymentApplication(ports),
-    scope,
+    scopes,
     config: cfg,
     hasWallet: provider !== undefined,
     pathFor: () => bootstrap.pathFor(),
@@ -246,8 +253,8 @@ export async function startWallet(config?: StackConfig): Promise<WalletRuntime> 
       credentials.set(recipient.toLowerCase(), await response.text());
       return recipient.toLowerCase() as CredentialHandle;
     },
-    readRing: async () => (await query<RingSnapshot>({ kind: 'RING_SNAPSHOT', scope })).value,
-    readPrivacy: async () => (await query<PrivacyConditions>({ kind: 'PRIVACY_CONDITIONS', scope })).value,
+    readRing: async (scope) => (await query<RingSnapshot>({ kind: 'RING_SNAPSHOT', scope })).value,
+    readPrivacy: async (scope) => (await query<PrivacyConditions>({ kind: 'PRIVACY_CONDITIONS', scope })).value,
     readStatus: async (handle) => (await query<IntentStatus>({ kind: 'INTENT_STATUS', handle })).value,
     async accountFunds(address) {
       const f = await opsFor(address).funds();

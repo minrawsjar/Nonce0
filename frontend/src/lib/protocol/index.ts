@@ -60,12 +60,29 @@ export function decodeQueryResult<K extends MeshQuery['kind']>(
 }
 
 /**
- * The most notes one deposit makes. Every note is the pool's one
- * denomination (§6.6: a note of any other size would stand out in its ring),
- * so an amount is a count of notes. ponytail: a round cap that keeps one
- * operation well inside a bundler's gas limit; measure before raising it.
+ * The most notes one deposit makes: 27 is 999 USDC as 9×100 + 9×10 + 9×1.
+ * Measured on Arc: an account operation is ~590k gas for one note and
+ * 45–65k per note after it, so 27 is ~2.3M, well inside a bundler's limit.
  */
-export const MAX_NOTES_PER_DEPOSIT = 10;
+export const MAX_NOTES_PER_DEPOSIT = 27;
+
+/**
+ * The fewest notes that make `amount` exactly, largest first: denomination →
+ * count, all in whole USDC. At most `have` of each when given. undefined when
+ * nothing makes it — a note is spent whole, with no change (§6.6).
+ * ponytail: greedy is exact only while each denomination divides the next
+ * (1, 10, 100); a 25 pool would need a real search.
+ */
+export function makeAmount(amount: number, denominations: readonly number[], have?: ReadonlyMap<number, number>): Map<number, number> | undefined {
+  const out = new Map<number, number>();
+  let rest = amount;
+  for (const d of [...denominations].sort((a, b) => b - a)) {
+    const take = Math.min(Math.floor(rest / d), have === undefined ? Infinity : have.get(d) ?? 0);
+    if (take > 0) out.set(d, take);
+    rest -= take * d;
+  }
+  return rest === 0 ? out : undefined;
+}
 
 export interface AdapterPorts {
   readonly wallet: PqWallet;
@@ -112,8 +129,8 @@ async function meshPath(ports: AdapterPorts): Promise<RelayPath> {
 }
 
 export function createPaymentApplication(ports: AdapterPorts): PaymentApplication & {
-  /** `count` notes of the pool's denomination, deposited together. */
-  depositNotes(scope: PoolScope, count: number): Promise<readonly NoteSummary[]>;
+  /** `count` notes in each pool, all deposited in one transaction. */
+  depositNotes(parts: readonly { readonly scope: PoolScope; readonly count: number }[]): Promise<readonly NoteSummary[]>;
 } {
   const query = async <K extends MeshQuery['kind']>(
     request: Extract<MeshQuery, { kind: K }>,
@@ -137,21 +154,31 @@ export function createPaymentApplication(ports: AdapterPorts): PaymentApplicatio
     disableWallet: (): Promise<TxHash> => ports.wallet.disable(),
 
     async deposit(scope: PoolScope): Promise<NoteSummary> {
-      return (await app.depositNotes(scope, 1))[0]!;
+      return (await app.depositNotes([{ scope, count: 1 }]))[0]!;
     },
 
-    async depositNotes(scope: PoolScope, count: number): Promise<readonly NoteSummary[]> {
-      if (!Number.isInteger(count) || count < 1 || count > MAX_NOTES_PER_DEPOSIT) {
+    async depositNotes(parts: readonly { readonly scope: PoolScope; readonly count: number }[]): Promise<readonly NoteSummary[]> {
+      const count = parts.reduce((n, p) => n + p.count, 0);
+      if (parts.some((p) => !Number.isInteger(p.count) || p.count < 1) || count < 1 || count > MAX_NOTES_PER_DEPOSIT) {
         throw new ProtocolFailure('INVALID_INPUT', `deposit 1 to ${MAX_NOTES_PER_DEPOSIT} notes at a time`);
       }
       // Every note and its commitment are persisted BEFORE the deposit is
       // submitted. A crash between the two leaves a recoverable local record,
       // where the reverse order would lose the secret for funded money.
       const notes: NoteSummary[] = [];
-      for (let i = 0; i < count; i++) notes.push(await ports.ring.createNote(scope));
-      const hashes = await ports.pool.depositMany({ scope, commitments: notes.map((n) => n.commitment) });
+      const groups: { scope: PoolScope; commitments: NoteSummary['commitment'][] }[] = [];
+      for (const { scope, count: n } of parts) {
+        const group = { scope, commitments: [] as NoteSummary['commitment'][] };
+        for (let i = 0; i < n; i++) {
+          const note = await ports.ring.createNote(scope);
+          notes.push(note);
+          group.commitments.push(note.commitment);
+        }
+        groups.push(group);
+      }
+      const hash = await ports.pool.depositMany(groups);
       // Recorded as pending first: a tx hash is a claim, not evidence.
-      for (const [i, note] of notes.entries()) await ports.ring.recordDeposit(note.id, hashes[i]!);
+      for (const note of notes) await ports.ring.recordDeposit(note.id, hash);
       // Then reconciled against the chain. Without this a deposit stopped at
       // DEPOSIT_PENDING forever — and reserve() requires AVAILABLE, so a note
       // the user had paid for could never be spent. The pool port returns once

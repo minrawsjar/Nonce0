@@ -27,6 +27,7 @@ import {
   type ApprovedRelease,
   type Hex,
   type IntentId,
+  type PoolScope,
   type PrivacyScore,
   type PrivateSpend,
   type TxHash,
@@ -52,7 +53,8 @@ export interface CreSimulatorOptions {
   readonly policyVersion: string;
   readonly releaseTtlSeconds: bigint;
   readonly attester: {
-    readonly identity: AttesterIdentity;
+    /** One attester can serve several pools: then, the identity for the spend's pool. */
+    readonly identity: AttesterIdentity | ((scope: PoolScope) => AttesterIdentity);
     /**
      * The key to sign with and its CURRENT index in PQKeyRegistry. Asked
      * before every attestation, so it can rotate first — cre/attester-keys.ts.
@@ -64,8 +66,8 @@ export interface CreSimulatorOptions {
   /** What the chain says that tx did — required before anything is SETTLED. */
   readonly evidence: (txHash: TxHash, release: ApprovedRelease) => Promise<SettlementEvidence>;
   readonly nullifierSpent: (spend: PrivateSpend) => Promise<boolean>;
-  /** Optional pre-deadline score. Absent: an intent fires at its deadline. */
-  readonly readFreshScore?: () => Promise<{ score: PrivacyScore; observedAt: UnixSeconds } | null>;
+  /** Optional pre-deadline score, for the intent's pool. Absent: an intent fires at its deadline. */
+  readonly readFreshScore?: (scope: PoolScope) => Promise<{ score: PrivacyScore; observedAt: UnixSeconds } | null>;
   /**
    * Told when a pass fails for an intent that will be retried. Without it a
    * payment stuck at READY_TO_RELEASE gave no signal at all — the retry is
@@ -91,9 +93,10 @@ export function createCreSimulator(options: CreSimulatorOptions): CreSimulator {
   let running = false;
 
   async function settle(intentId: IntentId, spend: PrivateSpend, at: UnixSeconds): Promise<void> {
+    const { identity } = options.attester;
     const attested = attestRingSpend({
       spend,
-      identity: options.attester.identity,
+      identity: typeof identity === 'function' ? identity(spend.scope) : identity,
       ...(await options.attester.current()),
     });
     const release = issueRelease({
@@ -135,8 +138,8 @@ export function createCreSimulator(options: CreSimulatorOptions): CreSimulator {
             claimAttempt: () => store.claimAttempt(record.intentId),
           },
           {
-            async readFreshScore(): Promise<ScoreReading> {
-              const reading = await options.readFreshScore?.();
+            async readFreshScore(intent): Promise<ScoreReading> {
+              const reading = await options.readFreshScore?.(intent.scope);
               return reading === null || reading === undefined
                 ? { kind: 'UNAVAILABLE' }
                 : { kind: 'FRESH', score: reading.score, observedAt: reading.observedAt };

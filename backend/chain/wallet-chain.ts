@@ -92,18 +92,18 @@ export function createMeshChainObserver(options: {
   readonly walletRpc: WalletRpcSend;
   readonly ringSnapshot: (scope: PoolScope) => Promise<RingSnapshot>;
 }): WalletChainObserver {
-  // One snapshot answers every note reconciled together (a multi-note deposit
-  // checks all of them at once). Kept 2 s after it arrives, so a retry 3 s
-  // later asks again and can see a deposit this one did not.
-  let last: { key: string; settledAt?: number; snapshot: Promise<RingSnapshot> } | undefined;
+  // One snapshot per pool answers every note reconciled together (a deposit
+  // checks all of its notes at once). Kept 2 s after it arrives, so a retry
+  // 3 s later asks again and can see a deposit this one did not.
+  const last = new Map<string, { settledAt?: number; snapshot: Promise<RingSnapshot> }>();
   const snapshotFor = (scope: PoolScope): Promise<RingSnapshot> => {
     const key = `${scope.chainId}:${scope.pool.toLowerCase()}`;
-    if (last === undefined || last.key !== key || (last.settledAt !== undefined && Date.now() - last.settledAt > 2_000)) {
-      const entry: NonNullable<typeof last> = { key, snapshot: options.ringSnapshot(scope) };
-      entry.snapshot.then(() => { entry.settledAt = Date.now(); }, () => { entry.settledAt = 0; });
-      last = entry;
-    }
-    return last.snapshot;
+    const hit = last.get(key);
+    if (hit !== undefined && (hit.settledAt === undefined || Date.now() - hit.settledAt <= 2_000)) return hit.snapshot;
+    const entry: { settledAt?: number; snapshot: Promise<RingSnapshot> } = { snapshot: options.ringSnapshot(scope) };
+    entry.snapshot.then(() => { entry.settledAt = Date.now(); }, () => { entry.settledAt = 0; });
+    last.set(key, entry);
+    return entry.snapshot;
   };
   return {
     async observeCommitment(scope, commitment) {
@@ -115,8 +115,10 @@ export function createMeshChainObserver(options: {
   };
 }
 
-/** Several notes at once: every commitment in one deposit, all one denomination. */
-export type DepositMany = (input: { readonly scope: PoolScope; readonly commitments: readonly NoteCommitment[] }) => Promise<readonly TxHash[]>;
+/** One pool's notes in a deposit. A deposit holds one group per denomination. */
+export interface DepositGroup { readonly scope: PoolScope; readonly commitments: readonly NoteCommitment[] }
+/** Every group in one transaction; returns its hash. */
+export type DepositMany = (groups: readonly DepositGroup[]) => Promise<TxHash>;
 
 /**
  * The pool port for a browser: the user's own wallet pays for a deposit.

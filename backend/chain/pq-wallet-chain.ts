@@ -33,7 +33,7 @@ import {
 } from 'viem';
 import { toPackedUserOperation } from 'viem/account-abstraction';
 
-import { ProtocolFailure, type Address, type Bytes32, type Hex, type NoteCommitment, type PoolScope, type PqWallet, type TxHash } from '@opaque/protocol-types';
+import { ProtocolFailure, type Address, type Bytes32, type Hex, type PqWallet, type TxHash } from '@opaque/protocol-types';
 import { asAddress, asBytes32, asChainId } from '@opaque/protocol-types/codecs.js';
 import { createPqWallet, encodeSignature, FORS_C_DEFAULT, keyGen, pqDigest, sign } from '@opaque/pq-wallet';
 
@@ -49,6 +49,7 @@ import type { WalletStateStore } from '../../packages/pq-wallet/src/wallet-state
 import { accountSalt, predictAccount, userOperationPayload } from './pq-account.ts';
 import { ERC20_ABI } from './pool.ts';
 import { bundlerCall, readOne, readState, STATE_ABI, userOperationCall, type WalletRpcSend } from './wallet-rpc.ts';
+import type { DepositGroup } from './wallet-chain.ts';
 
 /** The deployed account stack, as the SDK pins it. Changing any field is a different wallet. */
 export const ARC_AUTHORITY: AuthorityConfig = Object.freeze({
@@ -364,18 +365,19 @@ export function createPqAccountOps(options: {
     funds,
 
     /**
-     * Pool deposits, one note per commitment, as ONE operation: exactly what
-     * they need approved, then each deposited. One FORS signature however many
-     * notes, so a multi-note deposit does not spend the key's budget per note.
+     * Pool deposits, one note per commitment, as ONE operation: each pool
+     * approved exactly what its notes need, then each deposited. One FORS
+     * signature however many notes and pools, so a deposit split across
+     * denominations does not spend the key's budget per note.
      */
-    async deposit({ scope, commitments }: { scope: PoolScope; commitments: readonly NoteCommitment[] }): Promise<TxHash> {
-      const total = BigInt(scope.denomination) * BigInt(commitments.length);
+    async deposit(groups: readonly DepositGroup[]): Promise<TxHash> {
+      const total = groups.reduce((sum, g) => sum + BigInt(g.scope.denomination) * BigInt(g.commitments.length), 0n);
       const have = await funds();
       if (have.usdc6 < total) throw shortfall(total * WEI_PER_USDC6, have);
-      const op = await prepare([
-        { to: deployment.tokens.usdc.address as Address, data: encodeFunctionData({ abi: ERC20_ABI, functionName: 'approve', args: [scope.pool, total] }) as Hex },
+      const op = await prepare(groups.flatMap(({ scope, commitments }) => [
+        { to: deployment.tokens.usdc.address as Address, data: encodeFunctionData({ abi: ERC20_ABI, functionName: 'approve', args: [scope.pool, BigInt(scope.denomination) * BigInt(commitments.length)] }) as Hex },
         ...commitments.map((commitment) => ({ to: scope.pool, data: encodeFunctionData({ abi: POOL, functionName: 'deposit', args: [commitment] }) as Hex })),
-      ]);
+      ]));
       // Gas the EntryPoint already holds for the account is spent first.
       const need = total * WEI_PER_USDC6 + (prefundOf(op) > have.prepaidGas ? prefundOf(op) - have.prepaidGas : 0n);
       if (have.usdc6 * WEI_PER_USDC6 < need) throw shortfall(need, have);

@@ -31,12 +31,14 @@ export function createRingClient(vault: NoteVault, prover: RingProver = inThread
       const notes = await vault.list(input.candidates.scope);
       const note = notes.find((n) => n.id === input.noteId);
       if (note === undefined) throw new Error('unknown note');
-      await vault.reserve(input.noteId, input.reservation);
+      // Decoys first: a pool too small for a ring refuses here, before the
+      // note is reserved, rather than leaving it RESERVED with no intent.
       const decoys = selectDecoys({
         scope: note.scope,
         snapshot: input.candidates as RingSnapshot,
         exclude: note.commitment,
       });
+      await vault.reserve(input.noteId, input.reservation);
       return vault.useSecret(input.noteId, input.reservation, (noteSecret) =>
         prover.prove({ scope: note.scope, recipient: input.recipient, noteSecret, decoys }),
       );

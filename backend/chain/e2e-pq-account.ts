@@ -58,7 +58,7 @@ const scope = { chainId: asChainId(BigInt(deployment.network.chainId)), pool: ri
 const ops = createPqAccountOps({ wallet, account, authority: ARC_AUTHORITY, walletRpc, deployment: () => pendingDeployment(wallet, walletStore) });
 const image = () => toHex(new Uint8Array([...crypto.getRandomValues(new Uint8Array(16)), ...new Uint8Array(16)])) as NoteCommitment;
 const commitments = [image(), image()];
-const tx = await ops.deposit({ scope, commitments });
+const tx = await ops.deposit([{ scope, commitments }]);
 
 const receipt = await publicClient.getTransactionReceipt({ hash: tx as `0x${string}` });
 const events = parseEventLogs({

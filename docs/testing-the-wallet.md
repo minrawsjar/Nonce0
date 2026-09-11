@@ -44,32 +44,34 @@ wallet after restarting the stack.
    RPC `https://rpc.testnet.arc.io`, currency `USDC`. Get USDC from
    [faucet.circle.com](https://faucet.circle.com). It pays gas too, so nothing
    else needs funding.
-2. **Deposit.** Set *Deposit amount* (1 to 10 USDC) and press *Deposit*.
-   Every note is exactly 1 USDC, because a note of any other size would stand
-   out in its ring (spec §6.6), so 3 USDC becomes three notes.
+2. **Deposit.** Set *Deposit amount* in whole USDC and press *Deposit*. It
+   becomes the fewest notes of 100, 10 and 1 USDC: 123 is 1×100 + 2×10 + 3×1.
+   Each size has its own pool, because a ring is formed only among notes of
+   one size (spec §6.6), and a pool fills from anyone's deposits. A note can
+   be sent once its pool holds 8; the field says when part of a deposit will
+   wait for that, and the balance shows how much is waiting.
 
    Deposits come from your **PQ account**, as one UserOperation its FORS key
-   signs however many notes it makes; a public bundler submits it. A plain
-   wallet would need one confirmation per note, since it cannot batch and the
-   pool takes one note per deposit. The first deposit asks your funding wallet
-   for two confirmations: one activates the account (it pays for the deploy
-   and gets no power over it), one moves the USDC in. After that it is one
-   confirmation per deposit, and none at all if the account already holds
-   enough: anything sent to the *Receive* address counts. Each deposit keeps
-   0.2 USDC in the account for gas, and what gas does not use pays for the
-   next one. Each deposit uses one of the key's 32 signatures, shown under
-   *Signing key*. The keys live in this browser only, so clearing site data
-   loses the account, unless you have a backup.
+   signs however many notes and pools it covers; a public bundler submits it.
+   The first one also deploys the account. It is paid from USDC at the
+   account's address: anything sent to the *Receive* address counts, and a
+   funding wallet, if the browser has one, tops it up in one confirmation.
+   Each deposit keeps 0.2 USDC in the account for gas, and what gas does not
+   use pays for the next one. Each deposit uses one of the key's 32
+   signatures, shown under *Signing key*. The keys live in this browser only,
+   so clearing site data loses the account, unless you have a backup.
 
    The deposit is public by design — it is the *spend* that is private. A
    note shows as spendable once the chain confirms it, never before.
 3. **Send.** Set the amount in whole USDC, enter a recipient, and press
-   *Review private transfer*. Each USDC is one note spent as its own payment:
-   the page builds its proof in a worker (a few seconds each), seals it, and
-   sends it across the mesh as ~35 chunks. Several sent together to one
-   address settle as separate 1-USDC transfers, which are easier to link to
-   each other than a single one. Amounts like 2.37 are not possible: hiding
-   them needs elliptic-curve range proofs, which this design rules out.
+   *Review private transfer*. It is paid with the fewest of your notes that
+   make it exactly, one payment each, so 100 USDC is one payment and 123 is
+   six. A note is spent whole, with no change: holding one 100-USDC note, you
+   can send 100 but not 30. Each payment's proof is built in a worker (a few
+   seconds), sealed, and sent across the mesh as ~35 chunks. Several to one
+   address are easier to link to each other than one. Amounts like 2.37 are
+   not possible: hiding them needs elliptic-curve range proofs, which this
+   design rules out.
 4. **Watch Activity.** A payment usually settles within seconds. It goes as
    soon as the privacy score (the lower of pool coverage and relay health)
    reaches 70/100, and waits only while the relays look unhealthy or their

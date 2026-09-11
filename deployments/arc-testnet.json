@@ -31,6 +31,14 @@
       "address": "0x1b501bbcb3bd32645da3508f7779f8c196a28c85",
       "deployedAtBlock": 61451611
     },
+    "attestedRingVerifier10": {
+      "address": "0xf5059420035f337f123a750e494a4c72b0128f4a",
+      "deployedAtBlock": 61487364
+    },
+    "attestedRingVerifier100": {
+      "address": "0x4afc9ee50922cab3eaf7007e0231402f643e1c78",
+      "deployedAtBlock": 61487385
+    },
     "relayDirectory": {
       "address": "0xcf588b5b8ab2fa11ccf28a5c0631da4269a36653",
       "deployedAtBlock": 61450880
@@ -70,6 +78,22 @@
       "proofMode": "RING_8",
       "verifier": "attestedRingVerifier",
       "deployedAtBlock": 61451614
+    },
+    {
+      "$comment": "RING_8 at 10 USDC: same attester, its own verifier (each binds its pool id and denomination). Filled by anyone's 10-USDC deposits; a note here is spendable once the pool holds 8.",
+      "address": "0x2770e5c2f491fcf0c8a411f6c2c8064214e1e284",
+      "denomination": 10000000,
+      "proofMode": "RING_8",
+      "verifier": "attestedRingVerifier10",
+      "deployedAtBlock": 61487364
+    },
+    {
+      "$comment": "RING_8 at 100 USDC, as above.",
+      "address": "0x0d8dff9b4903a1b550037bac773e9757f1f4d823",
+      "denomination": 100000000,
+      "proofMode": "RING_8",
+      "verifier": "attestedRingVerifier100",
+      "deployedAtBlock": 61487385
     }
   ],
   "erc4337": {
@@ -93,7 +117,7 @@
   },
   "services": {
     "$comment": "Endpoints, not keys. Each is null until that service is hosted.",
-    "graphUrl": "https://api.studio.thegraph.com/query/1760100/opaque/v0.1.0",
+    "graphUrl": "https://api.studio.thegraph.com/query/1760100/opaque/v0.2.0",
     "meshExitUrl": "https://opaque-stack-production.up.railway.app/v1/mesh",
     "releaseEgressUrl": null,
     "creTriggerUrl": null,

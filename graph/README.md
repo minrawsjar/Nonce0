@@ -17,13 +17,13 @@ the mapping from accidentally reimplementing protocol hashing.
 ## Deployed
 
 Subgraph Studio, network `arc-testnet`, slug `opaque`:
-`https://api.studio.thegraph.com/query/1760100/opaque/v0.1.0` (also
+`https://api.studio.thegraph.com/query/1760100/opaque/v0.2.0` (also
 `services.graphUrl` in `deployments/arc-testnet.json`). To ship a new version:
 
 ```bash
 node scripts/render-manifest.ts && npx graph codegen subgraph.yaml && npx graph build subgraph.yaml
 npx graph auth <deploy key>          # once, in your own terminal
-npx graph deploy opaque subgraph.yaml --version-label v0.1.1
+npx graph deploy opaque subgraph.yaml --version-label v0.2.1
 ```
 
 Then point `services.graphUrl` at the new version. Only the backend's mesh

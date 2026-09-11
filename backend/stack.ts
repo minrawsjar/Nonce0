@@ -38,10 +38,10 @@ import { fileURLToPath } from 'node:url';
 import { createPublicClient, http, nonceManager, parseAbi, parseEventLogs } from 'viem';
 import { privateKeyToAccount } from 'viem/accounts';
 
-import type { ApprovedRelease, RelaySnapshot, RingSnapshot, TxHash, UnixSeconds } from '@opaque/protocol-types';
+import { ProtocolFailure, type ApprovedRelease, type GraphSelectionClient, type PoolScope, type RelaySnapshot, type RingSnapshot, type TxHash, type UnixSeconds } from '@opaque/protocol-types';
 import { asChainId, fromHex, spendHash, toHex } from '@opaque/protocol-types/codecs.js';
 
-import { deployment, meshTrustRoot, poolFor, requireContract, requireService } from '../deployments/index.ts';
+import { deployment, meshTrustRoot, poolFor, requireContract, requireService, type PoolDeployment } from '../deployments/index.ts';
 import { GraphHttpClient } from '../graph/src/client.ts';
 import { evaluatePublicReadiness } from '../graph/src/privacy-score.ts';
 import { registryAttesterKeys } from './chain/attester-registry.ts';
@@ -101,10 +101,18 @@ const intentKeys = JSON.parse(readFileSync(intentKeyFile, 'utf8')) as { publicKe
 const credentialMac = fromHex(readFileSync(macFile, 'utf8').trim() as `0x${string}`);
 
 // ── chain ────────────────────────────────────────────────────────────────
+// Every RING_8 pool, one per denomination; one attester signs for all of them.
+// A wallet splits an amount into these notes, so 100 USDC is one payment.
+const ringPools = deployment.pools.filter((p) => p.proofMode === 'RING_8');
 const ring8 = poolFor(1_000_000, 'RING_8');
 const REGISTRY = requireContract('pqKeyRegistry');
 const ATTESTER = deployment.accounts.attester;
-const scope = { chainId: asChainId(BigInt(deployment.network.chainId)), pool: ring8.address, denomination: ring8.denomination } as never;
+const scopeOf = (p: PoolDeployment): PoolScope => ({ chainId: asChainId(BigInt(deployment.network.chainId)), pool: p.address, denomination: p.denomination }) as never;
+const poolAt = (s: PoolScope): PoolDeployment => {
+  const pool = ringPools.find((p) => p.address === s.pool.toLowerCase());
+  if (pool === undefined) throw new ProtocolFailure('INVALID_INPUT', `no RING_8 pool at ${s.pool}`);
+  return pool;
+};
 const publicClient = createPublicClient({ chain: ARC_TESTNET, transport: http() });
 const poolAbi = parseAbi([
   'function isNullifierSpent(bytes32) view returns (bool)',
@@ -170,16 +178,24 @@ const relaySnapshot = (): RelaySnapshot => ({
   observedAt: nowS(),
 });
 // Studio's query endpoint is rate-limited, and the stand-in asks for a score
-// every 3 s per waiting intent.
-let indexedAt = 0;
-let indexedRing: Promise<RingSnapshot> | undefined;
-const ringSource = createChainRingSource({
-  publicClient: publicClient as never, scope, deployedAtBlock: BigInt(ring8.deployedAtBlock), relaySnapshot,
+// every 3 s per waiting intent: one index read per pool per 30 s.
+const indexed = new Map<string, { at: number; ring: Promise<RingSnapshot> }>();
+const ringSources = new Map(ringPools.map((p) => [p.address, createChainRingSource({
+  publicClient: publicClient as never, scope: scopeOf(p), deployedAtBlock: BigInt(p.deployedAtBlock), relaySnapshot,
   indexed: (s) => {
-    if (indexedRing === undefined || Date.now() - indexedAt > 30_000) [indexedAt, indexedRing] = [Date.now(), graph.getRingSnapshot(s)];
-    return indexedRing;
+    const hit = indexed.get(p.address);
+    if (hit !== undefined && Date.now() - hit.at < 30_000) return hit.ring;
+    const ring = graph.getRingSnapshot(s);
+    indexed.set(p.address, { at: Date.now(), ring });
+    return ring;
   },
-});
+})]));
+// Each question goes to the source for its pool; each source refuses any other.
+const ringSource: GraphSelectionClient = {
+  getRingSnapshot: async (s) => ringSources.get(poolAt(s).address)!.getRingSnapshot(s),
+  getRelaySnapshot: async () => relaySnapshot(),
+  getPrivacyConditions: async (s) => ringSources.get(poolAt(s).address)!.getPrivacyConditions(s),
+};
 
 // ── egress, exit, stand-in ───────────────────────────────────────────────
 const egress = createEgress({
@@ -209,12 +225,12 @@ const simulator = createCreSimulator({
   credentialMac,
   policyVersion: POLICY,
   releaseTtlSeconds: 900n,
-  async readFreshScore() {
+  async readFreshScore(scope) {
     const c = evaluatePublicReadiness(await ringSource.getRingSnapshot(scope), relaySnapshot());
     return { score: c.privacyScore, observedAt: c.observedAt };
   },
   attester: {
-    identity: { chainId: BigInt(deployment.network.chainId), registry: REGISTRY as never, attester: ATTESTER as never, pool: ring8.address as never, denomination: ring8.denomination },
+    identity: (scope) => ({ chainId: BigInt(deployment.network.chainId), registry: REGISTRY as never, attester: ATTESTER as never, pool: poolAt(scope).address as never, denomination: poolAt(scope).denomination }),
     // Rotates itself near the end of each key's budget; see cre/attester-keys.ts.
     current: registryAttesterKeys({
       publicClient: publicClient as never,
@@ -234,18 +250,19 @@ const simulator = createCreSimulator({
     if (body.txHash === undefined) throw new Error(`egress refused: ${response.status} ${body.message}`);
     return body.txHash as TxHash;
   },
-  // Evidence from the chain: the receipt succeeded and the pool emitted a
-  // Spent for exactly this nullifier and recipient.
+  // Evidence from the chain: the receipt succeeded and the spend's own pool
+  // emitted a Spent for exactly this nullifier and recipient.
   async evidence(txHash, release) {
     const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash as `0x${string}` });
     const spent = parseEventLogs({ abi: poolAbi, logs: receipt.logs, eventName: 'Spent' }).find(
-      (l) => l.args.nullifier.toLowerCase() === (release.spend.nullifier as string).toLowerCase()
+      (l) => l.address.toLowerCase() === release.spend.scope.pool.toLowerCase()
+        && l.args.nullifier.toLowerCase() === (release.spend.nullifier as string).toLowerCase()
         && l.args.recipient.toLowerCase() === (release.spend.recipient as string).toLowerCase(),
     );
     log(`  settled ${txHash} (${receipt.status})`);
     return { txHash, spendHash: spendHash(release.spend), succeeded: receipt.status === 'success' && spent !== undefined };
   },
-  nullifierSpent: async (s) => publicClient.readContract({ address: ring8.address, abi: poolAbi, functionName: 'isNullifierSpent', args: [s.nullifier as `0x${string}`] }),
+  nullifierSpent: async (s) => publicClient.readContract({ address: s.scope.pool, abi: poolAbi, functionName: 'isNullifierSpent', args: [s.nullifier as `0x${string}`] }),
   onError: (id, error) => log(`  ! intent ${String(id).slice(0, 8)}… will retry: ${(error as Error).message}`),
 });
 simulator.start(3_000);
@@ -315,6 +332,8 @@ const walletConfig = JSON.stringify({
   trustRoot: mesh.root,
   cre: { publicKey: intentKeys.publicKey, encryptionKeyId: KEY_ID, policyVersion: POLICY },
   credentialUrl: `${PUBLIC_URL ?? `http://${LOOPBACK}:${PORTS.credentials}`}/v1/credential`,
+  // Wallets built before several pools read this one. Newer ones take every
+  // pool from the deployments compiled into them, never from this file.
   pool: { address: ring8.address, denomination: ring8.denomination, proofMode: ring8.proofMode },
   capabilities: { pqWallet: 'LIVE', graph: 'LIVE', confidentialExecution: 'SIMULATED', policyScope: 'CRE_WORKFLOW_ONLY' },
 }, bigintReplacer, 2);
@@ -342,9 +361,11 @@ const router = PORT === undefined ? undefined : createServer((req, res) => {
 });
 if (router) await new Promise<void>((r) => router.listen(Number(PORT), '0.0.0.0', r));
 
-const snap = await ringSource.getRingSnapshot(scope);
-log('opaque local stack — against the REAL Arc pool');
-log(`  pool       ${ring8.address}  (${ring8.proofMode}, ${snap.candidates.length} deposits)`);
+log('opaque local stack — against the REAL Arc pools');
+for (const p of ringPools) {
+  const snap = await ringSource.getRingSnapshot(scopeOf(p));
+  log(`  pool       ${p.address}  (${p.proofMode}, ${p.denomination / 1e6} USDC, ${snap.candidates.length} deposits)`);
+}
 log(`  relays     ${mesh.signed.directory.entries.map((e) => e.endpoint.replace('/v1/relay', '')).join('  ')}`);
 log(`  exit       http://127.0.0.1:${PORTS.exit}   egress :${PORTS.egress}   credentials :${PORTS.credentials}`);
 log(`  wallet cfg ${OUT}${router ? `  and ${PUBLIC_URL ?? ''}/stack.json (all routes on :${PORT})` : ''}`);

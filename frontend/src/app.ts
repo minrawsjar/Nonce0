@@ -15,7 +15,7 @@
 
 import type { IntentStatus, NoteSummary, PrivacyScore, StatusHandle, UnixSeconds } from '@opaque/protocol-types';
 
-import { MAX_NOTES_PER_DEPOSIT } from './lib/protocol/index.js';
+import { makeAmount, MAX_NOTES_PER_DEPOSIT } from './lib/protocol/index.js';
 import { startWallet, type WalletRuntime } from './lib/runtime.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -30,6 +30,8 @@ function el<T extends HTMLElement = HTMLElement>(id: string): T {
 
 let rt: WalletRuntime;
 let notes: readonly NoteSummary[] = [];
+/** Deposits in each ring pool, by pool address, as last read through the mesh. */
+const poolSizes = new Map<string, number>();
 let hops: readonly string[] = [];
 let opaqueAddress = '';
 let fundingAddress = '';
@@ -143,6 +145,8 @@ interface SentPayment {
   readonly at: number;
   /** The send it belongs to: one Activity row per send, however many notes. */
   readonly group?: string;
+  /** The note's value; absent on payments from when every note was 1 USDC. */
+  readonly usdc?: number;
   state?: IntentStatus['state'];
   txHash?: string;
 }
@@ -281,25 +285,84 @@ async function settle(done: () => Promise<boolean>): Promise<void> {
 }
 
 // ── notes ─────────────────────────────────────────────────────────────────
+//
+// A note is 1, 10 or 100 USDC, each in its own pool (§6.6: a ring is formed
+// only among notes of one size). A pool fills from anyone's deposits, and a
+// note in it can be spent once it holds a ring's worth.
+
+const usdcOf = (n: NoteSummary): number => Number(n.scope.denomination) / 1e6;
+const denominations = (): number[] => rt.scopes.map((s) => Number(s.denomination) / 1e6);
+const countByValue = (list: readonly NoteSummary[]): Map<number, number> => {
+  const counts = new Map<number, number>();
+  for (const n of list) counts.set(usdcOf(n), (counts.get(usdcOf(n)) ?? 0) + 1);
+  return counts;
+};
+/** 100 → 1, 1 → 3 reads "1×100 + 3×1". */
+const describe = (counts: ReadonlyMap<number, number>): string =>
+  [...counts].sort((a, b) => b[0] - a[0]).map(([usdc, n]) => `${n}×${usdc}`).join(' + ');
+/** Unknown size counts as filled: a read that failed is no reason to alarm. */
+const ringReady = (n: NoteSummary): boolean => (poolSizes.get(n.scope.pool) ?? RING_SIZE) >= RING_SIZE;
+
+/** A sentence on the pools, among these values, with under a ring of deposits counting `adding` more. */
+function fillNote(values: Iterable<number>, adding: ReadonlyMap<number, number> = new Map()): string {
+  const wanted = new Set(values);
+  const short = rt.scopes.flatMap((s) => {
+    const usdc = Number(s.denomination) / 1e6;
+    const size = (poolSizes.get(s.pool) ?? RING_SIZE) + (adding.get(usdc) ?? 0);
+    return wanted.has(usdc) && size < RING_SIZE ? [`the ${usdc}-USDC pool has ${size}`] : [];
+  });
+  if (short.length === 0) return '';
+  const text = `${short.join(' and ')} of the ${RING_SIZE} deposits a ring needs, counting yours: notes there can be sent once others deposit.`;
+  return ` ${text[0]!.toUpperCase()}${text.slice(1)}`;
+}
+
+/** Deposits in each pool, through the mesh. One that fails keeps its last reading. */
+async function refreshPools(): Promise<void> {
+  await Promise.all(rt.scopes.map(async (s) => {
+    try { poolSizes.set(s.pool, (await rt.readRing(s)).candidates.length); } catch { /* retried next time */ }
+  }));
+  renderBalance();
+  renderDepositSplit();
+}
 
 async function refreshNotes(): Promise<void> {
-  notes = await rt.app.listNotes(rt.scope);
+  notes = (await Promise.all(rt.scopes.map((s) => rt.app.listNotes(s)))).flat();
+  renderBalance();
+}
+
+function renderBalance(): void {
   const available = notes.filter((n) => n.state === 'AVAILABLE');
-  el('balance').textContent = `${available.length}.00`;
-  el('note-count').textContent = `${available.length} note${available.length === 1 ? '' : 's'}`;
-  el('asset-balance').textContent = `${available.length}.00`;
+  const total = available.reduce((sum, n) => sum + usdcOf(n), 0);
+  const waiting = available.filter((n) => !ringReady(n)).reduce((sum, n) => sum + usdcOf(n), 0);
+  const count = `${available.length} note${available.length === 1 ? '' : 's'}`;
+  el('balance').textContent = `${total}.00`;
+  el('note-count').textContent = waiting === 0 ? count : `${count} · ${waiting} USDC waits for its pool to fill`;
+  el('asset-balance').textContent = `${total}.00`;
   el('asset-notes').textContent = `${available.length} private note${available.length === 1 ? '' : 's'}`;
   el<HTMLButtonElement>('arm').disabled = available.length === 0;
-  el<HTMLInputElement>('send-amount').max = String(Math.max(1, available.length));
+  el<HTMLInputElement>('send-amount').max = String(Math.max(1, total));
+}
+
+function renderDepositSplit(): void {
+  const amount = Number(el<HTMLInputElement>('deposit-count').value);
+  if (!Number.isInteger(amount) || amount < 1) { el('deposit-split').textContent = 'Whole USDC only.'; return; }
+  const counts = makeAmount(amount, denominations())!;
+  el('deposit-split').textContent = `As ${describe(counts)} USDC notes.${fillNote(counts.keys(), counts)}`;
 }
 
 async function onDeposit(): Promise<void> {
   const button = el<HTMLButtonElement>('deposit');
   const status = el('deposit-status');
-  // An amount is a count of notes: every note is the pool's one denomination.
-  const count = Number(el<HTMLInputElement>('deposit-count').value);
-  if (!Number.isInteger(count) || count < 1 || count > MAX_NOTES_PER_DEPOSIT) {
-    status.textContent = `Choose a whole amount from 1 to ${MAX_NOTES_PER_DEPOSIT} USDC.`;
+  const amount = Number(el<HTMLInputElement>('deposit-count').value);
+  if (!Number.isInteger(amount) || amount < 1) {
+    status.textContent = 'Choose a whole amount of USDC.';
+    return;
+  }
+  // The fewest notes, largest first: 123 is 1×100 + 2×10 + 3×1.
+  const counts = makeAmount(amount, denominations())!;
+  const count = [...counts.values()].reduce((a, b) => a + b, 0);
+  if (count > MAX_NOTES_PER_DEPOSIT) {
+    status.textContent = `That is ${count} notes (${describe(counts)}); one deposit holds up to ${MAX_NOTES_PER_DEPOSIT}. Deposit it in two parts.`;
     return;
   }
   const notes = count === 1 ? 'one note' : `${count} notes`;
@@ -313,7 +376,7 @@ async function onDeposit(): Promise<void> {
     // sent to the address from anywhere.
     const state = await rt.app.walletState();
     const account = state.accountAddress as `0x${string}`;
-    const want = count + DEPOSIT_GAS_USDC;
+    const want = amount + DEPOSIT_GAS_USDC;
     const topUp = Math.ceil((want - (await rt.accountFunds(account)).usdc) * 100) / 100;
     if (topUp > 0) {
       if (!rt.hasWallet) {
@@ -331,10 +394,13 @@ async function onDeposit(): Promise<void> {
     status.textContent = state.active
       ? `Signing one deposit of ${notes} with your account's PQ key; a public bundler submits it…`
       : `Signing your account's first operation with its PQ key: it sets the account up on chain and deposits ${notes}…`;
-    const made = await rt.app.depositNotes(rt.scope, count);
+    const made = await rt.app.depositNotes(rt.scopes
+      .filter((s) => counts.has(Number(s.denomination) / 1e6))
+      .map((s) => ({ scope: s, count: counts.get(Number(s.denomination) / 1e6)! })));
     const waiting = made.filter((n) => n.state !== 'AVAILABLE').length;
+    await refreshPools();
     status.textContent = waiting === 0
-      ? `Deposited ${count} USDC as ${notes}, on chain and spendable.`
+      ? `Deposited ${amount} USDC as ${describe(counts)}, on chain.${fillNote(counts.keys()) || ' Spendable now.'}`
       : `Deposit sent; ${waiting} of ${notes} still wait for the chain to confirm them.`;
     await Promise.all([refreshNotes(), renderBudget().catch(() => undefined)]);
   } catch (error) {
@@ -396,9 +462,14 @@ function renderHops(): void {
 
 async function refreshRing(): Promise<void> {
   try {
-    const [ring, privacy, path] = await Promise.all([rt.readRing(), rt.readPrivacy(), rt.pathFor()]);
+    // Once a pool holds a ring, its score is the mesh's: the 1-USDC one stands for all.
+    const [privacy, path] = await Promise.all([rt.readPrivacy(rt.scopes[rt.scopes.length - 1]!), rt.pathFor(), refreshPools()]);
+    const smallFirst = [...rt.scopes].reverse();
     el('pool-size').innerHTML = '';
-    el('pool-size').append(`${ring.candidates.length.toLocaleString('en-US')} `, Object.assign(document.createElement('small'), { textContent: 'deposits' }));
+    el('pool-size').append(
+      `${smallFirst.map((s) => (poolSizes.get(s.pool) ?? 0).toLocaleString('en-US')).join(' · ')} `,
+      Object.assign(document.createElement('small'), { textContent: `at ${smallFirst.map((s) => Number(s.denomination) / 1e6).join(' · ')} USDC` }),
+    );
     el('freshness-now').textContent = String(Math.round(Number(privacy.privacyScore) / 100));
     // A sample path, drawn fresh. Each payment draws its own; this one only
     // shows the shape — three distinct relays under three distinct operators.
@@ -421,25 +492,40 @@ async function onSend(event: SubmitEvent): Promise<void> {
     status.textContent = 'Enter a recipient address (0x followed by 40 hex characters).';
     return;
   }
-  // An amount is a count of notes, each spent as its own payment: a note is
-  // always the pool's one denomination (§6.6), so there is no change to make.
-  const count = Number(el<HTMLInputElement>('send-amount').value);
+  // Paid in whole notes, each its own payment, the fewest that make the
+  // amount exactly: a note is spent whole, with no change (§6.6).
+  const amount = Number(el<HTMLInputElement>('send-amount').value);
   const available = notes.filter((n) => n.state === 'AVAILABLE');
-  if (!Number.isInteger(count) || count < 1) {
-    status.textContent = 'Send a whole amount of USDC: every note is exactly 1 USDC.';
+  const total = available.reduce((sum, n) => sum + usdcOf(n), 0);
+  if (!Number.isInteger(amount) || amount < 1) {
+    status.textContent = 'Send a whole amount of USDC.';
     return;
   }
-  if (count > available.length) {
-    status.textContent = available.length === 0
-      ? 'No spendable note. Deposit first.'
-      : `You hold ${available.length} USDC in notes. Deposit more to send ${count}.`;
+  if (amount > total) {
+    status.textContent = total === 0 ? 'No spendable note. Deposit first.' : `You hold ${total} USDC in notes. Deposit more to send ${amount}.`;
     return;
   }
 
   const button = el<HTMLButtonElement>('arm');
   button.disabled = true;
   let done = 0;
+  let count = 0;
   try {
+    // Only notes whose pool already holds a ring's worth of deposits.
+    status.textContent = 'Checking which of your notes their pools can hide…';
+    await refreshPools();
+    const ready = available.filter(ringReady);
+    const pick = makeAmount(amount, denominations(), countByValue(ready));
+    if (pick === undefined) {
+      const waiting = available.filter((n) => !ringReady(n));
+      status.textContent = `Your notes can't make exactly ${amount} USDC: each is sent whole, with no change.`
+        + (ready.length > 0 ? ` Ready to send: ${describe(countByValue(ready))}.` : '')
+        + (waiting.length > 0 ? ` Waiting for their pool to fill: ${describe(countByValue(waiting))}.` : '');
+      return;
+    }
+    const queue = [...pick].flatMap(([usdc, n]) => ready.filter((note) => usdcOf(note) === usdc).slice(0, n));
+    count = queue.length;
+
     // Out of band, BEFORE paying: the authority learns a recipient, never a
     // payment, and cannot tie the credential to the moment it is used.
     status.textContent = 'Getting a policy credential for this recipient…';
@@ -448,7 +534,6 @@ async function onSend(event: SubmitEvent): Promise<void> {
     // Each note is its own payment, with its own proof and ~1 MB upload,
     // PAYMENT_LANES at a time.
     const group = `send-${Date.now()}`;
-    const queue = available.slice(0, count);
     status.textContent = count === 1
       ? 'Building the ring proof in this browser (a few seconds — the note secret never leaves the page)…'
       : `Building ${count} ring proofs in this browser and sending each across the mesh (the note secrets never leave the page)…`;
@@ -464,7 +549,7 @@ async function onSend(event: SubmitEvent): Promise<void> {
           idempotencyKey: `pay-${note.id}-${Date.now()}` as never,
         });
         // Recorded as each one goes, so a failure later still shows these.
-        sent.unshift({ handle: ref.statusHandle as string, recipient, at: Date.now(), group });
+        sent.unshift({ handle: ref.statusHandle as string, recipient, at: Date.now(), group, usdc: usdcOf(note) });
         saveSent();
         done++;
         if (count > 1) status.textContent = `Sent ${done} of ${count} across the mesh…`;
@@ -474,7 +559,7 @@ async function onSend(event: SubmitEvent): Promise<void> {
     if (failure !== undefined) throw failure;
     status.textContent = count === 1
       ? 'Sent across the mesh. It usually settles within seconds; Activity shows when it lands.'
-      : `Sent ${count} payments across the mesh. Each usually settles within seconds; Activity shows when they land.`;
+      : `Sent ${amount} USDC as ${count} payments across the mesh. Each usually settles within seconds; Activity shows when they land.`;
     el<HTMLInputElement>('recipient').value = '';
     await refreshNotes();
     showView('activity');
@@ -515,7 +600,7 @@ function renderActivity(): void {
     head.className = 'intent-head';
     const amount = document.createElement('span');
     amount.className = 'intent-amt';
-    amount.textContent = `${payments.length}.00 USDC`;
+    amount.textContent = `${payments.reduce((sum, p) => sum + (p.usdc ?? 1), 0)}.00 USDC`;
     const badge = document.createElement('span');
     const settled = payments.filter((p) => p.state === 'SETTLED').length;
     const failed = payments.filter((p) => p.state === 'FAILED').length;
@@ -532,7 +617,7 @@ function renderActivity(): void {
     const recipient = payments[0]!.recipient;
     short.textContent = `${recipient.slice(0, 6)}…${recipient.slice(-4)}`;
     meta.append('to ', short);
-    if (payments.length > 1) meta.append(` · ${payments.length} private payments of 1 USDC`);
+    if (payments.length > 1) meta.append(` · ${payments.length} private payments`);
     // Each note settles in its own transaction.
     const txs = payments.filter((p) => p.txHash !== undefined).reverse();
     txs.forEach((p, i) => {
@@ -573,7 +658,7 @@ async function pollActivity(): Promise<void> {
 // ── what this build is, read not assumed ──────────────────────────────────
 
 async function renderCapabilities(): Promise<void> {
-  const caps = await rt.app.capabilities(rt.scope);
+  const caps = await rt.app.capabilities(rt.scopes[0]!);
   const stack = rt.config.capabilities;
   const parts = [
     `Pool ${caps.proofMode === 'RING_8' ? `RING_8 — ${caps.ringSize}-member ring, verified off chain by an attester` : caps.proofMode}`,
@@ -601,7 +686,6 @@ async function init(): Promise<void> {
   el('tab-activity').addEventListener('click', () => { showView('activity'); void pollActivity(); });
   el<HTMLFormElement>('send-form').addEventListener('submit', (e) => void onSend(e as SubmitEvent));
   el('deposit').addEventListener('click', () => void onDeposit());
-  el<HTMLInputElement>('deposit-count').max = String(MAX_NOTES_PER_DEPOSIT);
   el('action-send').addEventListener('click', () => showView('send'));
   el('action-receive').addEventListener('click', () => el<HTMLDialogElement>('receive-dialog').showModal());
   el('account-button').addEventListener('click', () => el<HTMLDialogElement>('account-dialog').showModal());
@@ -637,6 +721,8 @@ async function init(): Promise<void> {
     refreshNotes().catch(() => { el('note-count').textContent = 'Could not read notes — Refresh to retry'; }),
     renderBudget().catch(() => undefined),
   ]);
+  el('deposit-count').addEventListener('input', renderDepositSplit);
+  void refreshPools();
   await readFundingWallet().catch(() => undefined);
   provider()?.on?.('accountsChanged', () => void readFundingWallet());
   provider()?.on?.('chainChanged', () => void readFundingWallet());
