@@ -90,11 +90,16 @@ railway variable set CRE_MODE=workflow
 ```bash
 (cd confidential-intent && bun install)
 npm run simulate    # one tick against the live executor, secrets from .env.live
-# The owner's key comes from .env as usual; the two values from .env.live.
-(set -a && . ./.env.live && set +a && cre secrets create secrets.live.yaml --target staging-settings)
-cre workflow deploy ./confidential-intent --target staging-settings
-cre workflow activate ./confidential-intent --target staging-settings
+cre secrets create secrets.live.yaml --target staging-settings --secrets-auth browser --env .env.live --yes
+cre workflow deploy ./confidential-intent --target staging-settings --yes
+cre execution list opaque-confidential-release
 ```
+
+Both targets use the Chainlink-hosted **private** registry (`deployment-registry`
+in `workflow.yaml`): your logged-in account authorises it in the browser, with
+no wallet and no gas. The only on-chain registry is on Ethereum mainnet. A
+workflow deployed to the private registry is active at once; `cre workflow
+pause` stops it.
 
 Simulation runs one real tick. It reads the live pending list, decides, and
 posts real decisions, so a pending payment settles. Deploying a TEE handler

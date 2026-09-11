@@ -5,6 +5,9 @@
 staging-settings:
   user-workflow:
     workflow-name: "opaque-confidential-release"
+    # Chainlink-hosted and off-chain: the org's account, no wallet, no gas.
+    # The on-chain registry is on Ethereum mainnet.
+    deployment-registry: "private"
   workflow-artifacts:
     workflow-path: "./main.ts"
     config-path: "./config.staging.json"
@@ -14,6 +17,7 @@ staging-settings:
 production-settings:
   user-workflow:
     workflow-name: "opaque-confidential-release-production"
+    deployment-registry: "private"
   workflow-artifacts:
     workflow-path: "./main.ts"
     config-path: "./config.production.json"

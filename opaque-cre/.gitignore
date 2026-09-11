@@ -9,3 +9,4 @@ dist/
 .cre_build_tmp*
 .env.*
 !.env.example
+binary.wasm.br.b64
