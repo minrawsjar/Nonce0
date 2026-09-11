@@ -146,6 +146,10 @@ try {
 } catch {
   console.warn('no zip command: extension/dist is built, but not zipped for the store');
 }
+// And the copy the landing page offers for Developer-mode installs, under a
+// stable name: unzipped, it is always the folder `opaque-extension`, and an
+// unpacked extension's id — its wallet — follows its folder.
+if (existsSync(zip)) copyFileSync(zip, join(HERE, '..', 'frontend', 'public', 'opaque-extension.zip'));
 
 console.log(`built ${DIST}  (${refs.length + 6} files)${existsSync(zip) ? `, and ${basename(zip)} for the Chrome Web Store` : ''}`);
 console.log('load it: chrome://extensions → Developer mode → Load unpacked → extension/dist');

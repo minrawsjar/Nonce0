@@ -41,6 +41,7 @@
         <a href="#why">The gap</a>
         <a href="#threat">Threat model</a>
         <a href="#build">Built on</a>
+        <a href="#extension">Extension</a>
       </nav>
       <a href="app.html" class="btn btn--outline">Get Started</a>
     </div>
@@ -311,6 +312,27 @@
   </div>
 
 
+  <div class="wrap slab" id="extension">
+    <p class="sec-n" data-reveal data-n="09">Get the extension</p>
+    <h2 class="h2" data-reveal>The wallet, in Chrome's side panel.</h2>
+    <div class="get">
+      <a class="btn btn--solid" href="opaque-extension.zip" download>Download the extension <span aria-hidden="true">&darr;</span></a>
+      <p class="prose">For Chrome, installed in Developer mode while the Web Store listing is in review.</p>
+    </div>
+    <ol class="steps prose">
+      <li><span>Unzip <b>opaque-extension.zip</b>: double-click it on a Mac, or right-click it and choose
+        <b>Extract All</b> on Windows. Keep the folder. Chrome runs the extension from it.</span></li>
+      <li><span>Open <code>chrome://extensions</code> by pasting it into the address bar.</span></li>
+      <li><span>Turn on <b>Developer mode</b>, top right.</span></li>
+      <li><span>Click <b>Load unpacked</b> and choose the unzipped folder, the one with
+        <code>manifest.json</code> inside.</span></li>
+      <li><span>Pin <b>opaque</b> from the puzzle-piece menu and click it. The wallet opens in the side panel.</span></li>
+    </ol>
+    <p class="prose steps__note">To update, unzip the new download <em>into the same folder</em> and click the
+      reload arrow on opaque's card. Chrome ties the wallet to the folder: loaded from a different one, it
+      opens as a new extension with an empty wallet.</p>
+  </div>
+
   <!-- ══ The resolution ═════════════════════════════════════════════════ -->
 
 
@@ -344,6 +366,7 @@
         <a href="#why">The gap</a>
         <a href="#threat">Threat model</a>
         <a href="#build">Built on</a>
+        <a href="#extension">Extension</a>
       </div>
       <div class="foot__col">
         <p class="label label--dim">Elsewhere</p>

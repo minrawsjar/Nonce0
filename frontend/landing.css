@@ -501,6 +501,16 @@ body:not(.in-hero) .fs { opacity: 0; visibility: hidden; pointer-events: none; }
   color: var(--ember);
 }
 
+/* Get the extension: numbered steps, the numeral in the section label's
+   ember mono. The address is select-all, since a page cannot link to it. */
+.get { display: flex; flex-wrap: wrap; align-items: center; gap: var(--gap-4) var(--gap-6); }
+.get .prose { max-width: 40ch; }
+.steps { display: grid; gap: var(--gap-4); max-width: 62ch; margin: clamp(32px, 4vw, 48px) 0 0; padding: 0; list-style: none; counter-reset: step; }
+.steps li { display: grid; grid-template-columns: 2.4rem 1fr; counter-increment: step; }
+.steps li::before { content: counter(step, decimal-leading-zero); padding-top: 0.28em; font-family: ui-monospace, Menlo, monospace; font-size: 12.5px; color: var(--ember); }
+.steps code { padding: 0.1em 0.45em; border: 1px solid var(--rule); border-radius: 6px; background: rgba(244, 239, 233, 0.06); font-family: ui-monospace, Menlo, monospace; font-size: 0.9em; color: var(--text); user-select: all; overflow-wrap: anywhere; }
+.steps__note { max-width: 62ch; margin-top: var(--gap-6); padding-left: 2.4rem; font-size: 14.5px; }
+
 .tags { display: flex; gap: var(--gap-3); flex-wrap: wrap; margin-top: clamp(28px, 4vw, 48px); }
 .tag {
   padding: 7px 16px;
@@ -783,7 +793,7 @@ body:not(.in-hero) .fs { opacity: 0; visibility: hidden; pointer-events: none; }
 }
 .hero__skip:hover { color: var(--text); }
 .hero__pin { isolation: isolate; }
-#how, #why, #threat, #build, #product { scroll-margin-top: 110px; }
+#how, #why, #threat, #build, #product, #extension { scroll-margin-top: 160px; }
 
 @media (max-width: 600px) {
   .plate { object-fit: contain; object-position: center 48%; }
