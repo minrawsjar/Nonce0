@@ -24,7 +24,7 @@
 //                any number of notes. The first deploys the account too, from
 //                USDC at its address; a funding wallet, where there is one,
 //                tops it up in one confirmation. Attributable either way.
-//   pools        one RING_8 pool per denomination (1, 10, 100 USDC), compiled
+//   pools        one RING_8 pool per configured denomination, compiled
 //                in from deployments/ like the relay root: a server that
 //                could name the pools could take the deposits.
 

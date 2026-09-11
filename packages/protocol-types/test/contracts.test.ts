@@ -74,6 +74,7 @@ test('privacy score is a bounded integer, not any number', () => {
 
 test('denomination accepts only the configured public buckets', () => {
   assert.equal(asDenomination(2_000_000), 2_000_000);
+  assert.equal(asDenomination(5_000_000), 5_000_000);
   assert.equal(code(() => asDenomination(3_000_000)), 'UNSUPPORTED_DENOMINATION');
 });
 

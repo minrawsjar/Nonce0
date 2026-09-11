@@ -9,13 +9,13 @@
 //
 // Everything below reads real state: the note balance from this browser's
 // vault, the ring and privacy score through the mesh, the path from the
-// verified relay directory, payment status through the mesh. Nothing is
-// simulated in the page — what IS simulated (the CRE enclave, a one-operator
-// mesh) is named in #caps, read from the stack.
+// verified relay directory, payment status through the mesh. Nothing in the
+// page is simulated.
 
 import type { IntentStatus, NoteSummary, PrivacyScore, StatusHandle, UnixSeconds } from '@opaque/protocol-types';
 
 import { makeAmount, MAX_NOTES_PER_DEPOSIT } from './lib/protocol/index.js';
+import { runPaymentLanes } from './lib/payment-lanes.js';
 import { startWallet, type WalletRuntime } from './lib/runtime.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
@@ -26,6 +26,15 @@ function el<T extends HTMLElement = HTMLElement>(id: string): T {
   const node = document.getElementById(id);
   if (!node) throw new Error(`app.html is missing #${id}`);
   return node as T;
+}
+
+// The wallet cannot start without the runtime, and a page that silently shows
+// zeros would read as an empty wallet rather than a failure. This bar stays
+// hidden until there is something the user has to know about.
+function showBootError(message: string): void {
+  const bar = el('boot-error');
+  bar.textContent = message;
+  bar.hidden = false;
 }
 
 let rt: WalletRuntime;
@@ -60,11 +69,11 @@ const DEPOSIT_GAS_USDC = 0.2;
  */
 const MIN_FRESHNESS = 70;
 /**
- * Payments of one send in flight at once. One: three at once overloaded the
- * single-machine mesh (a commit went unanswered past its deadline), and was
- * slower than one at a time. Raise it when the relays run on more machines.
+ * Independent notes share neither nullifier nor ring proof. Four lanes keep a
+ * four-note payment responsive for hackathon demos; every lane remains an
+ * independent, all-settled operation.
  */
-const PAYMENT_LANES = 1;
+const PAYMENT_LANES = 4;
 const MAX_WAIT_SECONDS = 3_600;
 const shortAddress = (value: string) => value ? `${value.slice(0, 6)}…${value.slice(-4)}` : 'Not connected';
 const isRejected = (error: unknown) => typeof error === 'object' && error !== null && 'code' in error && (error as { code: unknown }).code === 4001;
@@ -189,11 +198,6 @@ async function renderBudget(): Promise<void> {
     if (i < left) cell.className = 'on';
     return cell;
   }));
-  const note = el('budget-note');
-  note.replaceChildren();
-  const code = document.createElement('code');
-  code.textContent = state.pkCommitment.slice(0, 18) + '…';
-  note.append('Account key ', code, ' — FORS+C, few-time, kept in this browser only. It signs deposits from the account; ring payments are authorised by the proof.');
 
   const funds = await rt.accountFunds(opaqueAddress as `0x${string}`).catch(() => undefined);
   const balance = funds === undefined ? '' : ` · ${funds.usdc.toFixed(2)} USDC`;
@@ -538,26 +542,26 @@ async function onSend(event: SubmitEvent): Promise<void> {
     status.textContent = count === 1
       ? 'Building the ring proof in this browser (a few seconds — the note secret never leaves the page)…'
       : `Building ${count} ring proofs in this browser and sending each across the mesh (the note secrets never leave the page)…`;
-    let failure: unknown;
-    const lane = async (): Promise<void> => {
-      for (let note = queue.shift(); note !== undefined && failure === undefined; note = queue.shift()) {
-        const ref = await rt.app.submitPayment({
+    const results = await runPaymentLanes(queue, PAYMENT_LANES, async (note) => {
+      const ref = await rt.app.submitPayment({
           noteId: note.id,
           recipient: recipient as never,
           minPrivacyScore: (MIN_FRESHNESS * 100) as PrivacyScore,
           deadline: (BigInt(Math.floor(Date.now() / 1000) + MAX_WAIT_SECONDS)) as UnixSeconds,
           credentialHandle,
           idempotencyKey: `pay-${note.id}-${Date.now()}` as never,
-        });
-        // Recorded as each one goes, so a failure later still shows these.
-        sent.unshift({ handle: ref.statusHandle as string, recipient, at: Date.now(), group, usdc: usdcOf(note) });
-        saveSent();
-        done++;
-        if (count > 1) status.textContent = `Sent ${done} of ${count} across the mesh…`;
-      }
-    };
-    await Promise.all(Array.from({ length: Math.min(PAYMENT_LANES, count) }, () => lane().catch((error: unknown) => { failure ??= error; })));
-    if (failure !== undefined) throw failure;
+      });
+      // Recorded as each one goes, so a failure later still shows these.
+      sent.unshift({ handle: ref.statusHandle as string, recipient, at: Date.now(), group, usdc: usdcOf(note) });
+      saveSent();
+      done++;
+      if (count > 1) status.textContent = `Sent ${done} of ${count} across the mesh…`;
+    });
+    const failures = results.filter((result): result is PromiseRejectedResult => result.status === 'rejected');
+    if (failures.length > 0) {
+      const first = failures[0]!.reason as Error;
+      throw new Error(`${failures.length} of ${count} note payments failed: ${first.message}`);
+    }
     status.textContent = count === 1
       ? 'Sent across the mesh. It usually settles within seconds; Activity shows when it lands.'
       : `Sent ${amount} USDC as ${count} payments across the mesh. Each usually settles within seconds; Activity shows when they land.`;
@@ -568,7 +572,7 @@ async function onSend(event: SubmitEvent): Promise<void> {
   } catch (error) {
     status.textContent = done === 0
       ? `Not sent: ${(error as Error).message}`
-      : `Sent ${done} of ${count}; the rest were not sent: ${(error as Error).message}`;
+      : `Sent ${done} of ${count}; the remaining note payments failed: ${(error as Error).message}`;
     if (done > 0) { await refreshNotes().catch(() => undefined); renderActivity(); }
   } finally {
     button.disabled = notes.every((n) => n.state !== 'AVAILABLE');
@@ -656,20 +660,6 @@ async function pollActivity(): Promise<void> {
   if (changed) { saveSent(); renderActivity(); }
 }
 
-// ── what this build is, read not assumed ──────────────────────────────────
-
-async function renderCapabilities(): Promise<void> {
-  const caps = await rt.app.capabilities(rt.scopes[0]!);
-  const stack = rt.config.capabilities;
-  const parts = [
-    `Pool ${caps.proofMode === 'RING_8' ? `RING_8 — ${caps.ringSize}-member ring, verified off chain by an attester` : caps.proofMode}`,
-    `CRE ${stack.confidentialExecution === 'SIMULATED' ? 'SIMULATED (not an enclave)' : 'attested'}`,
-    'mesh: six relays, one operator',
-    `PQ account ${stack.pqWallet === 'MOCK' ? 'on a mock chain' : 'live'}`,
-  ];
-  el('caps').textContent = parts.join(' · ');
-}
-
 // ── wiring ────────────────────────────────────────────────────────────────
 
 type View = 'home' | 'send' | 'ring' | 'activity';
@@ -711,7 +701,7 @@ async function init(): Promise<void> {
   try {
     rt = await startWallet();
   } catch (error) {
-    el('caps').textContent = `Could not start: ${(error as Error).message}`;
+    showBootError(`Could not start: ${(error as Error).message}`);
     return;
   }
   // The PQ account key lives in this browser; create one the first time.
@@ -719,7 +709,6 @@ async function init(): Promise<void> {
 
   // One failed read must not stop the rest of the page from starting.
   await Promise.all([
-    renderCapabilities().catch((error: Error) => { el('caps').textContent = `Could not read the pool: ${error.message}`; }),
     refreshNotes().catch(() => { el('note-count').textContent = 'Could not read notes — Refresh to retry'; }),
     renderBudget().catch(() => undefined),
   ]);

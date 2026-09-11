@@ -60,9 +60,9 @@ export function decodeQueryResult<K extends MeshQuery['kind']>(
 }
 
 /**
- * The most notes one deposit makes: 27 is 999 USDC as 9×100 + 9×10 + 9×1.
- * Measured on Arc: an account operation is ~590k gas for one note and
- * 45–65k per note after it, so 27 is ~2.3M, well inside a bundler's limit.
+ * The protocol ceiling is 27 notes. With the approved seven buckets a greedy
+ * amount up to 999 USDC needs no more than 17, leaving room under the Arc
+ * account-operation budget for future policy changes.
  */
 export const MAX_NOTES_PER_DEPOSIT = 27;
 
@@ -70,8 +70,8 @@ export const MAX_NOTES_PER_DEPOSIT = 27;
  * The fewest notes that make `amount` exactly, largest first: denomination →
  * count, all in whole USDC. At most `have` of each when given. undefined when
  * nothing makes it — a note is spent whole, with no change (§6.6).
- * ponytail: greedy is exact only while each denomination divides the next
- * (1, 10, 100); a 25 pool would need a real search.
+ * The approved 1/2/5/10/20/50/100 system is canonical: greedy uses the fewest
+ * notes. Arbitrary future buckets require an optimal-search replacement.
  */
 export function makeAmount(amount: number, denominations: readonly number[], have?: ReadonlyMap<number, number>): Map<number, number> | undefined {
   const out = new Map<number, number>();

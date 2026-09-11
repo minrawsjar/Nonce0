@@ -18,12 +18,14 @@ the mapping from accidentally reimplementing protocol hashing.
 
 Subgraph Studio, network `arc-testnet`, slug `opaque`:
 `https://api.studio.thegraph.com/query/1760100/opaque/v0.2.0` (also
-`services.graphUrl` in `deployments/arc-testnet.json`). To ship a new version:
+`services.graphUrl` in `deployments/arc-testnet.json`). The locally generated
+manifest now contains the seven RING_8 pools at 1/2/5/10/20/50/100 USDC (plus
+the legacy single-note pool). To ship a new version:
 
 ```bash
-node scripts/render-manifest.ts && npx graph codegen subgraph.yaml && npx graph build subgraph.yaml
-npx graph auth <deploy key>          # once, in your own terminal
-npx graph deploy opaque subgraph.yaml --version-label v0.2.1
+bun run subgraph:render && bun run subgraph:codegen && bun run subgraph:build
+graph auth <deploy key>          # once, in your own terminal
+graph deploy opaque subgraph.yaml --version-label v0.2.1
 ```
 
 Then point `services.graphUrl` at the new version. Only the backend's mesh

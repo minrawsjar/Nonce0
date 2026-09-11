@@ -45,6 +45,7 @@ export type Usdc6 = Brand<bigint, 'Usdc6'>;
 export type NativeWei = Brand<bigint, 'NativeWei'>;
 
 /** Public value buckets. A ring is formed only within one bucket. */
+/** Fixed public note values, expressed in USDC's six-decimal integer units. */
 export type Denomination = 1_000_000 | 2_000_000 | 5_000_000 | 10_000_000 | 20_000_000 | 50_000_000 | 100_000_000;
 export const DENOMINATIONS: readonly Denomination[] = Object.freeze([
   1_000_000, 2_000_000, 5_000_000, 10_000_000, 20_000_000, 50_000_000, 100_000_000,

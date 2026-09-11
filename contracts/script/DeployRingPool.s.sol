@@ -4,6 +4,7 @@ pragma solidity 0.8.26;
 import {console2} from "forge-std/console2.sol";
 import {IPQKeyRegistry} from "../src/opaque/interfaces/IPQKeyRegistry.sol";
 import {AttestedRingVerifier} from "../src/opaque/pool/AttestedRingVerifier.sol";
+import {Denominations} from "../src/opaque/pool/Denominations.sol";
 import {IERC20, PrivatePool} from "../src/opaque/pool/PrivatePool.sol";
 import {PQKeyRegistry} from "../src/opaque/wallet/PQKeyRegistry.sol";
 import {Canonical} from "../src/opaque/lib/Canonical.sol";
@@ -49,6 +50,7 @@ contract DeployRingPool is Deployments {
         if (registerAttester) require(attester == vm.envAddress("ATTESTER"), "ATTESTER does not match ATTESTER_EOA_KEY");
         require(attester != deployer, "the attester must not be the deployer");
         uint256 denomination = vm.envOr("DENOMINATION", uint256(1_000_000));
+        require(Denominations.isSupported(denomination), "unsupported fixed denomination");
 
         IPQKeyRegistry registry = IPQKeyRegistry(_contract("pqKeyRegistry"));
         address usdc = _usdc();
