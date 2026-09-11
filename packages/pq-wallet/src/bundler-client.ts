@@ -6,6 +6,7 @@ const rpcAddress = (value: unknown) => asAddress(typeof value === 'string' ? val
 export type Rpc = (method: string, params: unknown[]) => Promise<unknown>;
 export class RpcError extends Error {
   readonly code: number;
+  readonly reason: string;
   constructor(method: string, code: number, message: string) {
     // Do not expose upstream URLs, credentials or full operation bytes in the UI.
     const safe = message.replace(/https?:\/\/\S+/gi, '[RPC endpoint]')
@@ -13,7 +14,7 @@ export class RpcError extends Error {
       .replace(/0x[0-9a-f]{80,}/gi, '[operation data]')
       .replace(/[\x00-\x1f\x7f]/g, ' ').slice(0, 600);
     super(`${method} failed (${code}): ${safe}`);
-    this.name = 'RpcError'; this.code = code;
+    this.name = 'RpcError'; this.code = code; this.reason = safe;
   }
 }
 export function httpRpc(url: string, fetcher: typeof fetch = fetch): Rpc {

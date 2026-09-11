@@ -14,6 +14,7 @@ export const FACTORY_ABI = parseAbi([
   'function implementation() view returns (address)', 'function registry() view returns (address)', 'function entryPoint() view returns (address)',
 ]);
 const EP_ABI = parseAbi(['function getNonce(address,uint192) view returns (uint256)',
+  'function handleOps((address sender,uint256 nonce,bytes initCode,bytes callData,bytes32 accountGasLimits,uint256 preVerificationGas,bytes32 gasFees,bytes paymasterAndData,bytes signature)[] ops,address beneficiary)',
   'function getUserOpHash((address sender,uint256 nonce,bytes initCode,bytes callData,bytes32 accountGasLimits,uint256 preVerificationGas,bytes32 gasFees,bytes paymasterAndData,bytes signature)) view returns (bytes32)']);
 export interface ArcConfig {
   chainId: number; entryPointVersion: '0.7'; rpcUrl: string; bundlerUrl: string;
@@ -116,11 +117,14 @@ export class ArcChainAdapter {
   }
   async checkSignedGas(op: PackedOperation): Promise<void> {
     if (op.signature === '0x') throw new Error('A saved PQ signature is required for simulation');
-    const gas = await this.bundler.estimate(op);
+    // Hosted gas estimators rewrite signed fee/gas fields. An eth_call to the
+    // actual EntryPoint validates the exact saved operation, without broadcasting
+    // or changing those fields. handleOps can report execution failure in logs;
+    // this preflight establishes validation only, receipts establish execution.
     const verification = BigInt(`0x${op.accountGasLimits.slice(2, 34)}`);
     const call = BigInt(`0x${op.accountGasLimits.slice(34)}`);
-    if (gas.verification > verification || gas.call > call || gas.pre > op.preVerificationGas) {
-      throw new Error('Simulation exceeds the signed gas budget. No submission was sent by this wallet. Keep this request until expiry; changing gas requires a new signature and consumes another slot.');
-    }
+    await this.client.simulateContract({ address: this.config.entryPoint, abi: EP_ABI,
+      functionName: 'handleOps', args: [[op], '0x0000000000000000000000000000000000000001'],
+      account: '0x0000000000000000000000000000000000000001', gas: verification + call + 1_000_000n });
   }
 }

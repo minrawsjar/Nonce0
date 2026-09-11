@@ -32,7 +32,7 @@ export async function accountGateway(path: string | undefined) {
       response.end(JSON.stringify({ jsonrpc: '2.0', id, result }));
     } catch (error) {
       response.end(JSON.stringify({ jsonrpc: '2.0', id, error: error instanceof RpcError
-        ? { code: error.code, message: error.message }
+        ? { code: error.code, message: error.reason }
         : { code: -32000, message: 'Configured RPC service could not complete the request' } }));
     }
   };

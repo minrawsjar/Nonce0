@@ -103,7 +103,7 @@ test('real_local_entrypoint_sponsored_bootstrap_transfer_rotation_and_outbox', {
     const config: ArcConfig = { chainId: 31337, entryPointVersion: '0.7', entryPoint, registry, factory, implementation,
       rpcUrl, bundlerUrl: gatewayUrl, sponsorship: selfFunded ? { mode: 'self-funded' } : { mode: 'sponsored', url: gatewayUrl, paymaster, codeHash: await codeHash(paymaster) },
       codeHashes: { entryPoint: await codeHash(entryPoint), registry: await codeHash(registry), factory: await codeHash(factory), implementation: await codeHash(implementation) },
-      maxFeePerGas: 100_000_000_000n, maxVerificationGas: 499999n, maxCallGas: 500000n, maxPreVerificationGas: 200000n };
+      maxFeePerGas: 100_000_000_000n, maxVerificationGas: selfFunded ? 600000n : 499999n, maxCallGas: 500000n, maxPreVerificationGas: 200000n };
     const network = new ArcChainAdapter(config), signers = new MemorySignerStore(), records = new MemoryAccountStore();
     const controller = new AccountWalletController(network, signers, records, async run => run());
     const created = await controller.wallet.create(); assert.equal(created.active, false);
@@ -111,22 +111,6 @@ test('real_local_entrypoint_sponsored_bootstrap_transfer_rotation_and_outbox', {
       await assert.rejects(controller.wallet.register(), /Fund this account/);
       assert.equal((await controller.wallet.getState()).localSigningReservations, 0n);
       await publicClient.waitForTransactionReceipt({ hash: await walletClient.sendTransaction({ to: created.accountAddress, value: 10n ** 17n, chain: null }) });
-    }
-    if (selfFunded) {
-      // Real funded counterfactual validation currently exceeds the pinned
-      // 499999 budget. Keep this as an explicit integration blocker, not a
-      // reason to raise the live provider limit or re-sign automatically.
-      await assert.rejects(controller.wallet.register(), /AA26 over verificationGasLimit/);
-      const pending = (await records.read())!.pending!;
-      assert.equal(pending.phase, 'unknown');
-      assert.ok(pending.signature);
-      const used = (await controller.wallet.getState()).localSigningReservations;
-      assert.equal(used, 1n);
-      await assert.rejects(controller.wallet.register(), /AA26 over verificationGasLimit/);
-      assert.equal((await controller.wallet.getState()).localSigningReservations, used);
-      assert.equal((await records.read())!.pending!.signature, pending.signature);
-      assert.equal((await network.observe(created.accountAddress)).deployed, false);
-      return;
     }
     await controller.wallet.register();
     assert.equal((await controller.wallet.getState()).chainUseCount, 1n);

@@ -109,7 +109,8 @@ export class AccountWalletController {
     const { record: r, observation: o } = await this.reconcile(); const p = r.pending;
     const op = decodeOperation(encoded);
     if (!p || encodeOperation({ ...p.operation, signature: '0x' }) !== encodeOperation({ ...op, signature: '0x' })) throw new Error('Operation was not prepared by this wallet');
-    if (o.nonce !== p.operation.nonce || o.epoch !== p.context.epoch || o.now > p.context.validUntil) throw new Error('Prepared operation is stale');
+    if (o.now > p.context.validUntil) throw new Error('This request expired. Refresh, then use Discard unsigned or expired request before preparing another action. The used signing slot stays used.');
+    if (o.nonce !== p.operation.nonce || o.epoch !== p.context.epoch) throw new Error('Prepared operation is stale');
     const kind = decodeAction(p.operation.callData).kind;
     if (p.context.useCount !== (kind === 4 ? 0n : o.state?.useCount ?? 0n)) throw unsafeState();
     const output = await signDigest(this.signerStore, p.signer, p.digest, kind <= 1 ? 'ordinary' : 'lifecycle');
@@ -119,15 +120,16 @@ export class AccountWalletController {
     return output;
   }
   private async submit(): Promise<Bytes32> {
-    let r = await this.read(); const p = r.pending;
+    let { record: r, observation: o } = await this.reconcile(); const p = r.pending;
     if (!p || p.phase === 'prepared' || !p.signature) throw new Error('Sign the prepared operation first');
     if (p.receipt) return p.hash;
+    if (o.now > p.context.validUntil) throw new Error('This request expired. Refresh, then use Discard unsigned or expired request before preparing another action. The used signing slot stays used.');
     // Validate the saved signature through the original durable signer cache before broadcasting.
     const kind = decodeAction(p.operation.callData).kind;
     const cached = await signDigest(this.signerStore, p.signer, p.digest, kind <= 1 ? 'ordinary' : 'lifecycle');
     if (signatureEnvelope(p.context, cached.signature) !== p.operation.signature) throw unsafeState();
     r.pending = { ...p, phase: 'unknown' }; r = await this.save(r);
-    // The estimator receives a valid authorization. Persist it before disclosure
+    // The simulation RPC receives a valid authorization. Persist it before disclosure
     // and retain the exact bytes on failure; it must never trigger automatic re-signing.
     if (this.network.config.sponsorship.mode === 'self-funded') await this.network.checkSignedGas(p.operation);
     const hash = asBytes32(await this.network.bundler.submit(p.operation));

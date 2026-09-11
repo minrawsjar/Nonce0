@@ -88,6 +88,20 @@ contract OpaquePqAccountTest is Test {
         account.executeUserOp(op, hash);
         assertEq(reg.stateOf(address(account)).useCount, 0);
     }
+    function test_estimatorChangingFeesInvalidatesRealActivationSignature() public {
+        PackedUserOperation memory op = signed(unsigned(0, ""), 1, 0, 2000);
+        // Hosted estimators can normalize fees and gas before simulation.
+        // Even a genuine signature no longer authorizes that changed operation.
+        op.gasFees = bytes32((uint256(2) << 128) | 2);
+        bytes32 changedHash = ep.getUserOpHash(op);
+        vm.prank(address(ep));
+        uint256 validationData = account.validateUserOp(op, changedHash, 0);
+        assertEq(uint160(validationData), 1);
+        vm.expectRevert(OpaquePqAccount.BadOperation.selector);
+        vm.prank(address(ep));
+        account.executeUserOp(op, changedHash);
+        assertEq(reg.stateOf(address(account)).useCount, 0);
+    }
     function test_sponsoredCounterfactualActivationWithoutEoaWallet() public {
         bytes32 salt = bytes32(uint256(9));
         address predicted = factory.getAddress(a, b, 5000, salt);

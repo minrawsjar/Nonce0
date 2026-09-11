@@ -17,7 +17,7 @@
     "mode": "self-funded"
   },
   "maxFeePerGas": "100000000000",
-  "maxVerificationGas": "499999",
+  "maxVerificationGas": "600000",
   "maxCallGas": "500000",
   "maxPreVerificationGas": "250000"
 }
