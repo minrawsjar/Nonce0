@@ -290,7 +290,7 @@ async function settle(done: () => Promise<boolean>): Promise<void> {
 
 // ── notes ─────────────────────────────────────────────────────────────────
 //
-// A note is 1, 10 or 100 USDC, each in its own pool (§6.6: a ring is formed
+// A note is 1, 2, 5, 10, 20, 50 or 100 USDC, each in its own pool (§6.6: a ring is formed
 // only among notes of one size). A pool fills from anyone's deposits, and a
 // note in it can be spent once it holds a ring's worth.
 
@@ -363,7 +363,7 @@ async function onDeposit(): Promise<void> {
     status.textContent = 'Choose a whole amount of USDC.';
     return;
   }
-  // The fewest notes, largest first: 123 is 1×100 + 2×10 + 3×1.
+  // The fewest notes, largest first: 123 is 100 + 20 + 2 + 1.
   const counts = makeAmount(amount, denominations())!;
   const count = [...counts.values()].reduce((a, b) => a + b, 0);
   if (count > MAX_NOTES_PER_DEPOSIT) {

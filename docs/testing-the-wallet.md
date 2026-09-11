@@ -45,7 +45,8 @@ wallet after restarting the stack.
    [faucet.circle.com](https://faucet.circle.com). It pays gas too, so nothing
    else needs funding.
 2. **Deposit.** Set *Deposit amount* in whole USDC and press *Deposit*. It
-   becomes the fewest notes of 100, 10 and 1 USDC: 123 is 1×100 + 2×10 + 3×1.
+   becomes the fewest notes of 1, 2, 5, 10, 20, 50 and 100 USDC: 123 is
+   100 + 20 + 2 + 1.
    Each size has its own pool, because a ring is formed only among notes of
    one size (spec §6.6), and a pool fills from anyone's deposits. A note can
    be sent once its pool holds 8; the field says when part of a deposit will
@@ -66,7 +67,7 @@ wallet after restarting the stack.
 3. **Send.** Set the amount in whole USDC, enter a recipient, and press
    *Review private transfer*. It is paid with the fewest of your notes that
    make it exactly, one payment each, so 100 USDC is one payment and 123 is
-   six. A note is spent whole, with no change: holding one 100-USDC note, you
+   four. A note is spent whole, with no change: holding one 100-USDC note, you
    can send 100 but not 30. Each payment's proof is built in a worker (a few
    seconds), sealed, and sent across the mesh as ~35 chunks. Several to one
    address are easier to link to each other than one. Amounts like 2.37 are

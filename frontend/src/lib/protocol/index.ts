@@ -70,18 +70,48 @@ export const MAX_NOTES_PER_DEPOSIT = 27;
  * The fewest notes that make `amount` exactly, largest first: denomination →
  * count, all in whole USDC. At most `have` of each when given. undefined when
  * nothing makes it — a note is spent whole, with no change (§6.6).
- * The approved 1/2/5/10/20/50/100 system is canonical: greedy uses the fewest
- * notes. Arbitrary future buckets require an optimal-search replacement.
+ *
+ * Without `have` (a deposit, any number of each) greedy is the fewest: the
+ * 1/2/5/10/20/50/100 system is canonical, checked to 1000 in ring-client's
+ * greedy test. With `have` (a send, from what is held) greedy is not even
+ * exact — a 50 and three 20s make 60 only as 3×20 — so that case is solved
+ * outright: the fewest notes by dynamic programming over the amount.
  */
 export function makeAmount(amount: number, denominations: readonly number[], have?: ReadonlyMap<number, number>): Map<number, number> | undefined {
-  const out = new Map<number, number>();
-  let rest = amount;
-  for (const d of [...denominations].sort((a, b) => b - a)) {
-    const take = Math.min(Math.floor(rest / d), have === undefined ? Infinity : have.get(d) ?? 0);
-    if (take > 0) out.set(d, take);
-    rest -= take * d;
+  const sizes = [...denominations].sort((a, b) => b - a);
+  if (have === undefined) {
+    const out = new Map<number, number>();
+    let rest = amount;
+    for (const d of sizes) {
+      const take = Math.floor(rest / d);
+      if (take > 0) out.set(d, take);
+      rest -= take * d;
+    }
+    return rest === 0 ? out : undefined;
   }
-  return rest === 0 ? out : undefined;
+  // best[x]: fewest notes making x from the sizes so far; take[i][x]: how many
+  // of sizes[i] that used. ponytail: O(amount × notes held), fine to thousands.
+  let best = Array<number>(amount + 1).fill(Infinity);
+  best[0] = 0;
+  const take: number[][] = [];
+  for (const d of sizes) {
+    const next = Array<number>(amount + 1).fill(Infinity);
+    const used = Array<number>(amount + 1).fill(0);
+    for (let x = 0; x <= amount; x++) {
+      for (let k = 0; k <= (have.get(d) ?? 0) && k * d <= x; k++) {
+        if (best[x - k * d]! + k < next[x]!) [next[x], used[x]] = [best[x - k * d]! + k, k];
+      }
+    }
+    best = next;
+    take.push(used);
+  }
+  if (best[amount] === Infinity) return undefined;
+  const counts: [number, number][] = [];
+  for (let i = sizes.length - 1, x = amount; i >= 0; i--) {
+    if (take[i]![x]! > 0) counts.unshift([sizes[i]!, take[i]![x]!]);
+    x -= take[i]![x]! * sizes[i]!;
+  }
+  return new Map(counts);
 }
 
 export interface AdapterPorts {

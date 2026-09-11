@@ -8,6 +8,7 @@
     "dev": "vite",
     "build": "vite build",
     "typecheck": "tsc --noEmit",
+    "test": "node --test 'src/**/*.test.ts'",
     "preview": "vite preview",
     "ext": "VITE_STACK_URL=${VITE_STACK_URL:-https://opaque-stack-production.up.railway.app/stack.json} vite build && node ../extension/build.mjs",
     "api": "node --watch ../backend/server.js"
