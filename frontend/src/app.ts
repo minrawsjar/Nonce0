@@ -39,6 +39,8 @@ function showBootError(message: string): void {
 }
 
 let rt: WalletRuntime;
+/** USDC at the account's own address: sent to it, not yet deposited as notes. */
+let accountUsdc = 0;
 let notes: readonly NoteSummary[] = [];
 /** Deposits in each ring pool, by pool address, as last read through the mesh. */
 const poolSizes = new Map<string, number>();
@@ -197,6 +199,16 @@ async function renderBudget(): Promise<void> {
 
   const funds = await rt.accountFunds(opaqueAddress as `0x${string}`).catch(() => undefined);
   const balance = funds === undefined ? '' : ` · ${funds.usdc.toFixed(2)} USDC`;
+  if (funds !== undefined) {
+    accountUsdc = funds.usdc;
+    // USDC sent to the address from outside: offer it, and drop a stale
+    // "send USDC first" from before it arrived.
+    const ready = Math.floor(accountUsdc - DEPOSIT_GAS_USDC);
+    const field = el<HTMLInputElement>('deposit-count');
+    if (ready >= 1 && field.value.trim() === '') { field.value = String(ready); renderDepositSplit(); }
+    if (ready >= 1 && /^Send /.test(el('deposit-status').textContent ?? '')) el('deposit-status').textContent = '';
+    renderBalance();
+  }
   el('account-state').textContent = state.active
     ? `Active${balance} · deposits are signed by its PQ key`
     : `Not on chain yet${balance} · your first deposit sets it up`;
@@ -362,6 +374,15 @@ const countByValue = (list: readonly NoteSummary[]): Map<number, number> => {
 /** 100 → 1, 1 → 3 reads "1×100 + 3×1". */
 const describe = (counts: ReadonlyMap<number, number>): string =>
   [...counts].sort((a, b) => b[0] - a[0]).map(([usdc, n]) => `${n}×${usdc}`).join(' + ');
+/**
+ * The note sizes a deposit makes: those whose pool already holds a ring, so
+ * every note can be sent at once. A newer pool joins as soon as it fills (from
+ * anyone's deposits); until then a note there would only wait. 1 USDC is
+ * always offered, so a deposit always works.
+ */
+const readySizes = (): number[] => rt.scopes
+  .filter((s) => Number(s.denomination) === 1_000_000 || (poolSizes.get(s.pool) ?? 0) >= RING_SIZE)
+  .map((s) => Number(s.denomination) / 1e6);
 /** Unknown size counts as filled: a read that failed is no reason to alarm. */
 const ringReady = (n: NoteSummary): boolean => (poolSizes.get(n.scope.pool) ?? RING_SIZE) >= RING_SIZE;
 
@@ -397,8 +418,10 @@ function renderBalance(): void {
   const total = available.reduce((sum, n) => sum + usdcOf(n), 0);
   const waiting = available.filter((n) => !ringReady(n)).reduce((sum, n) => sum + usdcOf(n), 0);
   const count = `${available.length} note${available.length === 1 ? '' : 's'}`;
+  const parts = [count, ...(waiting > 0 ? [`${waiting} USDC waits for its pool to fill`] : [])];
+  if (accountUsdc >= 1 + DEPOSIT_GAS_USDC) parts.push(`${accountUsdc.toFixed(2)} USDC at your address, ready to deposit`);
   el('balance').textContent = `${total}.00`;
-  el('note-count').textContent = waiting === 0 ? count : `${count} · ${waiting} USDC waits for its pool to fill`;
+  el('note-count').textContent = parts.join(' · ');
   el('asset-balance').textContent = `${total}.00`;
   el('asset-notes').textContent = `${available.length} private note${available.length === 1 ? '' : 's'}`;
   el<HTMLButtonElement>('arm').disabled = available.length === 0;
@@ -408,15 +431,18 @@ function renderDepositSplit(): void {
   if (rt === undefined) return; // typed before the wallet started: rendered once it has
   const amount = depositAmount();
   if (amount === undefined) { el('deposit-split').textContent = 'Whole USDC only, 1 or more.'; return; }
-  const counts = makeAmount(amount, denominations())!;
+  const counts = makeAmount(amount, readySizes())!;
   const notes = [...counts.values()].reduce((a, b) => a + b, 0);
+  // Sizes the ideal split would use but whose pools are still filling.
+  const filling = [...makeAmount(amount, denominations())!.keys()].filter((d) => !counts.has(d)).sort((a, b) => a - b);
+  const later = filling.length === 0 ? '' : ` ${filling.join('-, ')}-USDC notes join once their pools hold ${RING_SIZE} deposits.`;
   // Say it here, while the amount is being typed, rather than letting the
   // deposit fail on a cap the field gives no hint of.
   if (notes > MAX_NOTES_PER_DEPOSIT) {
-    el('deposit-split').textContent = `That is ${notes} notes (${describe(counts)}); one deposit holds up to ${MAX_NOTES_PER_DEPOSIT}.`;
+    el('deposit-split').textContent = `That is ${notes} notes (${describe(counts)}); one deposit holds up to ${MAX_NOTES_PER_DEPOSIT}.${later}`;
     return;
   }
-  el('deposit-split').textContent = `As ${describe(counts)} USDC notes.${fillNote(counts.keys(), counts)}`;
+  el('deposit-split').textContent = `As ${describe(counts)} USDC notes, each sendable at once.${later}`;
 }
 
 async function onDeposit(): Promise<void> {
@@ -427,8 +453,9 @@ async function onDeposit(): Promise<void> {
     status.textContent = 'Choose a whole amount of USDC, 1 or more.';
     return;
   }
-  // The fewest notes, largest first: 123 is 100 + 20 + 2 + 1.
-  const counts = makeAmount(amount, denominations())!;
+  // The fewest notes, largest first, from pools that can hide them now.
+  await refreshPools();
+  const counts = makeAmount(amount, readySizes())!;
   const count = [...counts.values()].reduce((a, b) => a + b, 0);
   if (count > MAX_NOTES_PER_DEPOSIT) {
     status.textContent = `That is ${count} notes (${describe(counts)}); one deposit holds up to ${MAX_NOTES_PER_DEPOSIT}. Deposit it in two parts.`;
@@ -763,7 +790,7 @@ async function init(): Promise<void> {
   el('action-receive').addEventListener('click', () => el<HTMLDialogElement>('receive-dialog').showModal());
   el('account-button').addEventListener('click', () => el<HTMLDialogElement>('account-dialog').showModal());
   el('copy-address').addEventListener('click', (event) => void copyText(opaqueAddress, event.currentTarget as HTMLButtonElement));
-  el('refresh-balance').addEventListener('click', () => void refreshNotes());
+  el('refresh-balance').addEventListener('click', () => { void refreshNotes(); void renderBudget().catch(() => undefined); });
   el('connect-wallet').addEventListener('click', () => void connectFundingWallet());
   el('rotate').addEventListener('click', () => void onRotate());
   el('withdraw').addEventListener('click', () => void onWithdraw());
@@ -801,6 +828,8 @@ async function init(): Promise<void> {
   void refreshRing();
   void pollActivity();
   setInterval(() => void pollActivity(), 5_000);
+  // USDC sent to the address from any wallet shows up without a refresh.
+  setInterval(() => void renderBudget().catch(() => undefined), 20_000);
   // Exposed for the end-to-end test and for poking at in devtools.
   (globalThis as { opaque?: WalletRuntime }).opaque = rt;
 }
