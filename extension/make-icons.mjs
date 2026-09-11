@@ -15,8 +15,8 @@ import { dirname, join } from 'node:path';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
-const BG = [0x13, 0x10, 0x19]; // --color-bg
-const FG = [0xa3, 0x96, 0xd9]; // --color-accent
+const BG = [0x0d, 0x0b, 0x0f]; // --surface in frontend/app.css
+const FG = [0xff, 0x7a, 0x18]; // --orange in frontend/app.css
 
 // CRC-32, table built once. Required by every PNG chunk.
 const CRC_TABLE = Uint32Array.from({ length: 256 }, (_, n) => {
