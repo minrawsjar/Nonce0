@@ -344,6 +344,7 @@ function renderBalance(): void {
 }
 
 function renderDepositSplit(): void {
+  if (rt === undefined) return; // typed before the wallet started: rendered once it has
   const amount = Number(el<HTMLInputElement>('deposit-count').value);
   if (!Number.isInteger(amount) || amount < 1) { el('deposit-split').textContent = 'Whole USDC only.'; return; }
   const counts = makeAmount(amount, denominations())!;
@@ -686,6 +687,7 @@ async function init(): Promise<void> {
   el('tab-activity').addEventListener('click', () => { showView('activity'); void pollActivity(); });
   el<HTMLFormElement>('send-form').addEventListener('submit', (e) => void onSend(e as SubmitEvent));
   el('deposit').addEventListener('click', () => void onDeposit());
+  el('deposit-count').addEventListener('input', renderDepositSplit);
   el('action-send').addEventListener('click', () => showView('send'));
   el('action-receive').addEventListener('click', () => el<HTMLDialogElement>('receive-dialog').showModal());
   el('account-button').addEventListener('click', () => el<HTMLDialogElement>('account-dialog').showModal());
@@ -721,7 +723,7 @@ async function init(): Promise<void> {
     refreshNotes().catch(() => { el('note-count').textContent = 'Could not read notes — Refresh to retry'; }),
     renderBudget().catch(() => undefined),
   ]);
-  el('deposit-count').addEventListener('input', renderDepositSplit);
+  renderDepositSplit();
   void refreshPools();
   await readFundingWallet().catch(() => undefined);
   provider()?.on?.('accountsChanged', () => void readFundingWallet());
