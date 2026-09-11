@@ -405,8 +405,10 @@ if (router) await new Promise<void>((r) => router.listen(Number(PORT), '0.0.0.0'
 
 log('opaque local stack — against the REAL Arc pools');
 for (const p of ringPools) {
-  const snap = await ringSource.getRingSnapshot(scopeOf(p));
-  log(`  pool       ${p.address}  (${p.proofMode}, ${p.denomination / 1e6} USDC, ${snap.candidates.length} deposits)`);
+  // A banner, not a gate: Arc rate-limits a boot's burst of reads, and a
+  // refused scan here crash-looped the service. The source rescans on demand.
+  const deposits = await ringSource.getRingSnapshot(scopeOf(p)).then((s) => `${s.candidates.length} deposits`, () => 'deposits unread: RPC busy');
+  log(`  pool       ${p.address}  (${p.proofMode}, ${p.denomination / 1e6} USDC, ${deposits})`);
 }
 log(`  relays     ${mesh.signed.directory.entries.map((e) => e.endpoint.replace('/v1/relay', '')).join('  ')}`);
 log(`  exit       http://127.0.0.1:${PORTS.exit}   egress :${PORTS.egress}   credentials :${PORTS.credentials}`);
