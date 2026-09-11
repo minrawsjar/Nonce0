@@ -231,6 +231,10 @@ export function createMeshTransport(options: MeshClientOptions = {}): PrivacyTra
       } catch {
         throw new ProtocolFailure('MESH_UNAVAILABLE', 'the mesh returned an unreadable answer');
       }
+      // The final relay's note that the exit failed (server.ts): fail now.
+      if (typeof parsed === 'object' && parsed !== null && !('kind' in parsed) && (parsed as { code?: unknown }).code === 'MESH_UNAVAILABLE') {
+        throw new ProtocolFailure('MESH_UNAVAILABLE', String((parsed as { message?: unknown }).message), true);
+      }
       // DECODED here, at the trust boundary — not cast. These bytes came off a
       // relay: the kind must match what was asked, and every bigint arrives as
       // a decimal string that has to be revived before anyone does arithmetic

@@ -48,6 +48,8 @@ export function createChainRingSource(options: ChainRingSourceOptions): GraphSel
   const now = options.now ?? (() => BigInt(Math.floor(Date.now() / 1000)) as UnixSeconds);
   const candidates: RingCandidate[] = [];
   let scannedThrough = options.deployedAtBlock - 1n;
+  let scannedAt: UnixSeconds | undefined;
+  let scanning: Promise<bigint> | undefined;
 
   const sameScope = (s: PoolScope): boolean =>
     s.pool.toLowerCase() === scope.pool.toLowerCase() && BigInt(s.chainId) === BigInt(scope.chainId)
@@ -72,6 +74,16 @@ export function createChainRingSource(options: ChainRingSourceOptions): GraphSel
     return head;
   }
 
+  // One scan at a time: two at once read the same blocks and added their
+  // deposits twice. And a scan the RPC refuses (Arc rate-limits a burst of
+  // reads) leaves the last good one standing, dated when it ran: membership
+  // only grows, so it is still a true ring, missing at most the newest
+  // deposits. A wallet waited out its whole poll for a refused one.
+  const scan = (): Promise<bigint> => (scanning ??= refresh().then(
+    (head) => { scannedAt = now(); return head; },
+    (error: unknown) => { if (scannedAt === undefined) throw error; return scannedThrough; },
+  ).finally(() => { scanning = undefined; }));
+
   async function getRingSnapshot(requested: PoolScope): Promise<RingSnapshot> {
     // One pool per source. Answering for another would hand a wallet decoys
     // from the wrong pool — deposits this pool has never seen.
@@ -79,7 +91,7 @@ export function createChainRingSource(options: ChainRingSourceOptions): GraphSel
       throw new ProtocolFailure('INVALID_INPUT', 'this ring source serves a different pool');
     }
     const [head, indexed] = await Promise.all([
-      refresh(),
+      scan(),
       // Down or stale is not fatal: the ring is still the chain's.
       options.indexed?.(requested).catch(() => undefined),
     ]);
@@ -91,7 +103,7 @@ export function createChainRingSource(options: ChainRingSourceOptions): GraphSel
         return w === undefined ? c : { ...c, timesUsedInRing: w.timesUsedInRing, fundingCluster: w.fundingCluster, hasOtherActivity: w.hasOtherActivity };
       }),
       indexedThroughBlock: head,
-      observedAt: now(),
+      observedAt: scannedAt!,
       policyVersion: indexed === undefined ? 'chain-deposited-v1' : 'chain-deposited+graph-v1',
     };
   }

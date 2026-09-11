@@ -120,6 +120,9 @@ export interface Relay {
   readonly drops: DropStore;
 }
 
+/** What a client finds at its drop when the egress could not answer. */
+const EGRESS_FAILED = new TextEncoder().encode(JSON.stringify({ code: 'MESH_UNAVAILABLE', message: 'the exit could not answer', retryable: true }));
+
 export const defaultDeliver = async (url: string, body: Uint8Array): Promise<void> => {
   const response = await fetch(url, {
     method: 'POST',
@@ -238,17 +241,27 @@ export function createRelay(options: RelayOptions): Relay {
     if (target === undefined) {
       throw new ProtocolFailure('INVALID_INPUT', 'this relay does not carry that kind');
     }
-    const answer = await callEgress(target, payload);
-
     // No return route is a fire-and-forget PAYMENT. Nothing to deposit.
-    if (payload.responseKey === undefined || payload.returnRoute === undefined) return;
-
+    if (payload.responseKey === undefined || payload.returnRoute === undefined) {
+      await callEgress(target, payload);
+      return;
+    }
     const route = decodeRoute(payload.returnRoute);
     if (route.dropRelay !== relayId) {
       // V1 LIMITATION, and a loud one rather than a silent misdelivery: there
       // is no relay-to-relay drop deposit, so a client must name the hop that
       // answers as its drop. See "Deliberate gaps" in protocol.md.
       throw new ProtocolFailure('INVALID_INPUT', 'this relay only holds drops it answered');
+    }
+    let answer: Uint8Array;
+    try {
+      answer = await callEgress(target, payload);
+    } catch (error) {
+      // The client waits at the drop, so an empty one costs it its whole
+      // poll. A sealed refusal, which says nothing the relay did not already
+      // see (the egress failed), lets it fail now and retry. Still counted.
+      drops.put(route.dropId, seal(payload.responseKey, EGRESS_FAILED), at + DROP_TTL_MS);
+      throw error;
     }
     drops.put(route.dropId, seal(payload.responseKey, answer), at + DROP_TTL_MS);
   }

@@ -8,7 +8,7 @@
     "node": ">=22.18"
   },
   "scripts": {
-    "test": "node --test mesh/test/*.test.ts cre/test/*.test.ts zk/test/*.test.ts",
+    "test": "node --test mesh/test/*.test.ts cre/test/*.test.ts zk/test/*.test.ts chain/test/ring-source.test.ts",
     "typecheck": "tsc --noEmit",
     "mesh:keys": "node mesh/local-mesh.ts --out ./.mesh",
     "mesh:local": "node mesh/local-mesh.ts --out ./.mesh --serve",

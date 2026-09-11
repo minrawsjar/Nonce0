@@ -94,6 +94,41 @@ test('relays in one process reach each other over loopback, not their public end
   }
 });
 
+test('when the exit fails, the client finds a refusal at its drop instead of waiting out its poll', async () => {
+  const mesh = buildLocalMesh(19111);
+  const server = createServer((_req, res) => { res.writeHead(502); res.end(); });
+  await new Promise<void>((r) => server.listen(0, r));
+  const egressUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}/query`;
+  const relays = await serveLocalMesh(mesh, new Map<MeshMessageKind, string>([['QUERY', egressUrl]]));
+  try {
+    const directory = mesh.signed.directory;
+    const now = (directory.issuedAt + 60n) as UnixSeconds;
+    const ids = directory.entries.slice(0, 3).map((e) => e.id) as unknown as readonly [RelayId, RelayId, RelayId];
+    const channel = createChannel(ids[2]!);
+    await fetch(directory.entries[0]!.endpoint, {
+      method: 'POST',
+      body: encodeFrame(buildOnion({
+        path: toPath(directory, ids, now),
+        payload: { kind: 'QUERY', body: '0xabcd', responseKey: channel.responseKey, returnRoute: channel.returnRoute },
+        expiresAt: now + 600n,
+      })),
+    });
+    const dropUrl = `http://127.0.0.1:${mesh.ports.get(ids[2]!)!}/v1/status/${channel.dropId}`;
+    let sealed: Hex | undefined;
+    for (let i = 0; i < 60 && sealed === undefined; i++) {
+      const response = await fetch(dropUrl);
+      if (response.status === 200) sealed = ((await response.json()) as { sealed: Hex }).sealed;
+      else await sleep(50);
+    }
+    assert.notEqual(sealed, undefined, 'the drop stayed empty: the client would wait out its poll');
+    assert.deepEqual(JSON.parse(text(channel.open(sealed!))), { code: 'MESH_UNAVAILABLE', message: 'the exit could not answer', retryable: true });
+    assert.equal(relays[2]!.undelivered, 1, 'still counted as undelivered');
+  } finally {
+    await Promise.all(relays.map((r) => r.close()));
+    await new Promise<void>((r) => server.close(() => r()));
+  }
+});
+
 test('a query crosses three relays and the answer comes back through a drop', async () => {
   const mesh = buildLocalMesh(19091);
   const { server } = egressServer('CONFIRMED');
