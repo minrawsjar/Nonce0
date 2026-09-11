@@ -323,7 +323,7 @@ body.in-hero .nav { opacity: 0; visibility: hidden; pointer-events: none; }
      0.535em into the q, measured off the rendered Quicksand glyphs — plus
      0.08em of air, so neither reads as crowded by the descender. */
   left: calc(var(--mark-size) * 0.995);
-  right: calc(var(--mark-size) * 0.2);
+  right: calc(var(--mark-size) * 0.1);
   top: calc(var(--mark-size) * 0.906);
   display: grid;
   grid-template-columns: max-content minmax(0, 1fr) max-content;
@@ -345,7 +345,10 @@ body.in-hero .nav { opacity: 0; visibility: hidden; pointer-events: none; }
    advances land rather than drifting like a percentage of the box would. */
 .reveal__join {
   display: block;
-  height: 1px;
+  position: relative;
+  z-index: 1;
+  height: max(2px, calc(var(--mark-size) * 0.023));
+  margin-right: -0.22em;
   background: var(--ember);
 }
 
