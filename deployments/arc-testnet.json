@@ -165,7 +165,7 @@
   },
   "services": {
     "$comment": "Endpoints, not keys. Each is null until that service is hosted.",
-    "graphUrl": "https://api.studio.thegraph.com/query/1760100/opaque/v0.2.0",
+    "graphUrl": "https://api.studio.thegraph.com/query/1760100/opaque/v0.3.0",
     "meshExitUrl": "https://opaque-stack-production.up.railway.app/v1/mesh",
     "releaseEgressUrl": null,
     "creTriggerUrl": null,
