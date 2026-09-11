@@ -9,7 +9,7 @@ const body = document.body;
 const pin = document.querySelector<HTMLElement>('.hero__pin');
 const plates = Array.from(document.querySelectorAll<HTMLImageElement>('[data-wide]'));
 const note = document.querySelector<HTMLElement>('[data-note]');
-const mark = document.querySelector<HTMLElement>('[data-reveal-mark]');
+const line = document.querySelector<HTMLElement>('[data-line]');
 const nav = document.querySelector<HTMLElement>('.nav');
 const fsButton = document.querySelector<HTMLButtonElement>('[data-fs]');
 const clamp = (n: number): number => Math.max(0, Math.min(1, n));
@@ -17,7 +17,15 @@ const segment = (p: number, start: number, end: number): number => clamp((p - st
 
 // Allocate more scroll to larger composition changes. Transitions meet without
 // pauses; the incoming image fades over an opaque base to avoid dark pulses.
-const distances = [4.6, 8.4, 5.5, 8.3, 8.1, 13.5, 27.7];
+//
+// One entry per gap between consecutive plates in index.html, so this array is
+// always one shorter than the chain — add or remove a plate and this changes
+// with it. Measured, not tuned by feel: the mean pixel change across each pair,
+// mapped through d = 2.68 + 1.01 * change, which is the line the original
+// values fit to within ~1 (R² 0.997). The constant is a floor, and it earns its
+// place — without it a near-identical pair gets so little scroll that it flicks
+// past instead of dissolving.
+const distances = [4.6, 8.4, 5.5, 8.3, 8.1, 13.5, 27.7, 32.5, 31.4, 26.8, 13.9, 10.5, 11.2, 10.8, 9.1, 8.7];
 const total = distances.reduce((sum, distance) => sum + distance, 0);
 const stops = [0];
 for (const distance of distances) stops.push(stops[stops.length - 1]! + distance / total);
@@ -28,10 +36,46 @@ if (fsButton && document.fullscreenEnabled) {
     const action = document.fullscreenElement ? document.exitFullscreen() : document.documentElement.requestFullscreen();
     void action.catch(() => {});
   });
+  // Pinning writes an inline pixel height onto .hero__pin, which overrides the
+  // 100svh in the stylesheet. A normal window resize is fine — ScrollTrigger
+  // recomputes that height itself. Entering full screen is not: the transition
+  // is animated, and the viewport's final height can land after the debounced
+  // resize has already measured. The hero is then left at the windowed height
+  // with a band of empty page below it, which is the whole of this bug.
+  //
+  // So wait for the viewport to actually stop moving before recomputing, rather
+  // than guessing a delay. Capped at 60 frames so it can never spin.
+  //
+  // Width is watched as well as height: going full screen usually changes both,
+  // and the two do not necessarily land on the same frame. Settling on height
+  // alone can refresh while the width is still moving, pinning the hero to a
+  // stale width — the same bug again, just on the other axis.
+  const refreshWhenSettled = (): void => {
+    let lastW = -1;
+    let lastH = -1;
+    let steady = 0;
+    let frames = 0;
+    const tick = (): void => {
+      const width = document.documentElement.clientWidth;
+      const height = window.innerHeight;
+      steady = width === lastW && height === lastH ? steady + 1 : 0;
+      lastW = width;
+      lastH = height;
+      frames += 1;
+      if (steady >= 2 || frames > 60) {
+        ScrollTrigger.refresh();
+        return;
+      }
+      requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  };
+
   document.addEventListener('fullscreenchange', () => {
     const full = document.fullscreenElement !== null;
     body.classList.toggle('is-full', full);
     fsButton.setAttribute('aria-label', full ? 'Exit full screen' : 'Enter full screen');
+    refreshWhenSettled();
   });
 } else if (fsButton) {
   fsButton.hidden = true;
@@ -58,7 +102,7 @@ function initHero(): void {
   media.add({ motion: '(prefers-reduced-motion: no-preference)', narrow: '(max-width: 600px)' }, (context) => {
     if (!context.conditions?.motion) return;
     const render = (progress: number): void => {
-      const scene = segment(progress, 0.035, 0.62);
+      const scene = segment(progress, 0.035, 0.90);
       let current = frames.length - 2;
       for (let i = 0; i < frames.length - 1; i += 1) {
         if (scene < frames[i + 1]!.stop) { current = i; break; }
@@ -79,17 +123,10 @@ function initHero(): void {
       }
       pin.style.setProperty('--p', String(progress));
       if (note) note.style.opacity = String(1 - segment(progress, 0.04, 0.15));
-      if (mark) {
-        // Four overlapping steps, in the order they were asked for: the black
-        // closes over the artwork, the letters arrive on it, the p and q take
-        // the accent, the words they stand for follow, then the tagline.
-        // Each starts before the one before it has finished, so the whole
-        // thing reads as one movement rather than four cues.
-        mark.style.setProperty('--veil', String(segment(progress, 0.60, 0.74)));
-        mark.style.setProperty('--mark-in', String(segment(progress, 0.68, 0.80)));
-        mark.style.setProperty('--accent', String(segment(progress, 0.80, 0.88)));
-        mark.style.setProperty('--sub-in', String(segment(progress, 0.85, 0.93)));
-        mark.style.setProperty('--tag-in', String(segment(progress, 0.91, 0.99)));
+      if (line) {
+        const reveal = segment(progress, 0.88, 0.96);
+        line.style.opacity = String(reveal);
+        line.style.transform = `translate(-50%, ${(1 - reveal) * 12}px)`;
       }
     };
     const play = { progress: 0 };
@@ -114,7 +151,7 @@ function initHero(): void {
     syncHeader((tween.scrollTrigger?.progress ?? 0) < 1);
     return () => {
       body.classList.remove('in-hero');
-      for (const element of [...plates, pin, note, mark]) element?.removeAttribute('style');
+      for (const element of [...plates, pin, note, line]) element?.removeAttribute('style');
     };
   });
 }

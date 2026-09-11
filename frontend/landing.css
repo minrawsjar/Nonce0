@@ -248,121 +248,21 @@ body.in-hero .nav { opacity: 0; visibility: hidden; pointer-events: none; }
 }
 .label--bright { color: #e9e3dd; }
 
-/* ── The closing mark ──────────────────────────────────────────────────
-   The artwork fades to the page's own black and the wordmark resolves on it:
-   the letters first, then the p and q taking the accent, then the two words
-   they stand for, then the tagline. Built from live text rather than the logo
-   PNG because each of those steps has to move on its own.
-
-   The timeline in landing.ts drives every step through a custom property, so
-   the whole reveal is one scrubbed motion with no transitions of its own. */
-.reveal {
+/* The pay-off line, over the settled plate. Last thing the timeline touches. */
+.hero__line {
   position: absolute;
-  z-index: 9;
-  inset: 0;
-  display: grid;
-  place-content: center;
-  justify-items: center;
-  padding: 0 24px;
-  /* Black over the plates. --veil is driven by the scroll. */
-  background: rgb(0 0 0 / var(--veil, 0));
-  /* Not in the way until it is: the plates keep the pointer while fading. */
-  pointer-events: none;
-
-  /* One size drives the whole lockup, so the mark, the two expansions and
-     the tagline keep their proportions to each other at every viewport.
-     Bounded by width AND height: vw alone overflows a short landscape
-     window, and the descender words need the room below the baseline. */
-  --reveal-size: clamp(40px, min(13vw, 17vh), 150px);
-}
-
-/* Built on .wordmark above: same proportions, same joining rule, so the
-   opening mark and the one in the nav and the footer stay the same lockup.
-   Only what the reveal adds on top is set here — the size, the white base
-   the accent grows out of, and the two scroll-driven fades. */
-.reveal__mark {
-  --mark-size: var(--reveal-size);
-  position: relative;
-  display: inline-block;
-  width: max-content;
-  font-size: var(--mark-size);
-  /* Room for the absolutely-positioned expansions below the baseline, plus
-     the gap before the tagline. Against --reveal-size, not em: this element's
-     own font-size is the paragraph's, which would under-reserve badly. */
-  margin: 0 0 calc(var(--reveal-size) * 0.3);
-  opacity: var(--mark-in, 0);
-}
-
-/* The mark starts white and only the p and q take the ember. */
-.reveal__mark .wordmark__name { color: #fff; }
-
-
-/* The p and q cross from white to the accent. color-mix keeps the midpoint a
-   warm off-white rather than a grey, and degrades to plain white on an engine
-   that does not support it — which is the state they start in anyway. */
-.reveal__ch[data-accent] { color: #fff; }
-@supports (color: color-mix(in srgb, red, blue)) {
-  .reveal__ch[data-accent] {
-    color: color-mix(in srgb, var(--ember) calc(var(--accent, 0) * 100%), #fff);
-  }
-}
-
-/* The name is split into spans so the p and q can recolour, and the line is
-   broken across source lines for legibility — collapse that whitespace so it
-   does not open gaps between the letters. */
-.reveal__mark .wordmark__name { position: relative; z-index: 1; white-space: nowrap; font-size: 0; }
-.reveal__ch { position: relative; display: inline-block; font-size: var(--mark-size); }
-
-/* A second layer sits over the word, so the lower labels can line up with the
-   p/q descenders without becoming children of either glyph. The fixed edges
-   are the measured stems; only the rule flexes between them. */
-.reveal__subline {
-  position: absolute;
-  z-index: 2;
-  /* Each word clears its letter's descender stem — 0.29em into the p,
-     0.535em into the q, measured off the rendered Quicksand glyphs — plus
-     0.08em of air, so neither reads as crowded by the descender. */
-  left: calc(var(--mark-size) * 0.995);
-  right: calc(var(--mark-size) * 0.1);
-  top: calc(var(--mark-size) * 0.906);
-  display: grid;
-  grid-template-columns: max-content minmax(0, 1fr) max-content;
-  align-items: center;
-  column-gap: 0.5em;
-  /* The one value to change if these words want to be bigger or smaller. */
-  font-size: calc(var(--mark-size) * 0.2);
-  font-weight: 400;
-  letter-spacing: 0.16em;
-  line-height: 1;
-  color: var(--ember);
-  opacity: var(--sub-in, 0);
-  white-space: nowrap;
-}
-
-/* The rule joining the pair. It follows "ost" in flow and runs to the q's
-   stem — 2.62em of the sub's own size, measured off the rendered lockup,
-   less a margin each side. Letter-relative, so it holds wherever the font's
-   advances land rather than drifting like a percentage of the box would. */
-.reveal__join {
-  display: block;
-  position: relative;
-  z-index: 1;
-  height: max(2px, calc(var(--mark-size) * 0.023));
-  margin-right: -0.22em;
-  background: var(--ember);
-}
-
-.reveal__tag {
-  margin: 0.2em 0 0;
+  z-index: 8;
+  left: 50%;
+  top: 71%;
+  transform: translateX(-50%);
+  width: min(720px, 84vw);
+  margin: 0;
   text-align: center;
-  font-family: var(--mark);
-  /* Tied to the mark, so the lockup holds together at any size. */
-  font-size: max(14px, calc(var(--reveal-size) * 0.185));
-  font-weight: 500;
-  line-height: 1.4;
-  color: #efe9e3;
-  opacity: var(--tag-in, 0);
-  transform: translateY(calc((1 - var(--tag-in, 0)) * 10px));
+  font-size: clamp(18px, 2.2vw, 31px);
+  font-weight: 300;
+  line-height: 1.45;
+  opacity: 0;
+  text-shadow: 0 2px 28px rgba(0, 0, 0, 0.85);
 }
 
 /* ── Full-screen toggle ────────────────────────────────────────────────── */
@@ -394,6 +294,12 @@ body.in-hero .nav { opacity: 0; visibility: hidden; pointer-events: none; }
 .fs__out { display: none; }
 body.is-full .fs__in { display: none; }
 body.is-full .fs__out { display: block; }
+/* The scrollbar keeps ~15px of chrome down the right edge in full screen, and
+   hiding it does NOT buy that strip back: ScrollTrigger pins .hero__pin at an
+   inline pixel width taken from the layout width, so the artwork stays put and
+   you trade a scrollbar for an identical dark strip with no scroll affordance.
+   Widening it properly means taking the pin's width away from ScrollTrigger.
+   Left alone deliberately — measured, not assumed. */
 /* Once the header returns, the corner belongs to the header. */
 body:not(.in-hero) .fs { opacity: 0; visibility: hidden; pointer-events: none; }
 .fs[hidden] { display: none; }
@@ -415,12 +321,11 @@ body:not(.in-hero) .fs { opacity: 0; visibility: hidden; pointer-events: none; }
   left: 50%;
   top: calc(var(--p, 0) * 100%);
   width: 9px; height: 9px;
-  margin: -7px 0 0 -5px;
-  border: 1.5px solid var(--ember);
-  border-top: 0;
-  border-left: 0;
-  transform: rotate(45deg);
-  filter: drop-shadow(0 0 7px rgba(255, 122, 24, 0.65));
+  margin: -4.5px 0 0 -4.5px;
+  border-radius: 50%;
+  border: 1px solid var(--ember);
+  background: rgba(255, 122, 24, 0.18);
+  box-shadow: 0 0 14px rgba(255, 122, 24, 0.7);
 }
 .rail__hint {
   position: absolute;
@@ -858,6 +763,7 @@ body:not(.in-hero) .fs { opacity: 0; visibility: hidden; pointer-events: none; }
   .plate { object-position: 50% 50%; }
   .fs { width: 38px; height: 38px; }
   .hero__note { top: 12%; }
+  .hero__line { top: 66%; }
 }
 
 /* Keep an exit available throughout the pinned intro. */
@@ -897,7 +803,7 @@ body:not(.in-hero) .fs { opacity: 0; visibility: hidden; pointer-events: none; }
     letter-spacing: -0.035em;
   }
   .hero__note { display: none; }
-  /* --mark-size already tracks the viewport; nothing to override here. */
+  .hero__line { top: 76%; width: calc(100% - 64px); font-size: 16px; }
   .rail { top: 76%; bottom: 10%; }
   .nav__band { padding-block: 8px; }
   .nav__inner { gap: 12px; }
@@ -908,7 +814,7 @@ body:not(.in-hero) .fs { opacity: 0; visibility: hidden; pointer-events: none; }
 
 /* Static, readable opening and settled content when motion is disabled. */
 @media (prefers-reduced-motion: reduce) {
-  .reveal, .rail { display: none; }
+  .hero__line, .rail { display: none; }
   .nav, .btn, .fs, .card, .tag { transition: none; }
   /* The footer's social icons became named links; their underline grows on
      hover, and that growth is the thing being opted out of here. */

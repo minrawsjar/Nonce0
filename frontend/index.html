@@ -34,7 +34,7 @@
   <div class="nav__band">
     <div class="wrap nav__inner">
       <a href="#top" class="nav__brand" aria-label="opaque — home">
-        <img src="media/logo.png" alt="opaque" width="600" height="200" decoding="async">
+        <img src="media/logo.png" alt="opaque" width="942" height="200" decoding="async">
       </a>
       <nav class="nav__links" aria-label="Primary">
         <a href="#how">How it works</a>
@@ -66,38 +66,53 @@
            alt="The words “The future breaks everything.” cut into a wall of black stone"
            decoding="async" fetchpriority="high">
       <img class="plate" data-wide src="media/hero-02.webp" alt="" aria-hidden="true" decoding="async">
-      <!-- Ordered by how far the break has got, NOT by filename. The names do
-           not run in sequence — hero-i1 belongs between hero-ii2 and hero-ii3,
-           and the wallet materialises 07 -> 10 -> 08 -> 09, from a faint
-           outline to a solid object. Both orders were measured, not guessed:
-           the mean pixel change between every candidate pair was compared and
-           the path with the smallest jumps chosen. Sorting any of this
-           alphabetically would run the sequence backwards in two places. This
-           order is deliberate; do not "tidy" it. (hero-i2 exists in media/ and is
-           deliberately not in the chain.) -->
+      <!-- Ordered by how far the break has got, NOT by filename. One pair is
+           out of sequence: hero-i1 belongs between hero-ii2 and hero-ii3.
+           That order was measured, not guessed — the mean pixel change between
+           every candidate pair was compared and the path with the smallest
+           jumps chosen. Sorting alphabetically would run the sequence
+           backwards there. This order is deliberate; do not "tidy" it.
+           (hero-i2 exists in media/ and is deliberately not in the chain.)
+
+           The tail is the wordmark coalescing out of the breach, and its
+           filenames run almost exactly BACKWARDS: 07, then 12 down to 08.
+           Sparks first, letterforms condensing out of them, the fire dying
+           back last, so it closes on the mark standing clean.
+
+           The measure is the white of the letterforms, not brightness. The
+           type is white and the fire around it is orange, so counting near-
+           neutral bright pixels separates "the mark is there" from "this frame
+           is merely on fire" — which plain luminance does not. It climbs 386 →
+           3.7k → 9.8k → 20.5k → 23.6k → 23.8k across the order below. The last
+           two are a dead heat on white alone; the white-to-ember ratio splits
+           them, 0.60 for hero-09 against 0.71 for hero-08, so hero-08 is the
+           settled one and ends the sequence. -->
       <img class="plate" data-wide src="media/hero-ii1.webp" alt="" aria-hidden="true" decoding="async">
       <img class="plate" data-wide src="media/hero-ii2.webp" alt="" aria-hidden="true" decoding="async">
       <img class="plate" data-wide src="media/hero-i1.webp" alt="" aria-hidden="true" decoding="async">
       <img class="plate" data-wide src="media/hero-ii3.webp" alt="" aria-hidden="true" decoding="async">
       <img class="plate" data-wide src="media/hero-2.1.webp" alt="" aria-hidden="true" decoding="async">
-      <img class="plate" data-wide src="media/hero-03.webp"
-           alt="The stone wall blown open, its fragments hanging in the dark" decoding="async">
+      <img class="plate" data-wide src="media/hero-03.webp" alt="" aria-hidden="true" decoding="async">
+      <img class="plate" data-wide src="media/hero-04.webp" alt="" aria-hidden="true" decoding="async">
+      <img class="plate" data-wide src="media/hero-05.webp" alt="" aria-hidden="true" decoding="async">
+      <img class="plate" data-wide src="media/hero-06.webp" alt="" aria-hidden="true" decoding="async">
+      <img class="plate" data-wide src="media/hero-07.webp" alt="" aria-hidden="true" decoding="async">
+      <img class="plate" data-wide src="media/hero-12.webp" alt="" aria-hidden="true" decoding="async">
+      <img class="plate" data-wide src="media/hero-11.webp" alt="" aria-hidden="true" decoding="async">
+      <img class="plate" data-wide src="media/hero-10.webp" alt="" aria-hidden="true" decoding="async">
+      <img class="plate" data-wide src="media/hero-09.webp" alt="" aria-hidden="true" decoding="async">
+      <img class="plate" data-wide src="media/hero-08.webp"
+           alt="The opaque post-quantum wordmark standing clean in the breach of the wall"
+           decoding="async">
 
       <!-- The headline is carved into the stone, so it exists for the eye and
            for nothing else. This carries the same words — off-screen, but there
            for search, for screen readers, and if the images never arrive. -->
       <h1 class="sr-only hero__title">The future breaks everything. But never your wallet.</h1>
-      <div class="reveal" data-reveal-mark aria-hidden="true">
-        <p class="wordmark reveal__mark">
-          <span class="wordmark__name reveal__name"><span class="reveal__ch">o</span><span
-            class="reveal__ch" data-accent>p</span><span
-            class="reveal__ch">a</span><span
-            class="reveal__ch" data-accent>q</span><span
-            class="reveal__ch">u</span><span class="reveal__ch">e</span></span>
-          <span class="reveal__subline"><span>ost</span><i class="reveal__join"></i><span>uantum</span></span>
-        </p>
-        <p class="reveal__tag" data-tag>a glance into the quantum-safe future</p>
-      </div>
+
+      <p class="label label--bright hero__note" data-note>Same internet.<br>A more private<br>tomorrow.</p>
+
+      <p class="hero__line" data-line>Even an opaque wall can be broken tomorrow.<br>But never your wallet.</p>
 
       <a class="hero__skip" href="#how">Skip intro <span aria-hidden="true">↗</span></a>
 

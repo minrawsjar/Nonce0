@@ -1,6 +1,7 @@
 node_modules/
 .env
 *.env
+*.env.local
 !.env.example
 
 # foundry build output. lib/ is git submodules and stays TRACKED.
