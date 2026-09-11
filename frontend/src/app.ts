@@ -15,6 +15,7 @@
 import type { IntentStatus, NoteSummary, PrivacyScore, StatusHandle, UnixSeconds } from '@opaque/protocol-types';
 
 import { makeAmount, MAX_NOTES_PER_DEPOSIT } from './lib/protocol/index.js';
+import { paymentDeadline } from './lib/payment-deadline.js';
 import { runPaymentLanes } from './lib/payment-lanes.js';
 import { startWallet, type WalletRuntime } from './lib/runtime.js';
 
@@ -61,12 +62,7 @@ const ARC_EXPLORER = 'https://testnet.arcscan.app';
  * in the account and pays for the next one.
  */
 const DEPOSIT_GAS_USDC = 0.2;
-/**
- * Timing protection, fixed rather than asked for. A payment goes as soon as
- * the privacy score (the lower of pool coverage and relay health) reaches
- * MIN_FRESHNESS of 100 — in practice at once — and waits only while relays
- * look unhealthy or their health is unknown, for MAX_WAIT_SECONDS at most.
- */
+/** A payment waiting for privacy settles when the mesh reaches this score. */
 const MIN_FRESHNESS = 70;
 /**
  * Independent notes share neither nullifier nor ring proof. Four lanes keep a
@@ -74,7 +70,6 @@ const MIN_FRESHNESS = 70;
  * independent, all-settled operation.
  */
 const PAYMENT_LANES = 4;
-const MAX_WAIT_SECONDS = 3_600;
 const shortAddress = (value: string) => value ? `${value.slice(0, 6)}…${value.slice(-4)}` : 'Not connected';
 const isRejected = (error: unknown) => typeof error === 'object' && error !== null && 'code' in error && (error as { code: unknown }).code === 4001;
 
@@ -105,7 +100,8 @@ async function readFundingWallet(): Promise<void> {
   const chainId = await injected.request({ method: 'eth_chainId' }) as string;
   const correct = Number.parseInt(chainId, 16) === ARC_CHAIN_ID;
   el('network-label').textContent = correct ? 'Arc testnet' : 'Switch to Arc';
-  document.querySelector('.network .live-dot')?.classList.toggle('wrong', !correct);
+  // The dot that used to carry this is gone; the button itself says it now.
+  el('network-button').classList.toggle('wrong', !correct);
 }
 
 async function connectFundingWallet(): Promise<boolean> {
@@ -295,6 +291,68 @@ async function settle(done: () => Promise<boolean>): Promise<void> {
 // note in it can be spent once it holds a ring's worth.
 
 const usdcOf = (n: NoteSummary): number => Number(n.scope.denomination) / 1e6;
+// Deposits are whole USDC into fixed-denomination pools. The field is a text input rather than
+// type=number because a number input still accepts "1.5", "-3" and "1e5",
+// and reports them as an empty value — which reads as 0, not as a mistake.
+const MAX_AMOUNT_DIGITS = 6;
+/** The whole USDC in an amount field, or undefined when it is not one ≥ 1. */
+function wholeAmount(id: string): number | undefined {
+  const raw = el<HTMLInputElement>(id).value.trim();
+  if (!/^\d+$/.test(raw)) return undefined;
+  const amount = Number(raw);
+  return Number.isSafeInteger(amount) && amount >= 1 ? amount : undefined;
+}
+const depositAmount = (): number | undefined => wholeAmount('deposit-count');
+
+function localDateTime(ms: number): string {
+  const local = new Date(ms - new Date(ms).getTimezoneOffset() * 60_000);
+  return local.toISOString().slice(0, 16);
+}
+
+function syncPrivacyWait(): void {
+  const wait = el<HTMLInputElement>('wait-for-privacy').checked;
+  const deadline = el<HTMLInputElement>('privacy-deadline');
+  el('privacy-deadline-wrap').hidden = !wait;
+  el('immediate-settlement').hidden = wait;
+  deadline.disabled = !wait;
+  deadline.required = wait;
+  if (wait && deadline.value === '') deadline.value = localDateTime(Date.now() + 3_600_000);
+}
+
+function requestedDeadline(): UnixSeconds {
+  const waitForPrivacy = el<HTMLInputElement>('wait-for-privacy').checked;
+  const nowMs = Date.now();
+  if (!waitForPrivacy) return paymentDeadline({ waitForPrivacy, nowMs }) as UnixSeconds;
+  return paymentDeadline({ waitForPrivacy, selectedMs: el<HTMLInputElement>('privacy-deadline').valueAsNumber, nowMs }) as UnixSeconds;
+}
+
+/**
+ * Keeps an amount field to digits only. The fields are type=text: a number
+ * input still accepts "1.5", "-3" and "1e5", reports them as an empty value —
+ * which reads as 0, not as a mistake — and paints spinner arrows that have no
+ * place on an amount.
+ */
+function onlyWholeAmounts(input: HTMLInputElement, after: () => void): void {
+  input.addEventListener('input', () => {
+    // Strip as it arrives, typed or pasted; leading zeros go too, so "007"
+    // does not read as an amount of its own.
+    const cleaned = input.value.replace(/\D+/g, '').replace(/^0+(?=\d)/, '').slice(0, MAX_AMOUNT_DIGITS);
+    if (cleaned !== input.value) {
+      // Keep the caret where the user was typing, not thrown to the end.
+      const at = input.selectionStart ?? cleaned.length;
+      const removed = input.value.length - cleaned.length;
+      input.value = cleaned;
+      const to = Math.max(0, at - removed);
+      input.setSelectionRange(to, to);
+    }
+    after();
+  });
+  // An empty or 0 field left behind on blur returns to the smallest amount.
+  input.addEventListener('blur', () => {
+    if (wholeAmount(input.id) === undefined) { input.value = '1'; after(); }
+  });
+}
+
 const denominations = (): number[] => rt.scopes.map((s) => Number(s.denomination) / 1e6);
 const countByValue = (list: readonly NoteSummary[]): Map<number, number> => {
   const counts = new Map<number, number>();
@@ -344,23 +402,29 @@ function renderBalance(): void {
   el('asset-balance').textContent = `${total}.00`;
   el('asset-notes').textContent = `${available.length} private note${available.length === 1 ? '' : 's'}`;
   el<HTMLButtonElement>('arm').disabled = available.length === 0;
-  el<HTMLInputElement>('send-amount').max = String(Math.max(1, total));
 }
 
 function renderDepositSplit(): void {
   if (rt === undefined) return; // typed before the wallet started: rendered once it has
-  const amount = Number(el<HTMLInputElement>('deposit-count').value);
-  if (!Number.isInteger(amount) || amount < 1) { el('deposit-split').textContent = 'Whole USDC only.'; return; }
+  const amount = depositAmount();
+  if (amount === undefined) { el('deposit-split').textContent = 'Whole USDC only, 1 or more.'; return; }
   const counts = makeAmount(amount, denominations())!;
+  const notes = [...counts.values()].reduce((a, b) => a + b, 0);
+  // Say it here, while the amount is being typed, rather than letting the
+  // deposit fail on a cap the field gives no hint of.
+  if (notes > MAX_NOTES_PER_DEPOSIT) {
+    el('deposit-split').textContent = `That is ${notes} notes (${describe(counts)}); one deposit holds up to ${MAX_NOTES_PER_DEPOSIT}.`;
+    return;
+  }
   el('deposit-split').textContent = `As ${describe(counts)} USDC notes.${fillNote(counts.keys(), counts)}`;
 }
 
 async function onDeposit(): Promise<void> {
   const button = el<HTMLButtonElement>('deposit');
   const status = el('deposit-status');
-  const amount = Number(el<HTMLInputElement>('deposit-count').value);
-  if (!Number.isInteger(amount) || amount < 1) {
-    status.textContent = 'Choose a whole amount of USDC.';
+  const amount = depositAmount();
+  if (amount === undefined) {
+    status.textContent = 'Choose a whole amount of USDC, 1 or more.';
     return;
   }
   // The fewest notes, largest first: 123 is 100 + 20 + 2 + 1.
@@ -505,15 +569,23 @@ async function onSend(event: SubmitEvent): Promise<void> {
   }
   // Paid in whole notes, each its own payment, the fewest that make the
   // amount exactly: a note is spent whole, with no change (§6.6).
-  const amount = Number(el<HTMLInputElement>('send-amount').value);
+  const amount = wholeAmount('send-amount');
   const available = notes.filter((n) => n.state === 'AVAILABLE');
   const total = available.reduce((sum, n) => sum + usdcOf(n), 0);
-  if (!Number.isInteger(amount) || amount < 1) {
-    status.textContent = 'Send a whole amount of USDC.';
+  if (amount === undefined) {
+    status.textContent = 'Send a whole amount of USDC, 1 or more.';
     return;
   }
   if (amount > total) {
     status.textContent = total === 0 ? 'No spendable note. Deposit first.' : `You hold ${total} USDC in notes. Deposit more to send ${amount}.`;
+    return;
+  }
+  let deadline: UnixSeconds;
+  try {
+    deadline = requestedDeadline();
+  } catch (error) {
+    status.textContent = (error as Error).message;
+    el<HTMLInputElement>('privacy-deadline').focus();
     return;
   }
 
@@ -553,7 +625,7 @@ async function onSend(event: SubmitEvent): Promise<void> {
           noteId: note.id,
           recipient: recipient as never,
           minPrivacyScore: (MIN_FRESHNESS * 100) as PrivacyScore,
-          deadline: (BigInt(Math.floor(Date.now() / 1000) + MAX_WAIT_SECONDS)) as UnixSeconds,
+          deadline,
           credentialHandle,
           idempotencyKey: `pay-${note.id}-${Date.now()}` as never,
       });
@@ -682,8 +754,11 @@ async function init(): Promise<void> {
   el('tab-ring').addEventListener('click', () => { showView('ring'); void refreshRing(); });
   el('tab-activity').addEventListener('click', () => { showView('activity'); void pollActivity(); });
   el<HTMLFormElement>('send-form').addEventListener('submit', (e) => void onSend(e as SubmitEvent));
+  el<HTMLInputElement>('wait-for-privacy').addEventListener('change', syncPrivacyWait);
+  syncPrivacyWait();
   el('deposit').addEventListener('click', () => void onDeposit());
-  el('deposit-count').addEventListener('input', renderDepositSplit);
+  onlyWholeAmounts(el<HTMLInputElement>('deposit-count'), renderDepositSplit);
+  onlyWholeAmounts(el<HTMLInputElement>('send-amount'), () => undefined);
   el('action-send').addEventListener('click', () => showView('send'));
   el('action-receive').addEventListener('click', () => el<HTMLDialogElement>('receive-dialog').showModal());
   el('account-button').addEventListener('click', () => el<HTMLDialogElement>('account-dialog').showModal());
