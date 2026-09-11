@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Opaque — Privacy policy</title>
+<meta name="description" content="What the Opaque wallet keeps on your device, and what leaves it.">
+<style>
+  :root { color-scheme: light dark; --ink: #1b1a19; --muted: #5f5b57; --ground: #fbfaf8; --rule: #e4e0da; --accent: #c2410c; }
+  @media (prefers-color-scheme: dark) { :root { --ink: #ece8e3; --muted: #a8a29b; --ground: #121110; --rule: #2b2826; --accent: #fb923c; } }
+  body { margin: 0; background: var(--ground); color: var(--ink); font: 16px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 44rem; margin: 0 auto; padding: 3rem 1.25rem 4rem; }
+  h1 { font-size: 1.9rem; line-height: 1.2; margin: 0 0 .25rem; }
+  h2 { font-size: 1.15rem; margin: 2.25rem 0 .5rem; padding-top: 1.25rem; border-top: 1px solid var(--rule); }
+  p, li { color: var(--ink); }
+  .meta { color: var(--muted); margin: 0 0 2rem; }
+  ul { padding-left: 1.2rem; }
+  li { margin: .35rem 0; }
+  code { font-size: .92em; }
+  a { color: var(--accent); }
+  strong { font-weight: 600; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Privacy policy</h1>
+  <p class="meta">Opaque wallet — the Chrome extension and <a href="https://www.opaque.credit/app.html">opaque.credit/app.html</a>. Last updated 11 September 2026.</p>
+
+  <p>Opaque is a wallet for private USDC payments on the <strong>Arc testnet</strong>. It handles testnet funds only, which have no monetary value. This page describes what the wallet keeps on your device, what leaves it, and who can see it. The wallet has no accounts, asks for no email or name, and runs no analytics, ads or trackers.</p>
+
+  <h2>What stays on your device</h2>
+  <ul>
+    <li><strong>Your account keys.</strong> The post-quantum (FORS+C) keys that sign for your Opaque account are kept in your browser's IndexedDB, encrypted under a key the browser does not let the page export.</li>
+    <li><strong>Your notes.</strong> Each deposit makes notes whose secrets are kept in your browser's local storage. A note secret never leaves your device: the proof that spends it is built on your device.</li>
+    <li><strong>Your activity.</strong> The payments you send (recipient, time, status handle, settlement transaction) are listed in local storage so Activity survives a reload.</li>
+    <li><strong>Backups</strong> are files you export yourself, encrypted with a passphrase you choose. They go wherever you save them.</li>
+  </ul>
+  <p>Uninstalling the extension or clearing the site's data deletes all of this. There is no copy anywhere else, so unspent notes without a backup are lost for good.</p>
+
+  <h2>What leaves your device</h2>
+  <p>The wallet talks only to the Opaque service (hosted on Railway at <code>opaque-stack-production.up.railway.app</code>), which the Opaque team operates:</p>
+  <ul>
+    <li><strong>Configuration.</strong> The wallet downloads the list of relays and the public keys it needs.</li>
+    <li><strong>Relayed requests.</strong> Payments and every read about your account or notes (balances, account state, whether a note is spent) travel through three relays, encrypted in three layers. The first relay sees your IP address but not the content. The service at the far end sees the content but not your IP address. When a reply is ready, your device collects it from the last relay, which then sees your IP address; it cannot read the reply.</li>
+    <li><strong>Your account address and its operations.</strong> Deposits and withdrawals are operations your account's key signs. They reach the service through the relays, which forwards them to the network, so the service sees your account address and what the operation does.</li>
+    <li><strong>A credential for each recipient.</strong> Before your first payment to an address, the wallet asks the service's credential authority for a credential for that address. This request goes directly, not through the relays, so the credential authority sees your IP address and the recipient's address.</li>
+    <li><strong>The payment itself.</strong> A payment is sealed on your device to the service's payment key. The service opens it to check the recipient's credential and settle the payment, so it sees the recipient and the spend. It never sees a note secret, and the spend does not say which of the eight notes in its ring was yours. In this testnet build, the part that opens payments runs as an ordinary server process, not in a secure enclave, so the Opaque team could read what it opens.</li>
+  </ul>
+  <p>To answer your requests, the service contacts, from its own server: the Arc testnet RPC (<code>rpc.testnet.arc.io</code>), Pimlico's public ERC-4337 bundler (which receives your account's operations), and The Graph (for relay health and pool statistics, which contain no information about you). These providers see the service, not your device.</p>
+  <p>Railway, the service's host, and Vercel, which serves opaque.credit, may record connection metadata such as IP addresses and request times under their own policies. The service keeps payments and their status in memory only, and forgets them when it restarts. Its logs record the transaction hashes of settled payments, which are public on the blockchain anyway.</p>
+
+  <h2>What is public on the blockchain</h2>
+  <p>Deposits are public: anyone can see that your account address deposited into a pool, and how much. Settlements are public: anyone can see that a pool paid an amount to a recipient. What Opaque hides is the link between the two, meaning which deposit paid which recipient. Blockchain records cannot be deleted.</p>
+
+  <h2>Funding wallets</h2>
+  <p>On opaque.credit you can connect a wallet such as MetaMask to top up your account. Requests to that wallet go through the wallet itself, under its own privacy policy. The extension does not use one.</p>
+
+  <h2>What we do not do</h2>
+  <ul>
+    <li>We do not sell, rent or share information about you with anyone.</li>
+    <li>We do not use it for advertising, profiling or creditworthiness, or for anything but running the wallet.</li>
+    <li>We do not collect names, emails, contacts, browsing history or the content of the websites you visit. The extension does not read or change any website.</li>
+  </ul>
+
+  <h2>Changes and contact</h2>
+  <p>If this changes, this page will say so, with a new date. Questions or requests: <a href="https://github.com/minrawsjar/Opaque/issues">github.com/minrawsjar/Opaque/issues</a>.</p>
+</main>
+</body>
+</html>

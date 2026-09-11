@@ -231,7 +231,7 @@ if (signer !== undefined && process.env['E2E_PQ'] === '1') {
 }
 
 await page.click('#tab-ring');
-await page.waitForFunction(() => /USDC/.test(document.getElementById('pool-size')?.textContent ?? ''), null, { timeout: 90_000 });
+await page.waitForFunction(() => /USDC|empty/.test(document.getElementById('pool-size')?.textContent ?? ''), null, { timeout: 90_000 });
 step(`ring view (through the mesh): ${await page.textContent('#pool-size')} · freshness ${await page.textContent('#freshness-now')} · path ${(await page.textContent('#hops'))?.replace(/\s+/g, ' ')}`);
 
 await page.click('#tab-send');

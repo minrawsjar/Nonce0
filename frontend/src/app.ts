@@ -469,11 +469,17 @@ async function refreshRing(): Promise<void> {
   try {
     // Once a pool holds a ring, its score is the mesh's: the 1-USDC one stands for all.
     const [privacy, path] = await Promise.all([rt.readPrivacy(rt.scopes[rt.scopes.length - 1]!), rt.pathFor(), refreshPools()]);
+    // Seven pools do not fit one stat: the total, then the pools holding any.
     const smallFirst = [...rt.scopes].reverse();
+    const held = smallFirst.filter((s) => (poolSizes.get(s.pool) ?? 0) > 0);
+    const total = held.reduce((sum, s) => sum + poolSizes.get(s.pool)!, 0);
+    const empty = smallFirst.length - held.length;
     el('pool-size').innerHTML = '';
     el('pool-size').append(
-      `${smallFirst.map((s) => (poolSizes.get(s.pool) ?? 0).toLocaleString('en-US')).join(' · ')} `,
-      Object.assign(document.createElement('small'), { textContent: `at ${smallFirst.map((s) => Number(s.denomination) / 1e6).join(' · ')} USDC` }),
+      `${total.toLocaleString('en-US')} `,
+      Object.assign(document.createElement('small'), {
+        textContent: [...held.map((s) => `${poolSizes.get(s.pool)!.toLocaleString('en-US')} at ${Number(s.denomination) / 1e6} USDC`), ...(empty > 0 ? [`${empty} empty`] : [])].join(' · '),
+      }),
     );
     el('freshness-now').textContent = String(Math.round(Number(privacy.privacyScore) / 100));
     // A sample path, drawn fresh. Each payment draws its own; this one only
