@@ -31,7 +31,7 @@ import { canonical, keyGen, utf8 } from '@opaque/pq-wallet';
 import { MIN_POOL_RELAYS } from './contracts.ts';
 import type { DirectoryEntry, DirectoryTrustRoot, RelayDirectory, SignedDirectory } from './contracts.ts';
 import { signDirectory, signerCommitment } from './directory.ts';
-import { createRelay, type Relay } from './server.ts';
+import { createRelay, defaultDeliver, type Relay } from './server.ts';
 import { generateRelayKeypair } from './transport.ts';
 import type { MeshMessageKind } from './transport.ts';
 
@@ -207,6 +207,14 @@ export async function serveLocalMesh(
   host?: string,
 ): Promise<readonly Relay[]> {
   const relays: Relay[] = [];
+  // Relays in this process hand messages to each other over loopback. Through
+  // their public endpoints every hop would leave through the host's proxy and
+  // come back in, and under load the proxy fails some of those requests: each
+  // one a message lost (a relay cannot retry what it has acknowledged) and a
+  // client waiting out its poll.
+  const loopback = new Map(mesh.signed.directory.entries.map((e) =>
+    [e.endpoint, `http://${host ?? '127.0.0.1'}:${mesh.ports.get(e.id)!}/v1/relay`]));
+  const deliver = (url: string, body: Uint8Array) => defaultDeliver(loopback.get(url) ?? url, body);
   for (const entry of mesh.signed.directory.entries) {
     const relay = createRelay({
       relayId: entry.id,
@@ -214,6 +222,7 @@ export async function serveLocalMesh(
       keyEpoch: entry.keyEpoch,
       directory: mesh.signed.directory,
       egress,
+      deliver,
     });
     await relay.listen(mesh.ports.get(entry.id)!, host);
     relays.push(relay);

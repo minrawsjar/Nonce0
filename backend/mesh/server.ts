@@ -120,7 +120,7 @@ export interface Relay {
   readonly drops: DropStore;
 }
 
-const defaultDeliver = async (url: string, body: Uint8Array): Promise<void> => {
+export const defaultDeliver = async (url: string, body: Uint8Array): Promise<void> => {
   const response = await fetch(url, {
     method: 'POST',
     // No redirect is ever followed: the allowlist is the destination, and an

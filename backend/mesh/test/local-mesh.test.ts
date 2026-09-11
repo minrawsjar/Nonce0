@@ -70,6 +70,30 @@ test('three relays start, and a payment really crosses all three', async () => {
   }
 });
 
+test('relays in one process reach each other over loopback, not their public endpoints', async () => {
+  // As on Railway: the directory names public URLs, here ones nothing answers,
+  // so a payment arrives only if relay-to-relay hops stay on loopback.
+  const mesh = buildLocalMesh({ basePort: 19101, endpointFor: (_id, i) => `https://unreachable.invalid/r${i + 1}/v1/relay` });
+  const { server, seen } = egressServer('SUBMITTED');
+  await new Promise<void>((r) => server.listen(0, r));
+  const egressUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}/submit`;
+  const relays = await serveLocalMesh(mesh, new Map<MeshMessageKind, string>([['PAYMENT', egressUrl], ['QUERY', egressUrl]]), '127.0.0.1');
+  try {
+    const directory = mesh.signed.directory;
+    const now = (directory.issuedAt + 60n) as UnixSeconds;
+    const ids = directory.entries.slice(0, 3).map((e) => e.id) as unknown as readonly [RelayId, RelayId, RelayId];
+    const frame = encodeFrame(buildOnion({ path: toPath(directory, ids, now), payload: { kind: 'PAYMENT', body: '0xc0ffee' }, expiresAt: now + 600n }));
+    // Hop 1 directly on its loopback port, as the host's proxy would route it.
+    const accepted = await fetch(`http://127.0.0.1:${mesh.ports.get(ids[0])!}/v1/relay`, { method: 'POST', body: frame });
+    assert.equal(accepted.status, 202);
+    for (let i = 0; i < 60 && seen.length === 0; i++) await sleep(50);
+    assert.equal(seen.length, 1, 'the payment did not cross the relays');
+  } finally {
+    await Promise.all(relays.map((r) => r.close()));
+    await new Promise<void>((r) => server.close(() => r()));
+  }
+});
+
 test('a query crosses three relays and the answer comes back through a drop', async () => {
   const mesh = buildLocalMesh(19091);
   const { server } = egressServer('CONFIRMED');
