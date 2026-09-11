@@ -3,6 +3,7 @@ import { createServer } from 'node:http';
 import { copyFile, mkdir, readFile } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { accountGateway } from './account-gateway.ts';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const output = `${root}/.demo-dist`;
@@ -11,18 +12,24 @@ const index = args.indexOf('--port');
 const port = index < 0 ? 4173 : Number(args[index + 1]);
 if (!Number.isInteger(port) || port < 1024 || port > 65535) throw new Error('Use a port between 1024 and 65535');
 await mkdir(output, { recursive: true });
-const build = await context({ entryPoints: [`${root}/demo/app.ts`], bundle: true, outfile: `${output}/app.js`,
+const build = await context({ entryPoints: [`${root}/demo/app.ts`, `${root}/demo/live.ts`], bundle: true, outdir: output,
   platform: 'browser', format: 'esm', target: 'es2022', logLevel: 'info' });
 await build.rebuild();
 await copyFile(`${root}/demo/index.html`, `${output}/index.html`);
 await copyFile(`${root}/demo/style.css`, `${output}/style.css`);
+await copyFile(`${root}/demo/live.html`, `${output}/live.html`);
+await copyFile(`${root}/demo/live.css`, `${output}/live.css`);
 if (args.includes('--build')) {
   await build.dispose(); console.log('Browser wallet built in .demo-dist');
 } else {
   await build.watch();
   const url = `http://127.0.0.1:${port}`;
+  const gateway = await accountGateway(process.env.PQ_ACCOUNT_CONFIG);
   const routes: Record<string, { file: string; type: string }> = {
     '/': { file: `${root}/demo/index.html`, type: 'text/html' },
+    '/live': { file: `${root}/demo/live.html`, type: 'text/html' },
+    '/live.js': { file: `${output}/live.js`, type: 'text/javascript' },
+    '/live.css': { file: `${root}/demo/live.css`, type: 'text/css' },
     '/app.js': { file: `${output}/app.js`, type: 'text/javascript' },
     '/style.css': { file: `${root}/demo/style.css`, type: 'text/css' },
   };
@@ -30,6 +37,7 @@ if (args.includes('--build')) {
     if (![`127.0.0.1:${port}`, `localhost:${port}`].includes(request.headers.host ?? '')) {
       response.writeHead(403); response.end('Local access only'); return;
     }
+    if (request.url === '/account-config.json' || request.url?.startsWith('/rpc/')) { await gateway(request, response); return; }
     const route = routes[request.url ?? '/'];
     if (!route || !['GET', 'HEAD'].includes(request.method ?? '')) { response.writeHead(404); response.end('Not found'); return; }
     try {

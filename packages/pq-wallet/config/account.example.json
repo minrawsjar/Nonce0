@@ -1,0 +1,23 @@
+{
+  "chainId": 5042002,
+  "entryPointVersion": "0.7",
+  "rpcUrl": "https://rpc.testnet.arc.network",
+  "bundlerUrl": "https://public.pimlico.io/v2/5042002/rpc",
+  "entryPoint": "0x0000000071727De22E5E9d8BAf0edAc6f37da032",
+  "registry": "REPLACE_WITH_NEW_ACCOUNT_BOUND_REGISTRY",
+  "factory": "REPLACE_WITH_NEW_FACTORY",
+  "implementation": "REPLACE_WITH_FACTORY_IMPLEMENTATION",
+  "codeHashes": {
+    "entryPoint": "REPLACE_WITH_RUNTIME_KECCAK",
+    "registry": "REPLACE_WITH_RUNTIME_KECCAK",
+    "factory": "REPLACE_WITH_RUNTIME_KECCAK",
+    "implementation": "REPLACE_WITH_RUNTIME_KECCAK"
+  },
+  "sponsorship": {
+    "mode": "self-funded"
+  },
+  "maxFeePerGas": "100000000000",
+  "maxVerificationGas": "600000",
+  "maxCallGas": "500000",
+  "maxPreVerificationGas": "250000"
+}

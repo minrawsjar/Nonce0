@@ -6,6 +6,10 @@ Browser-local PQ signer and wallet SDK based on the original `handoff-manan.md` 
 
 Prior SDK verification: strict typecheck passed; the SDK suite with Chromium enabled passed **72 tests, zero failures and zero skips**. The unchanged Solidity registry/verifier passed **29 existing tests** in the isolated verification checkout. See `benchmarks/verification.json` for that snapshot's commands and scope; it predates the browser demo.
 
+## Smart account without MetaMask
+
+An opt-in ERC-4337 v0.7 account implementation and browser page now exist. See [ACCOUNT_IMPLEMENTATION.md](ACCOUNT_IMPLEMENTATION.md) for its contract decisions, configuration and tests. The page is `/live`; it stays disabled until the new deployments and provider configuration are verified. This is a local-tested extension, not an Arc deployment or final G2 claim.
+
 ## Run
 
 ### Browser wallet
