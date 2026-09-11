@@ -64,7 +64,7 @@
           <label class="field" for="recipient"><span>Recipient</span><input id="recipient" class="mono" type="text" placeholder="0x0000…" autocomplete="off" spellcheck="false"><small>Arc testnet address</small></label>
           <div class="privacy-note"><b>Timing protection is on</b><p>Usually settles within seconds. If the relays look unhealthy, the payment waits, sealed, for up to an hour rather than go out with thin cover.</p></div>
           <button class="primary" id="arm" type="submit">Review private transfer</button>
-          <p class="status" id="send-status" role="status"></p><p class="fine-print" id="fee-note"></p>
+          <p class="status" id="send-status" role="status"></p>
         </form>
       </section>
 
@@ -87,7 +87,7 @@
 
 <dialog id="receive-dialog">
   <form method="dialog" class="dialog-head"><div><p class="eyebrow">Receive on Arc</p><h2>Your Opaque account</h2></div><button value="close" aria-label="Close">×</button></form>
-  <p>Your PQ account on Arc testnet: only this browser's post-quantum key can move what it holds. USDC sent here funds deposits once the account is activated. Private USDC notes are created with Deposit.</p>
+  <p>Your PQ account on Arc testnet: only this browser's post-quantum key can move what it holds. Send USDC here from any wallet or exchange; Deposit turns it into private notes, and the first deposit also sets the account up on chain.</p>
   <div class="address"><span class="identicon"><i></i></span><code id="receive-address">Starting…</code></div>
   <div class="dialog-actions"><button class="secondary" id="copy-address" type="button">Copy address</button><a class="primary" id="open-explorer" href="https://testnet.arcscan.app" target="_blank" rel="noopener">View on explorer</a></div>
 </dialog>
@@ -96,7 +96,6 @@
   <div class="detail"><span>Account address</span><code id="account-address">Starting…</code></div>
   <div class="detail"><span>Account</span><strong id="account-state">—</strong></div>
   <div class="detail"><span>Funding wallet</span><strong id="funding-state">Not connected</strong></div>
-  <button class="secondary" id="activate" type="button" hidden>Activate account</button>
   <div id="withdraw-box" hidden>
     <label class="field" for="withdraw-to"><span>Withdraw everything to</span><input id="withdraw-to" class="mono" type="text" placeholder="0x… (your funding wallet if empty)" autocomplete="off" spellcheck="false"></label>
     <button class="secondary" id="withdraw" type="button">Withdraw</button>

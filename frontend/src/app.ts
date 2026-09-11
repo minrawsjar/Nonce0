@@ -57,6 +57,8 @@ const DEPOSIT_GAS_USDC = 0.2;
  * look unhealthy or their health is unknown, for MAX_WAIT_SECONDS at most.
  */
 const MIN_FRESHNESS = 70;
+/** Payments of one send in flight at once. ponytail: fixed; tune to the relays' capacity if sends grow. */
+const PAYMENT_LANES = 3;
 const MAX_WAIT_SECONDS = 3_600;
 const shortAddress = (value: string) => value ? `${value.slice(0, 6)}…${value.slice(-4)}` : 'Not connected';
 const isRejected = (error: unknown) => typeof error === 'object' && error !== null && 'code' in error && (error as { code: unknown }).code === 4001;
@@ -76,7 +78,9 @@ async function copyText(value: string, button?: HTMLButtonElement): Promise<void
 async function readFundingWallet(): Promise<void> {
   const injected = provider();
   if (!injected) {
-    el('funding-state').textContent = 'No browser wallet found';
+    // Not needed: the account is funded by sending USDC to its address.
+    el('funding-state').textContent = 'None — send USDC to your address from any wallet';
+    el('connect-wallet').hidden = true;
     el('network-label').textContent = 'Arc testnet';
     return;
   }
@@ -133,6 +137,8 @@ interface SentPayment {
   readonly handle: string;
   readonly recipient: string;
   readonly at: number;
+  /** The send it belongs to: one Activity row per send, however many notes. */
+  readonly group?: string;
   state?: IntentStatus['state'];
   txHash?: string;
 }
@@ -185,9 +191,8 @@ async function renderBudget(): Promise<void> {
   const balance = funds === undefined ? '' : ` · ${funds.usdc.toFixed(2)} USDC`;
   el('account-state').textContent = state.active
     ? `Active${balance} · deposits are signed by its PQ key`
-    : `Not activated${balance} · deposits come from your funding wallet`;
-  el('activate').hidden = state.active;
-  el('withdraw-box').hidden = !state.active || (funds?.usdc ?? 0) === 0;
+    : `Not on chain yet${balance} · your first deposit sets it up`;
+  el('withdraw-box').hidden = (funds?.usdc ?? 0) === 0;
   // Two signatures are held back for exactly this, so a key can always rotate.
   const rotate = el<HTMLButtonElement>('rotate');
   rotate.hidden = !state.active;
@@ -195,6 +200,10 @@ async function renderBudget(): Promise<void> {
 }
 
 async function onRotate(): Promise<void> {
+  if (!rt.hasWallet) {
+    setStatus('rotate-status', 'Rotating is still paid by a funding wallet, which this browser has none of. Back up, restore on opaque.credit with MetaMask, rotate there, and restore back.');
+    return;
+  }
   if (!await connectFundingWallet()) return;
   const button = el<HTMLButtonElement>('rotate');
   button.disabled = true;
@@ -267,26 +276,6 @@ async function settle(done: () => Promise<boolean>): Promise<void> {
   }
 }
 
-/** Deploys the account: the funding wallet pays, once, and gets no power over it. */
-async function activate(): Promise<void> {
-  await rt.app.registerWallet();
-  await settle(async () => (await rt.app.walletState()).active);
-}
-
-async function onActivate(): Promise<void> {
-  const button = el<HTMLButtonElement>('activate');
-  if (!await connectFundingWallet()) return;
-  button.disabled = true;
-  setStatus('wallet-status', 'Confirm in your funding wallet: it pays to deploy the account, and gets no power over it…');
-  try {
-    await activate();
-    setStatus('wallet-status', 'Activated. Deposits come from the account; Deposit tops it up from your funding wallet when it needs to.');
-    await renderBudget();
-  } catch (error) {
-    setStatus('wallet-status', isRejected(error) ? '' : `Could not activate: ${(error as Error).message}`);
-  } finally { button.disabled = false; }
-}
-
 // ── notes ─────────────────────────────────────────────────────────────────
 
 async function refreshNotes(): Promise<void> {
@@ -313,29 +302,31 @@ async function onDeposit(): Promise<void> {
   button.disabled = true;
   try {
     // Deposits come from the account: ONE transaction however many notes,
-    // signed by its PQ key, where the funding wallet would need a
-    // confirmation per note (it cannot batch, and the pool takes one note per
-    // deposit). The funding wallet activates the account once and tops it up,
-    // one confirmation each; an account already holding enough needs neither.
-    let state = await rt.app.walletState();
+    // signed by its PQ key, where a plain wallet would need a confirmation
+    // per note. The first one also deploys the account, paid from the USDC at
+    // its address. A funding wallet, if this browser has one, tops the
+    // account up in one confirmation; without one (the extension), USDC is
+    // sent to the address from anywhere.
+    const state = await rt.app.walletState();
     const account = state.accountAddress as `0x${string}`;
     const want = count + DEPOSIT_GAS_USDC;
     const topUp = Math.ceil((want - (await rt.accountFunds(account)).usdc) * 100) / 100;
-    // This also verifies/switches the chain when an account was already exposed.
-    if ((!state.active || topUp > 0) && !await connectFundingWallet()) return;
-    if (!state.active) {
-      status.textContent = 'One-time: confirm in your funding wallet to activate your Opaque account. It pays to deploy it and gets no power over it…';
-      await activate();
-      state = await rt.app.walletState();
-      if (!state.active) throw new Error('the account is not active on chain yet — try again in a moment');
-    }
     if (topUp > 0) {
+      if (!rt.hasWallet) {
+        status.textContent = `Send ${topUp.toFixed(2)} USDC to your Opaque address (${notes} and gas) from any wallet, then press Deposit again.`;
+        el<HTMLDialogElement>('receive-dialog').showModal();
+        return;
+      }
+      // This also verifies/switches the chain when an account was already exposed.
+      if (!await connectFundingWallet()) return;
       status.textContent = `Confirm in your funding wallet: ${topUp.toFixed(2)} USDC to your account, for ${notes} and gas…`;
       await rt.fundAccount(account, topUp);
       // A lagging RPC node can still show the old balance; the deposit checks it.
       await settle(async () => (await rt.accountFunds(account)).usdc >= want - 0.005);
     }
-    status.textContent = `Signing one deposit of ${notes} with your account's PQ key; a public bundler submits it…`;
+    status.textContent = state.active
+      ? `Signing one deposit of ${notes} with your account's PQ key; a public bundler submits it…`
+      : `Signing your account's first operation with its PQ key: it sets the account up on chain and deposits ${notes}…`;
     const made = await rt.app.depositNotes(rt.scope, count);
     const waiting = made.filter((n) => n.state !== 'AVAILABLE').length;
     status.textContent = waiting === 0
@@ -450,23 +441,34 @@ async function onSend(event: SubmitEvent): Promise<void> {
     status.textContent = 'Getting a policy credential for this recipient…';
     const credentialHandle = await rt.obtainCredential(recipient as `0x${string}`);
 
-    for (const note of available.slice(0, count)) {
-      status.textContent = count === 1
-        ? 'Building the ring proof in this browser (a few seconds — the note secret never leaves the page)…'
-        : `Building ring proof ${done + 1} of ${count} in this browser (the note secrets never leave the page)…`;
-      const ref = await rt.app.submitPayment({
-        noteId: note.id,
-        recipient: recipient as never,
-        minPrivacyScore: (MIN_FRESHNESS * 100) as PrivacyScore,
-        deadline: (BigInt(Math.floor(Date.now() / 1000) + MAX_WAIT_SECONDS)) as UnixSeconds,
-        credentialHandle,
-        idempotencyKey: `pay-${note.id}-${Date.now()}` as never,
-      });
-      // Recorded as each one goes, so a failure later still shows these.
-      sent.unshift({ handle: ref.statusHandle as string, recipient, at: Date.now() });
-      saveSent();
-      done++;
-    }
+    // Each note is its own payment, with its own proof and upload. A few at
+    // once: the proof of one overlaps the ~1 MB upload of another, and the
+    // relays see several unrelated uploads rather than one long one.
+    const group = `send-${Date.now()}`;
+    const queue = available.slice(0, count);
+    status.textContent = count === 1
+      ? 'Building the ring proof in this browser (a few seconds — the note secret never leaves the page)…'
+      : `Building ${count} ring proofs in this browser and sending each across the mesh (the note secrets never leave the page)…`;
+    let failure: unknown;
+    const lane = async (): Promise<void> => {
+      for (let note = queue.shift(); note !== undefined && failure === undefined; note = queue.shift()) {
+        const ref = await rt.app.submitPayment({
+          noteId: note.id,
+          recipient: recipient as never,
+          minPrivacyScore: (MIN_FRESHNESS * 100) as PrivacyScore,
+          deadline: (BigInt(Math.floor(Date.now() / 1000) + MAX_WAIT_SECONDS)) as UnixSeconds,
+          credentialHandle,
+          idempotencyKey: `pay-${note.id}-${Date.now()}` as never,
+        });
+        // Recorded as each one goes, so a failure later still shows these.
+        sent.unshift({ handle: ref.statusHandle as string, recipient, at: Date.now(), group });
+        saveSent();
+        done++;
+        if (count > 1) status.textContent = `Sent ${done} of ${count} across the mesh…`;
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(PAYMENT_LANES, count) }, () => lane().catch((error: unknown) => { failure ??= error; })));
+    if (failure !== undefined) throw failure;
     status.textContent = count === 1
       ? 'Sent across the mesh. It usually settles within seconds; Activity shows when it lands.'
       : `Sent ${count} payments across the mesh. Each usually settles within seconds; Activity shows when they land.`;
@@ -495,50 +497,73 @@ function renderActivity(): void {
     list.replaceChildren(empty);
     return;
   }
-  list.replaceChildren(...sent.map((p) => {
+  // One row per send, however many notes it took; payments from before
+  // sends were grouped stand alone. `sent` is newest first, and a send's
+  // payments are adjacent in it.
+  const sends = new Map<string, SentPayment[]>();
+  for (const p of sent) {
+    const key = p.group ?? p.handle;
+    sends.set(key, [...(sends.get(key) ?? []), p]);
+  }
+  list.replaceChildren(...[...sends.values()].map((payments) => {
     const row = document.createElement('div');
     row.className = 'intent';
     const head = document.createElement('div');
     head.className = 'intent-head';
     const amount = document.createElement('span');
     amount.className = 'intent-amt';
-    amount.textContent = '1.00 USDC';
+    amount.textContent = `${payments.length}.00 USDC`;
     const badge = document.createElement('span');
-    const state = p.state ?? 'WAITING_FOR_PRIVACY';
-    badge.className = `intent-state ${state === 'SETTLED' ? 'settled' : 'armed'}`;
-    badge.textContent = state.replaceAll('_', ' ').toLowerCase();
+    const settled = payments.filter((p) => p.state === 'SETTLED').length;
+    const failed = payments.filter((p) => p.state === 'FAILED').length;
+    const state = payments.length === 1 ? (payments[0]!.state ?? 'WAITING_FOR_PRIVACY').replaceAll('_', ' ').toLowerCase()
+      : settled === payments.length ? 'settled'
+      : failed > 0 ? `${failed} of ${payments.length} failed`
+      : settled > 0 ? `${settled} of ${payments.length} settled` : 'waiting for privacy';
+    badge.className = `intent-state ${state === 'settled' ? 'settled' : 'armed'}`;
+    badge.textContent = state;
     head.append(amount, badge);
     const meta = document.createElement('p');
     meta.className = 'intent-meta';
     const short = document.createElement('code');
-    short.textContent = `${p.recipient.slice(0, 6)}…${p.recipient.slice(-4)}`;
+    const recipient = payments[0]!.recipient;
+    short.textContent = `${recipient.slice(0, 6)}…${recipient.slice(-4)}`;
     meta.append('to ', short);
-    if (p.txHash !== undefined) {
+    if (payments.length > 1) meta.append(` · ${payments.length} private payments of 1 USDC`);
+    // Each note settles in its own transaction.
+    const txs = payments.filter((p) => p.txHash !== undefined).reverse();
+    txs.forEach((p, i) => {
       const link = document.createElement('a');
       link.href = `https://testnet.arcscan.app/tx/${p.txHash}`;
       link.target = '_blank';
       link.rel = 'noopener';
-      link.textContent = 'view settlement';
-      meta.append(document.createElement('br'), link);
-    }
+      link.textContent = payments.length === 1 ? 'view settlement' : `settlement ${i + 1}`;
+      meta.append(i === 0 ? document.createElement('br') : ' · ', link);
+    });
     row.append(head, meta);
     return row;
   }));
 }
 
+let polling = false;
 async function pollActivity(): Promise<void> {
+  // A round can outlast the interval when many payments are in flight.
+  if (polling) return;
+  polling = true;
   let changed = false;
-  for (const p of sent) {
-    if (p.state !== undefined && TERMINAL.has(p.state)) continue;
-    try {
-      const s = await rt.readStatus(p.handle as StatusHandle);
-      if (s.state !== p.state || s.txHash !== p.txHash) {
-        p.state = s.state;
-        if (s.txHash !== undefined) p.txHash = s.txHash;
-        changed = true;
-      }
-    } catch { /* a missed poll is retried next tick; it is not a failure */ }
-  }
+  try {
+    for (const p of sent) {
+      if (p.state !== undefined && TERMINAL.has(p.state)) continue;
+      try {
+        const s = await rt.readStatus(p.handle as StatusHandle);
+        if (s.state !== p.state || s.txHash !== p.txHash) {
+          p.state = s.state;
+          if (s.txHash !== undefined) p.txHash = s.txHash;
+          changed = true;
+        }
+      } catch { /* a missed poll is retried next tick; it is not a failure */ }
+    }
+  } finally { polling = false; }
   if (changed) { saveSent(); renderActivity(); }
 }
 
@@ -554,9 +579,6 @@ async function renderCapabilities(): Promise<void> {
     `PQ account ${stack.pqWallet === 'MOCK' ? 'on a mock chain' : 'live'}`,
   ];
   el('caps').textContent = parts.join(' · ');
-  el('fee-note').textContent =
-    'The ring proof is verified off chain; on chain the pool checks the attester\'s post-quantum signature '
-    + 'and that every ring member is a real deposit — about 556k gas, paid by the relay egress.';
 }
 
 // ── wiring ────────────────────────────────────────────────────────────────
@@ -583,7 +605,6 @@ async function init(): Promise<void> {
   el('copy-address').addEventListener('click', (event) => void copyText(opaqueAddress, event.currentTarget as HTMLButtonElement));
   el('refresh-balance').addEventListener('click', () => void refreshNotes());
   el('connect-wallet').addEventListener('click', () => void connectFundingWallet());
-  el('activate').addEventListener('click', () => void onActivate());
   el('rotate').addEventListener('click', () => void onRotate());
   el('withdraw').addEventListener('click', () => void onWithdraw());
   el('backup-export').addEventListener('click', () => void onBackupExport());

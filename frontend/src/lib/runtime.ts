@@ -21,10 +21,9 @@
 //   account      LIVE on Arc: FORS keys in IndexedDB, the account deployed by
 //                PQAccountFactory. The funding wallet only pays for that.
 //   deposit      from the account: one UserOperation its PQ key signs, for
-//                any number of notes. The page activates the account on the
-//                first deposit and tops it up from the funding wallet, one
-//                confirmation each; an account holding enough needs none.
-//                Attributable either way.
+//                any number of notes. The first deploys the account too, from
+//                USDC at its address; a funding wallet, where there is one,
+//                tops it up in one confirmation. Attributable either way.
 
 import type {
   CredentialHandle,
@@ -45,7 +44,7 @@ import { chainTo } from '../../../backend/mesh/directory.ts';
 import { createGraphHealth } from '../../../backend/mesh/graph-health.ts';
 import type { DirectoryTrustRoot, SignedDirectory } from '../../../backend/mesh/contracts.ts';
 import { createIntentSealer } from '../../../backend/cre/seal-client.ts';
-import { ARC_AUTHORITY, createLivePqWallet, createPqAccountOps } from '../../../backend/chain/pq-wallet-chain.ts';
+import { ARC_AUTHORITY, createLivePqWallet, createPqAccountOps, pendingDeployment } from '../../../backend/chain/pq-wallet-chain.ts';
 import { browserPayer, createBrowserPool, createMeshChainObserver, sendFromFundingWallet, type DepositMany } from '../../../backend/chain/wallet-chain.ts';
 import { capabilitiesOf } from '../../../backend/chain/pool.ts';
 import { readOne, type WalletRpcSend } from '../../../backend/chain/wallet-rpc.ts';
@@ -166,18 +165,20 @@ export async function startWallet(config?: StackConfig): Promise<WalletRuntime> 
   const wallet = createLivePqWallet({
     signerStore: keys, walletStore: keys, publicClient: browserPool.publicClient, payer: browserPayer(provider), walletRpc,
   });
-  const opsFor = (account: `0x${string}`) =>
-    createPqAccountOps({ wallet, account: account.toLowerCase() as never, authority: ARC_AUTHORITY, walletRpc });
-  // Until the account is activated, the funding wallet deposits directly, as
-  // before. After, deposits come from the account: one UserOperation its PQ
-  // key signs, however many notes, and no wallet popup.
+  // Until the account exists, its operations carry the factory call that
+  // deploys it, so the first deposit is also the activation.
+  const opsFor = (account: `0x${string}`) => createPqAccountOps({
+    wallet, account: account.toLowerCase() as never, authority: ARC_AUTHORITY, walletRpc,
+    deployment: () => pendingDeployment(wallet, keys),
+  });
+  // Deposits come from the account: one UserOperation its PQ key signs,
+  // however many notes, and no wallet popup. The first also deploys it.
   const depositMany: DepositMany = async (input) => {
     const state = await wallet.getState();
-    if (!state.active) return browserPool.depositMany(input);
     const hash = await opsFor(state.accountAddress as `0x${string}`).deposit(input);
     return input.commitments.map(() => hash);
   };
-  const pool: typeof browserPool = {
+  const pool: AdapterPorts['pool'] = {
     ...browserPool,
     depositMany,
     deposit: async ({ scope, commitment }) => (await depositMany({ scope, commitments: [commitment] }))[0]!,

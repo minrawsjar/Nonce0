@@ -127,24 +127,18 @@ export type DepositMany = (input: { readonly scope: PoolScope; readonly commitme
 export function createBrowserPool(
   provider: EIP1193Provider | undefined,
   offChain: Pick<ProtocolCapabilities, 'pqWallet' | 'graph' | 'confidentialExecution' | 'policyScope'>,
-): PrivatePoolContract & { readonly publicClient: PublicClient; readonly depositMany: DepositMany } {
+): PrivatePoolContract & { readonly publicClient: PublicClient } {
   const client = createPoolClient({ ...(provider === undefined ? {} : { provider }), offChain });
-  // One approval for all of them, then one transaction per note: an EOA
-  // cannot batch, and the pool takes one commitment per deposit.
-  const depositMany: DepositMany = async ({ scope, commitments }) => {
-    if (provider === undefined) {
-      throw new Error('no wallet: install MetaMask (or any EIP-1193 wallet) on Arc testnet to deposit');
-    }
-    await client.approveDeposit(scope.pool, BigInt(commitments.length));
-    const hashes: TxHash[] = [];
-    for (const commitment of commitments) hashes.push(await client.deposit({ scope, commitment }));
-    return hashes;
-  };
   return {
     publicClient: client.publicClient as PublicClient,
     capabilities: (pool) => client.capabilities(pool),
-    depositMany,
-    deposit: async ({ scope, commitment }) => (await depositMany({ scope, commitments: [commitment] }))[0]!,
+    async deposit(input) {
+      if (provider === undefined) {
+        throw new Error('no wallet: install MetaMask (or any EIP-1193 wallet) on Arc testnet to deposit');
+      }
+      await client.approveDeposit(input.scope.pool);
+      return client.deposit(input);
+    },
     spend: (spend) => client.spend(spend),
     isNullifierSpent: (scope, value) => client.isNullifierSpent(scope, value),
   };
