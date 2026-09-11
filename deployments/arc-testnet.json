@@ -31,9 +31,25 @@
       "address": "0x1b501bbcb3bd32645da3508f7779f8c196a28c85",
       "deployedAtBlock": 61451611
     },
+    "attestedRingVerifier2": {
+      "address": "0xac5c6660b07361fcf8468b747766f228a002d4b1",
+      "deployedAtBlock": 61557097
+    },
+    "attestedRingVerifier5": {
+      "address": "0x56acb90bc076dc4ed5df926f9970a15fdf3fa5e0",
+      "deployedAtBlock": 61557167
+    },
     "attestedRingVerifier10": {
       "address": "0xf5059420035f337f123a750e494a4c72b0128f4a",
       "deployedAtBlock": 61487364
+    },
+    "attestedRingVerifier20": {
+      "address": "0xb7c2fa9789121a3b00e24e4ee2cba819297e864b",
+      "deployedAtBlock": 61557212
+    },
+    "attestedRingVerifier50": {
+      "address": "0x331f42d40a30af656da3456467e565b629ec6539",
+      "deployedAtBlock": 61557255
     },
     "attestedRingVerifier100": {
       "address": "0x4afc9ee50922cab3eaf7007e0231402f643e1c78",
@@ -80,12 +96,44 @@
       "deployedAtBlock": 61451614
     },
     {
+      "$comment": "RING_8 at 2 USDC: same PQ attester; empty until seeded with eight deposits.",
+      "address": "0xa69bab9439c911fa31cfbe5138abdb2ae04d523a",
+      "denomination": 2000000,
+      "proofMode": "RING_8",
+      "verifier": "attestedRingVerifier2",
+      "deployedAtBlock": 61557097
+    },
+    {
+      "$comment": "RING_8 at 5 USDC: same PQ attester; empty until seeded with eight deposits.",
+      "address": "0xf4855f6b0988ebf4f6bd203f284e0d370594da9c",
+      "denomination": 5000000,
+      "proofMode": "RING_8",
+      "verifier": "attestedRingVerifier5",
+      "deployedAtBlock": 61557167
+    },
+    {
       "$comment": "RING_8 at 10 USDC: same attester, its own verifier (each binds its pool id and denomination). Filled by anyone's 10-USDC deposits; a note here is spendable once the pool holds 8.",
       "address": "0x2770e5c2f491fcf0c8a411f6c2c8064214e1e284",
       "denomination": 10000000,
       "proofMode": "RING_8",
       "verifier": "attestedRingVerifier10",
       "deployedAtBlock": 61487364
+    },
+    {
+      "$comment": "RING_8 at 20 USDC: same PQ attester; empty until seeded with eight deposits.",
+      "address": "0x4d3ab56e38c6297030ea7c63d3ed046472cebde9",
+      "denomination": 20000000,
+      "proofMode": "RING_8",
+      "verifier": "attestedRingVerifier20",
+      "deployedAtBlock": 61557213
+    },
+    {
+      "$comment": "RING_8 at 50 USDC: same PQ attester; empty until seeded with eight deposits.",
+      "address": "0xae69f3c02d0c98cd8b4a006353d117c8cea23af4",
+      "denomination": 50000000,
+      "proofMode": "RING_8",
+      "verifier": "attestedRingVerifier50",
+      "deployedAtBlock": 61557255
     },
     {
       "$comment": "RING_8 at 100 USDC, as above.",

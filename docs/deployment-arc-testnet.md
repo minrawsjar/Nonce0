@@ -24,6 +24,12 @@ pre-committed successor instead of locking the pool (see *The attester* below).
 | `RelayDirectory` | `0xcf588b5b8ab2fa11ccf28a5c0631da4269a36653` | 61450880 |
 | `AttestedRingVerifier` | `0x1b501bbcb3bd32645da3508f7779f8c196a28c85` | 61451611 |
 | `PrivatePool` (RING_8, 1 USDC) | `0x7e01b8a883b4dacc9063326a2e7d3eef0d679b63` | 61451614 |
+| `PrivatePool` (RING_8, 2 USDC) | `0xa69bab9439c911fa31cfbe5138abdb2ae04d523a` | 61557097 |
+| `PrivatePool` (RING_8, 5 USDC) | `0xf4855f6b0988ebf4f6bd203f284e0d370594da9c` | 61557167 |
+| `PrivatePool` (RING_8, 10 USDC) | `0x2770e5c2f491fcf0c8a411f6c2c8064214e1e284` | 61487364 |
+| `PrivatePool` (RING_8, 20 USDC) | `0x4d3ab56e38c6297030ea7c63d3ed046472cebde9` | 61557213 |
+| `PrivatePool` (RING_8, 50 USDC) | `0xae69f3c02d0c98cd8b4a006353d117c8cea23af4` | 61557255 |
+| `PrivatePool` (RING_8, 100 USDC) | `0x0d8dff9b4903a1b550037bac773e9757f1f4d823` | 61487385 |
 | attester (account) | `0x8d47981ac51628fa19bf8b32afdda09f2d72d257` | registered in the registry above |
 
 | Service | Where |

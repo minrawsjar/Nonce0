@@ -85,9 +85,14 @@ Settlement               The pool releases a fixed denomination. No sender is
                           named at this step.
 ```
 
-Fixed denominations only — 1, 5 and 10 USDC. Variable amounts need
+Fixed denominations only — 1, 2, 5, 10, 20, 50 and 100 USDC. Variable amounts need
 elliptic-curve value commitments and range proofs, which would crack the "no EC
 anywhere" posture at the amount-hiding layer.
+
+The current Arc manifest has all seven RING_8 pools live. The 2, 5, 20 and 50
+USDC pools are newly deployed and intentionally empty until their first eight
+deposits are indexed; the wallet labels those notes as waiting rather than
+claiming they are spendable.
 
 ## Layout
 
@@ -96,10 +101,10 @@ Start with [docs/spec-v2.md](docs/spec-v2.md); [docs/README.md](docs/README.md)
 indexes everything and records the open contradictions between documents.
 
 ```sh
-npm run typecheck:all      # every package, strict
-npm run test:all           # every suite
+bun run typecheck:all      # every package, strict
+bun run test:all           # every suite
 cd contracts && forge test
-node backend/zk/bench.ts    # the §6.3 spike
+bun backend/zk/bench.ts     # the §6.3 spike
 ```
 
 Node ≥22.18 required — it strips TypeScript natively, so there is no build step
