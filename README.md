@@ -49,9 +49,12 @@ gone permanently. That is a genuine fund-safety gap, not a cosmetic one. A real
 version needs seed-derived notes or trial-decryption scanning; both are out of
 scope here.
 
-**3. TEE attestation is simulated.** Relay nodes and the CRE enclave are not
-running attested hardware in this build. Where the design says "the enclave
-holds this confidentially", read "the enclave would hold this confidentially".
+**3. The relays are not attested; the CRE enclave is.** The six relays run on
+one ordinary server, not attested hardware. The payment decision runs in a
+Chainlink CRE Confidential Workflow on AWS Nitro: a recipient is opened only in
+the enclave, and the executor can read a payment only after the enclave
+releases it ([opaque-cre/README.md](opaque-cre/README.md)). The enclave's code
+is public by design; what it protects is the data.
 
 The threat model is in [docs/spec-v2.md §3](docs/spec-v2.md). It does not claim
 to stop a global passive observer, collusion across all three relay hops, or a
