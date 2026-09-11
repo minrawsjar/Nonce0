@@ -285,14 +285,26 @@ if (PUBLIC_URL !== undefined && RELAY_OPERATOR_KEY !== undefined && relays.lengt
     relays,
   });
   // In the background: the wallet can use the mesh before the Graph sees it.
-  void reporter.announce().then(async (sent) => { await reporter.report(); return sent; }).then(
-    (sent) => {
+  // Announce once, then report every 10 minutes (~0.0018 USDC a report, about
+  // 0.26 a day). A failure — Arc's RPC rate-limits a boot's burst of reads —
+  // retries in 30 s: health unreported for 15 minutes goes stale, and stale
+  // health scores under the bar a payment waits for.
+  let announced = false;
+  const run = (): void => void (async () => {
+    if (!announced) {
+      const sent = await reporter.announce();
+      announced = true;
       log(`  relays ${sent === 0 ? 'already announced' : `announced (${sent})`} in RelayDirectory; reporting health every 10 min`);
-      // ~0.0018 USDC a report: about 0.26 USDC a day at this cadence.
-      setInterval(() => void reporter.report().catch((e: Error) => log(`  ! relay report failed: ${e.message}`)), 600_000).unref();
+    }
+    await reporter.report();
+  })().then(
+    () => { setTimeout(run, 600_000).unref(); },
+    (e: { shortMessage?: string; message: string }) => {
+      log(`  ! relay ${announced ? 'report' : 'announce'} failed, retrying in 30 s: ${e.shortMessage ?? e.message}`);
+      setTimeout(run, 30_000).unref();
     },
-    (e: Error) => log(`  ! relay announce failed, no health will be reported: ${e.message}`),
   );
+  run();
 }
 
 // ── test credential authority ────────────────────────────────────────────
