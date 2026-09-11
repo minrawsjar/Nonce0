@@ -45,6 +45,14 @@ then fill in each tab of the item in the developer dashboard with the text below
 
 **Small promo tile** (440×280): `extension/store/promo-440x280.png`
 
+**Marquee promo tile** (1400×560): `extension/store/marquee-1400x560.png`
+
+**Global promo video:** leave empty.
+
+**Official URL:** leave as None (it needs a site verified in Search Console).
+
+**Mature content:** No.
+
 **Homepage URL:** https://www.opaque.credit
 
 **Support URL:** https://github.com/minrawsjar/Opaque/issues
