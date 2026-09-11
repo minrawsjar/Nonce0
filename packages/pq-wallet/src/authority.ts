@@ -23,6 +23,13 @@ export interface ChainObservation {
   readonly keyEpoch: bigint;
   readonly state: PQKeyState | undefined;
 }
+/** What a first operation's initCode deploys: the account for exactly these keys, registered to them. */
+export interface AccountDeployment {
+  readonly pkCommitment: Bytes32;
+  readonly nextCommitment: Bytes32;
+  readonly maxUses: bigint;
+  readonly rotationDeadline: bigint;
+}
 export interface PreparedUserOperation {
   readonly encodedUserOperation: Hex;
   readonly accountAddress: Address;
@@ -37,6 +44,12 @@ export interface PreparedUserOperation {
   readonly payload: Hex;
   /** Produced by the canonical on-chain digest helper/approved adapter. */
   readonly digest: Bytes32;
+  /**
+   * Present exactly when the account is not yet registered: the operation is
+   * its first, and its initCode deploys it. The adapter binds this to the
+   * encoded initCode; the wallet binds it to its own keys.
+   */
+  readonly deployment?: AccountDeployment;
 }
 export function validateAuthorityConfig(config: AuthorityConfig): void {
   if (!config || typeof config !== 'object' || !config.paymaster) {
@@ -64,14 +77,17 @@ export function validatePreparedOperation(config: AuthorityConfig, observation: 
   encoded: Hex, schemeId: string, prepared: PreparedUserOperation): void {
   if (!prepared || typeof prepared !== 'object') throw new ProtocolFailure('PROOF_REJECTED', 'Malformed prepared operation');
   assertHex(encoded, 'encodedUserOperation'); asBytes32(prepared.userOpHash); asBytes32(prepared.digest);
-  if (!observation.state || prepared.encodedUserOperation !== encoded ||
+  // An unregistered account's first operation registers its key as it runs,
+  // at use count 0, and must say what it deploys; any later one must not.
+  const useCount = observation.state?.useCount ?? 0n;
+  if ((observation.state === undefined) !== (prepared.deployment !== undefined) || prepared.encodedUserOperation !== encoded ||
       prepared.accountAddress !== observation.accountAddress || prepared.chainId !== config.chainId ||
       observation.chainId !== config.chainId || prepared.entryPoint !== config.entryPoint ||
-      prepared.keyEpoch !== observation.keyEpoch || prepared.useCount !== observation.state.useCount ||
+      prepared.keyEpoch !== observation.keyEpoch || prepared.useCount !== useCount ||
       prepared.schemeId !== schemeId || typeof prepared.validUntil !== 'bigint' || prepared.validUntil <= observation.now) {
     throw new ProtocolFailure('PROOF_REJECTED', 'Operation authority binding rejected');
   }
   const digest = pqDigest({ chainId: config.chainId, walletAddress: observation.accountAddress,
-    schemeId, useCount: observation.state.useCount, payload: prepared.payload });
+    schemeId, useCount, payload: prepared.payload });
   if (prepared.digest !== digest) throw new ProtocolFailure('PROOF_REJECTED', 'Canonical digest mismatch');
 }

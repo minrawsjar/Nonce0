@@ -6,7 +6,7 @@ import { PQKeyRegistry, userActionPayload, type RegistryPolicy } from './registr
 import { MemorySignerStore, type SignedOutput } from './signer-state.ts';
 import { MemoryWalletStateStore } from './wallet-state.ts';
 import { createPqWallet, type WalletOptions } from './wallet.ts';
-import type { AuthorityConfig, ChainObservation, PreparedUserOperation } from './authority.ts';
+import type { AccountDeployment, AuthorityConfig, ChainObservation, PreparedUserOperation } from './authority.ts';
 import type { WalletChainAdapter } from './chain-adapter.ts';
 
 const address = (n: number): Address => asAddress(`0x${n.toString(16).padStart(40, '0')}`);
@@ -23,16 +23,21 @@ function mockPayload(prepared: Pick<PreparedUserOperation, 'entryPoint' | 'userO
     utf8(prepared.keyEpoch.toString()), utf8(prepared.validUntil.toString())]));
 }
 
+const sameDeployment = (a: AccountDeployment, b: AccountDeployment | undefined): boolean => b !== undefined &&
+  a.pkCommitment === b.pkCommitment && a.nextCommitment === b.nextCommitment && a.maxUses === b.maxUses && a.rotationDeadline === b.rotationDeadline;
+
 export class MockWalletChain implements WalletChainAdapter {
   readonly mode = 'MOCK' as const;
   readonly config = MOCK_AUTHORITY;
   now = 100n;
   deferTransactions = false;
   failNextSubmission = false;
+  /** Mock-only: what an unregistered account's first operation deploys. LIVE decodes it from initCode. */
+  firstOperation: AccountDeployment | undefined;
   #block = 1n;
   #tx = 0n;
   #epochs = new Map<Address, bigint>();
-  #operations = new Map<Bytes32, { account: Address; payload: Hex }>();
+  #operations = new Map<Bytes32, { account: Address; payload: Hex; deployment?: AccountDeployment }>();
   #pending: Array<() => void> = [];
   #registry = new PQKeyRegistry({ chainId: MOCK_AUTHORITY.chainId, now: () => this.now, policy: MOCK_POLICY });
 
@@ -50,20 +55,22 @@ export class MockWalletChain implements WalletChainAdapter {
     });
   }
   async prepareUserOperation(encoded: Hex, observation: ChainObservation, schemeId: string): Promise<PreparedUserOperation> {
-    if (!observation.state) throw new ProtocolFailure('INVALID_INPUT', 'Mock account is not registered');
+    const deployment = observation.state ? undefined : this.firstOperation;
+    if (!observation.state && !deployment) throw new ProtocolFailure('INVALID_INPUT', 'Mock account is not registered');
     const userOpHash = asBytes32(toHex(keccak_256(fromHex(encoded))));
     const fields = { encodedUserOperation: encoded, accountAddress: observation.accountAddress,
       chainId: this.config.chainId, entryPoint: this.config.entryPoint, keyEpoch: observation.keyEpoch,
-      useCount: observation.state.useCount, schemeId, userOpHash, validUntil: this.now + 300n };
+      useCount: observation.state?.useCount ?? 0n, schemeId, userOpHash, validUntil: this.now + 300n };
     const rawPayload = mockPayload(fields);
     const payload = userActionPayload(rawPayload);
     const digest = pqDigest({ chainId: fields.chainId, walletAddress: fields.accountAddress, schemeId, useCount: fields.useCount, payload });
-    this.#operations.set(digest, { account: observation.accountAddress, payload: rawPayload });
-    return { ...fields, payload, digest };
+    this.#operations.set(digest, { account: observation.accountAddress, payload: rawPayload, ...(deployment ? { deployment } : {}) });
+    return { ...fields, payload, digest, ...(deployment ? { deployment } : {}) };
   }
   async verifyUserOperationBinding(prepared: PreparedUserOperation): Promise<boolean> {
     return prepared.userOpHash === toHex(keccak_256(fromHex(prepared.encodedUserOperation))) &&
-      prepared.payload === userActionPayload(mockPayload(prepared));
+      prepared.payload === userActionPayload(mockPayload(prepared)) &&
+      (prepared.deployment === undefined || sameDeployment(prepared.deployment, this.firstOperation));
   }
   async rotate(account: Address, next: Bytes32, maxUses: bigint, deadline: bigint, signed: SignedOutput): Promise<TxHash> {
     return this.#submit(() => {
@@ -77,7 +84,15 @@ export class MockWalletChain implements WalletChainAdapter {
   async acceptUserOperation(signed: SignedOutput): Promise<TxHash> {
     const operation = this.#operations.get(signed.digest);
     if (!operation) throw new ProtocolFailure('INVALID_INPUT', 'Unknown mock operation');
-    return this.#submit(() => this.#registry.consume(operation.account, operation.payload, signed.signature));
+    const d = operation.deployment;
+    return this.#submit(() => {
+      // As on chain: initCode deploys and registers first, then validation consumes.
+      if (d && !this.#registry.stateOf(operation.account)) {
+        this.#registry.register(operation.account, { pkCommitment: d.pkCommitment, nextCommitment: d.nextCommitment, maxUses: d.maxUses, rotationDeadline: d.rotationDeadline });
+        this.#epochs.set(operation.account, 0n);
+      }
+      this.#registry.consume(operation.account, operation.payload, signed.signature);
+    });
   }
   mine(): void {
     const pending = this.#pending.shift(); if (pending) { pending(); this.#block++; }

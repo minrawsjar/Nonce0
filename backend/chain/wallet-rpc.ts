@@ -12,7 +12,9 @@
 //   USER_OPERATION_RECEIPT  eth_getUserOperationReceipt
 //
 // Bundler calls must name the pinned v0.7 EntryPoint and come from a PQ
-// account clone, so the exit is not a free bundler for anything else.
+// account clone, or deploy one: an initCode is accepted only as the pinned
+// factory's createAccount, which can create nothing but a PQ account. So the
+// exit is not a free bundler for anything else.
 //
 // An answer carries its own error ({ error }) instead of failing the query.
 // A query that fails at the exit leaves nothing at the drop, and the wallet
@@ -67,6 +69,7 @@ export function walletRpcAllowlist(): ReadonlyMap<string, ReadonlySet<string>> {
 const USER_OPERATION_REQUEST = parseAbiParameters('string method, address entryPoint, (address sender, uint256 nonce, bytes initCode, bytes callData, bytes32 accountGasLimits, uint256 preVerificationGas, bytes32 gasFees, bytes paymasterAndData, bytes signature) op');
 
 const MAX_CALLS = 8;
+const CREATE_ACCOUNT = toFunctionSelector('createAccount(bytes32,bytes32,uint64,uint64)');
 const MAX_REQUEST_BYTES = 60_000;
 const utf8 = (s: string) => new TextEncoder().encode(s);
 const json = (value: unknown): Hex => toHex(utf8(JSON.stringify(value))) as Hex;
@@ -77,6 +80,8 @@ export function createWalletRpcAnswerer(options: {
   readonly bundlerUrl: string;
   readonly entryPoint: Address;
   readonly accountImplementation: Address;
+  /** PQAccountFactory: the one initCode relayed is its createAccount. Unset, none is. */
+  readonly factory?: Address;
   readonly allowlist?: ReadonlyMap<string, ReadonlySet<string>>;
   readonly fetch?: typeof globalThis.fetch;
 }): WalletRpcSend {
@@ -88,6 +93,13 @@ export function createWalletRpcAnswerer(options: {
   const pqAccounts = new Set<string>();
 
   const refuse = (message: string): never => { throw new ProtocolFailure('INVALID_INPUT', message); };
+  /** A first operation's factory call: only the pinned factory, only createAccount. */
+  const deploys = (factory: unknown, factoryData: unknown): boolean => {
+    if (factory === undefined || factory === null) return false;
+    if (options.factory === undefined || String(factory).toLowerCase() !== options.factory.toLowerCase()
+      || String(factoryData).slice(0, 10).toLowerCase() !== CREATE_ACCOUNT) refuse('the only initCode relayed is the PQ account factory\'s createAccount');
+    return true;
+  };
 
   async function state(request: { calls?: unknown }): Promise<unknown> {
     const calls = request.calls;
@@ -119,9 +131,12 @@ export function createWalletRpcAnswerer(options: {
     const p = params as unknown[];
     if (method === 'eth_estimateUserOperationGas' || method === 'eth_sendUserOperation') {
       if (String(p[1]).toLowerCase() !== options.entryPoint.toLowerCase()) refuse('only the pinned v0.7 EntryPoint is relayed');
-      const sender = String((p[0] as { sender?: unknown } | undefined)?.sender ?? '').toLowerCase();
+      const op = (p[0] ?? {}) as { sender?: unknown; factory?: unknown; factoryData?: unknown };
+      const sender = String(op.sender ?? '').toLowerCase();
       if (!/^0x[0-9a-f]{40}$/.test(sender)) refuse('a UserOperation needs a sender');
-      if (!pqAccounts.has(sender)) {
+      // A deploying operation's sender has no code yet; the EntryPoint refuses
+      // it unless the factory created exactly that address.
+      if (!deploys(op.factory, op.factoryData) && !pqAccounts.has(sender)) {
         const code = await publicClient.getCode({ address: sender as Address });
         if (code?.toLowerCase() !== cloneCode) refuse('only PQ accounts are relayed');
         pqAccounts.add(sender);
@@ -146,15 +161,16 @@ export function createWalletRpcAnswerer(options: {
   /** An ABI UserOperation request, as the bundler's JSON-RPC params. */
   function unpack(encoded: Hex): { method: string; params: unknown[] } {
     const [method, entry, op] = decodeAbiParameters(USER_OPERATION_REQUEST, encoded);
-    // Accounts are deployed by the funding wallet and pay their own gas: an
-    // operation with initCode or a paymaster is not one this route carries.
-    if (op.initCode !== '0x' || op.paymasterAndData !== '0x') refuse('no initCode or paymaster on this route');
+    // Accounts pay their own gas: a paymaster is not something this route carries.
+    // An initCode is split back into factory and factoryData, and checked with them.
+    if (op.paymasterAndData !== '0x') refuse('no paymaster on this route');
     const high = (word: Hex) => BigInt(`0x${word.slice(2, 34)}`);
     const low = (word: Hex) => BigInt(`0x${word.slice(34)}`);
+    const deploy = op.initCode === '0x' ? {} : { factory: op.initCode.slice(0, 42) as Address, factoryData: `0x${op.initCode.slice(42)}` as Hex };
     return {
       method,
       params: [formatUserOperationRequest({
-        sender: op.sender, nonce: op.nonce, callData: op.callData, signature: op.signature,
+        sender: op.sender, nonce: op.nonce, callData: op.callData, signature: op.signature, ...deploy,
         verificationGasLimit: high(op.accountGasLimits), callGasLimit: low(op.accountGasLimits),
         preVerificationGas: op.preVerificationGas,
         maxPriorityFeePerGas: high(op.gasFees), maxFeePerGas: low(op.gasFees),

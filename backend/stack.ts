@@ -197,7 +197,7 @@ const exit = createExecutorServer({
   graph: ringSource,
   walletRpc: createWalletRpcAnswerer({
     publicClient: publicClient as never, bundlerUrl: ARC_AUTHORITY.bundlerUrl,
-    entryPoint: ARC_AUTHORITY.entryPoint, accountImplementation: ARC_AUTHORITY.accountImplementation,
+    entryPoint: ARC_AUTHORITY.entryPoint, accountImplementation: ARC_AUTHORITY.accountImplementation, factory: ARC_AUTHORITY.factory,
   }),
 });
 await exit.listen(PORTS.exit, LOOPBACK);

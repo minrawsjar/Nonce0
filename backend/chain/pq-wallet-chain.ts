@@ -2,11 +2,12 @@
 // deployed PQKeyRegistry and PQAccountFactory, and the account's own deposits
 // as v0.7 UserOperations through a public bundler.
 //
-// Authority is the FORS key and nothing else. The funding wallet (MetaMask)
-// only PAYS, for three transactions that need no authority: deploying the
-// account — CREATE2 commits to its keys, so whoever deploys it gets the same
-// account — and submitting a rotation or disable the FORS key already signed.
-// It never signs for the account.
+// Authority is the FORS key and nothing else. The account deploys itself: its
+// first UserOperation carries initCode (PQAccountFactory.createAccount), and
+// CREATE2 commits the address to its keys, so that operation can only create
+// this account, registered to these keys. It pays its own gas from USDC sent
+// to its address. A funding wallet (MetaMask) only PAYS, for a rotation or a
+// disable the FORS key already signed, and never signs for the account.
 //
 // keyEpoch: PQKeyRegistry has no epoch. The SDK checks that the chain's key is
 // at the epoch its store holds that key under; here that epoch is looked up in
@@ -21,6 +22,7 @@
 
 import {
   decodeAbiParameters,
+  decodeFunctionData,
   encodeAbiParameters,
   encodeFunctionData,
   keccak256,
@@ -38,7 +40,7 @@ import { createPqWallet, encodeSignature, FORS_C_DEFAULT, keyGen, pqDigest, sign
 import { deployment, entryPoint, requireContract } from '../../deployments/index.ts';
 // Not in pq-wallet's pinned public API; imported from source, as
 // cre/attester-keys.ts does.
-import type { AuthorityConfig, ChainObservation, PreparedUserOperation } from '../../packages/pq-wallet/src/authority.ts';
+import type { AccountDeployment, AuthorityConfig, ChainObservation, PreparedUserOperation } from '../../packages/pq-wallet/src/authority.ts';
 import type { WalletChainAdapter } from '../../packages/pq-wallet/src/chain-adapter.ts';
 import { userActionPayload, type RegistryPolicy } from '../../packages/pq-wallet/src/registry.ts';
 import type { SignerStore } from '../../packages/pq-wallet/src/signer-state.ts';
@@ -111,6 +113,20 @@ export function createLiveWalletChain(options: LiveWalletChainOptions): WalletCh
   // state, so an older answer is asked again rather than handed on.
   let highest = 0n;
 
+  /** What an initCode deploys, if it is the pinned factory's createAccount. */
+  function deploymentOf(initCode: Hex): AccountDeployment | undefined {
+    if (initCode.length <= 42 || initCode.slice(0, 42).toLowerCase() !== authority.factory.toLowerCase()) return undefined;
+    try {
+      const { functionName, args } = decodeFunctionData({ abi: FACTORY, data: `0x${initCode.slice(42)}` });
+      if (functionName !== 'createAccount') return undefined;
+      const [pk, next, maxUses, rotationDeadline] = args;
+      return { pkCommitment: asBytes32(pk.toLowerCase()), nextCommitment: asBytes32(next.toLowerCase()), maxUses, rotationDeadline };
+    } catch { return undefined; }
+  }
+  const sameDeployment = (a: AccountDeployment | undefined, b: AccountDeployment | undefined): boolean =>
+    a === undefined ? b === undefined : b !== undefined && a.pkCommitment === b.pkCommitment
+      && a.nextCommitment === b.nextCommitment && a.maxUses === b.maxUses && a.rotationDeadline === b.rotationDeadline;
+
   async function pay(address: Address, abi: typeof FACTORY | typeof REGISTRY, functionName: string, args: readonly unknown[]): Promise<TxHash> {
     const wallet = await options.payer();
     const account = wallet.account ?? (await wallet.getAddresses())[0];
@@ -161,10 +177,20 @@ export function createLiveWalletChain(options: LiveWalletChainOptions): WalletCh
     },
 
     async prepareUserOperation(encoded, observation, schemeId): Promise<PreparedUserOperation> {
-      if (observation.state === undefined) throw new ProtocolFailure('INVALID_INPUT', 'the account is not registered');
+      const [op] = decodeAbiParameters(PACKED, encoded);
+      // Unregistered, the only operation is the first: its initCode deploys
+      // exactly this address, which CREATE2 ties to the keys it registers.
+      const deployment = observation.state === undefined ? deploymentOf(op.initCode) : undefined;
+      if (observation.state === undefined) {
+        if (deployment === undefined) throw new ProtocolFailure('INVALID_INPUT', 'the account is not deployed: its first operation must deploy it');
+        const salt = accountSalt(deployment.pkCommitment, deployment.nextCommitment, deployment.maxUses, deployment.rotationDeadline);
+        if (predictAccount(authority.factory, authority.accountImplementation, salt) !== observation.accountAddress) {
+          throw new ProtocolFailure('INVALID_INPUT', 'the initCode deploys a different account');
+        }
+      } else if (op.initCode !== '0x') throw new ProtocolFailure('INVALID_INPUT', 'a deployed account carries no initCode');
       const userOpHash = userOpHashOf(encoded, authority.entryPoint, chainId);
       const payload = userActionPayload(userOperationPayload(userOpHash));
-      const useCount = observation.state.useCount;
+      const useCount = observation.state?.useCount ?? 0n;
       return {
         encodedUserOperation: encoded, accountAddress: observation.accountAddress, chainId: authority.chainId,
         entryPoint: authority.entryPoint, keyEpoch: observation.keyEpoch, useCount, schemeId, userOpHash,
@@ -174,6 +200,7 @@ export function createLiveWalletChain(options: LiveWalletChainOptions): WalletCh
         validUntil: observation.now + 300n,
         payload,
         digest: pqDigest({ chainId: authority.chainId, walletAddress: observation.accountAddress, schemeId, useCount, payload }),
+        ...(deployment ? { deployment } : {}),
       };
     },
 
@@ -181,7 +208,9 @@ export function createLiveWalletChain(options: LiveWalletChainOptions): WalletCh
       const [op] = decodeAbiParameters(PACKED, prepared.encodedUserOperation);
       return op.sender.toLowerCase() === prepared.accountAddress
         && prepared.userOpHash === userOpHashOf(prepared.encodedUserOperation, authority.entryPoint, chainId)
-        && prepared.payload === userActionPayload(userOperationPayload(prepared.userOpHash));
+        && prepared.payload === userActionPayload(userOperationPayload(prepared.userOpHash))
+        && (op.initCode === '0x' || deploymentOf(op.initCode) !== undefined)
+        && sameDeployment(deploymentOf(op.initCode), prepared.deployment);
     },
 
     rotate: (account, next, maxUses, deadline, signed) =>
@@ -217,10 +246,26 @@ export function createLivePqWallet(options: {
   });
 }
 
+/**
+ * The factory call a not-yet-registered account's first operation carries
+ * (as initCode); undefined once the chain shows its key.
+ */
+export async function pendingDeployment(wallet: PqWallet, walletStore: WalletStateStore, walletId = 'opaque-account'): Promise<{ factory: Address; factoryData: Hex } | undefined> {
+  await wallet.getState(); // reconciles: `registered` is recorded once the chain shows the key
+  const record = await walletStore.readWallet(walletId);
+  if (record === undefined || record.registered) return undefined;
+  return {
+    factory: ARC_AUTHORITY.factory,
+    factoryData: encodeFunctionData({ abi: FACTORY, functionName: 'createAccount', args: [record.active, record.next, ACCOUNT_MAX_USES, record.rotationDeadline] }) as Hex,
+  };
+}
+
 type Call = { readonly to: Address; readonly value?: bigint; readonly data?: Hex };
 type Op = {
   sender: Address; nonce: bigint; callData: Hex; callGasLimit: bigint; verificationGasLimit: bigint;
   preVerificationGas: bigint; maxFeePerGas: bigint; maxPriorityFeePerGas: bigint; signature: Hex;
+  /** Only on the first operation, which deploys the account. */
+  factory?: Address; factoryData?: Hex;
 };
 const WEI_PER_USDC6 = 10n ** 12n;
 
@@ -238,6 +283,8 @@ export function createPqAccountOps(options: {
   readonly account: Address;
   readonly authority: AuthorityConfig;
   readonly walletRpc: WalletRpcSend;
+  /** pendingDeployment: set while the account is not yet deployed, so its first operation deploys it. */
+  readonly deployment?: () => Promise<{ factory: Address; factoryData: Hex } | undefined>;
 }) {
   const { wallet, account, authority, walletRpc: send } = options;
   const bundle = (method: string, params: readonly unknown[]) => bundlerCall(send, method, params);
@@ -272,15 +319,17 @@ export function createPqAccountOps(options: {
   }
 
   async function prepare(calls: readonly Call[]): Promise<Op> {
-    const [nonce, quote] = await Promise.all([
+    const [nonce, quote, deploy] = await Promise.all([
       readOne(send, authority.entryPoint, 'getNonce', [account, 0n]),
       // A bundler refuses an operation priced under its own quote.
       bundle('pimlico_getUserOperationGasPrice', []) as Promise<{ standard: { maxFeePerGas: Hex; maxPriorityFeePerGas: Hex } }>,
+      options.deployment?.(),
     ]);
     const base: Op = {
       sender: account, nonce: nonce.value as bigint, callData: encodeCalls(calls),
       maxFeePerGas: BigInt(quote.standard.maxFeePerGas), maxPriorityFeePerGas: BigInt(quote.standard.maxPriorityFeePerGas),
       callGasLimit: 0n, verificationGasLimit: 0n, preVerificationGas: 0n, signature: stubSignature(),
+      ...(deploy ?? {}),
     };
     const gas = await userOperationCall(send, 'eth_estimateUserOperationGas', base as never, authority.entryPoint) as Record<string, Hex>;
     return {

@@ -77,7 +77,11 @@ class Wallet implements PqWallet {
   async signUserOperation(encodedUserOperation: Hex): Promise<SignedOutput> {
     assertHex(encodedUserOperation, 'encodedUserOperation');
     const { record, observation } = await this.#reconcile();
-    this.#assertAction(observation, false);
+    // Unregistered, the wallet signs one kind of operation: its first, whose
+    // initCode deploys this account for exactly these keys and registers them
+    // (checked below, once the adapter has said what the initCode does). Its
+    // signature binds use count 0, the count the key starts at on chain.
+    if (observation.state) this.#assertAction(observation, false);
     if (record.pendingRotation) throw unsafeState();
     const schemeId = forsSchemeId(this.#options.params);
     const adapterResult = await this.#dependency(() => this.#options.chain.prepareUserOperation(encodedUserOperation, observation, schemeId));
@@ -85,6 +89,11 @@ class Wallet implements PqWallet {
     try { prepared = Object.freeze(structuredClone(adapterResult)); }
     catch { throw new ProtocolFailure('PROOF_REJECTED', 'Malformed prepared operation'); }
     validatePreparedOperation(this.#options.authority, observation, encodedUserOperation, schemeId, prepared);
+    const d = prepared.deployment;
+    if (d && (d.pkCommitment !== record.active || d.nextCommitment !== record.next ||
+        d.maxUses !== this.#options.maxUses || d.rotationDeadline !== record.rotationDeadline)) {
+      throw new ProtocolFailure('PROOF_REJECTED', 'A first operation must deploy this wallet, with its own keys');
+    }
     if (!await this.#dependency(() => this.#options.chain.verifyUserOperationBinding(prepared))) {
       throw new ProtocolFailure('PROOF_REJECTED', 'Full operation payload binding rejected');
     }

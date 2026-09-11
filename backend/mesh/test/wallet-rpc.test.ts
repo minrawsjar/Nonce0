@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { encodeFunctionData, toFunctionSelector } from 'viem';
+import { encodeAbiParameters, encodeFunctionData, parseAbi, parseAbiParameters, toFunctionSelector } from 'viem';
+import { toPackedUserOperation } from 'viem/account-abstraction';
 
 import type { Address, Hex } from '@opaque/protocol-types';
 import { fromHex, toHex } from '@opaque/protocol-types/codecs.js';
@@ -9,6 +10,10 @@ import { fromHex, toHex } from '@opaque/protocol-types/codecs.js';
 import { encodeSignature, keyGen, sign } from '@opaque/pq-wallet';
 
 import { createWalletRpcAnswerer, readOne, STATE_ABI, userOperationCall, walletRpcAllowlist } from '../../chain/wallet-rpc.ts';
+import { ARC_AUTHORITY, createLiveWalletChain } from '../../chain/pq-wallet-chain.ts';
+import { accountSalt, predictAccount } from '../../chain/pq-account.ts';
+
+const PACKED_OP = parseAbiParameters('(address sender, uint256 nonce, bytes initCode, bytes callData, bytes32 accountGasLimits, uint256 preVerificationGas, bytes32 gasFees, bytes paymasterAndData)');
 import { deployment, entryPoint, requireContract } from '../../../deployments/index.ts';
 
 const implementation = `0x${'ab'.repeat(20)}` as Address;
@@ -103,4 +108,52 @@ test('an ABI UserOperation reaches the bundler as the same operation', async () 
   assert.equal(entry.toLowerCase(), entryPoint().toLowerCase());
   assert.deepEqual([op['sender']!.toLowerCase(), op['nonce'], op['callGasLimit'], op['verificationGasLimit'], op['preVerificationGas'], op['maxFeePerGas'], op['maxPriorityFeePerGas'], op['signature']],
     [pqAccount, '0x5', '0xb', '0x16', '0x21', '0x2c', '0x37', signature]);
+});
+
+test('a first operation that deploys a PQ account is relayed; no other initCode is', async () => {
+  const factory = `0x${'fa'.repeat(20)}` as Address;
+  const relayed: Record<string, unknown>[] = [];
+  const send = createWalletRpcAnswerer({
+    publicClient: { getCode: async () => undefined } as never, bundlerUrl: 'https://bundler.invalid', entryPoint: entryPoint() as Address,
+    accountImplementation: implementation, factory,
+    fetch: (async (_url: string, init: { body: string }) => { relayed.push(JSON.parse(init.body).params[0]); return new Response(JSON.stringify({ result: '0xfeed' })); }) as never,
+  });
+  const createAccount = encodeFunctionData({ abi: parseAbi(['function createAccount(bytes32, bytes32, uint64, uint64) returns (address)']), functionName: 'createAccount', args: [`0x${'01'.repeat(32)}`, `0x${'02'.repeat(32)}`, 32n, 1n] });
+  const op = { sender: stranger, nonce: 0n, callData: '0x', callGasLimit: 1n, verificationGasLimit: 1n, preVerificationGas: 1n, maxFeePerGas: 1n, maxPriorityFeePerGas: 1n, signature: '0x' };
+  const call = (extra: object) => userOperationCall(send, 'eth_sendUserOperation', { ...op, ...extra } as never, entryPoint() as Address);
+
+  // As the page sends it, ABI-encoded: the initCode arrives as factory + factoryData again.
+  assert.equal(await call({ factory, factoryData: createAccount }), '0xfeed');
+  assert.equal(String(relayed[0]!['factory']).toLowerCase(), factory);
+  assert.equal(relayed[0]!['factoryData'], createAccount);
+  // Another factory, or another call on the right one, never reaches the bundler.
+  await assert.rejects(call({ factory: stranger, factoryData: createAccount }), /createAccount/);
+  await assert.rejects(call({ factory, factoryData: '0xdeadbeef' }), /createAccount/);
+  // Without an initCode, a sender with no code is still not a PQ account.
+  await assert.rejects(call({}), /only PQ accounts/);
+  assert.equal(relayed.length, 1);
+});
+
+test('the adapter signs an unregistered account only for the operation that deploys that address', async () => {
+  const chain = createLiveWalletChain({
+    publicClient: {} as never, authority: ARC_AUTHORITY, payer: async () => { throw new Error('no payer here'); }, walletRpc: (async () => '0x') as never,
+    maxUses: 32n, rotationDeadline: 2_000_000_000n, initialKeyEpoch: 0n, epochOf: async () => 0n,
+  });
+  const keys = [`0x${'0a'.repeat(32)}`, `0x${'0b'.repeat(32)}`] as const;
+  const account = predictAccount(ARC_AUTHORITY.factory, ARC_AUTHORITY.accountImplementation, accountSalt(keys[0] as never, keys[1] as never, 32n, 2_000_000_000n));
+  const factoryCall = (a: string, b: string) => encodeFunctionData({ abi: parseAbi(['function createAccount(bytes32, bytes32, uint64, uint64) returns (address)']), functionName: 'createAccount', args: [a as Hex, b as Hex, 32n, 2_000_000_000n] });
+  const encode = (extra: object) => encodeAbiParameters(PACKED_OP, [toPackedUserOperation({
+    sender: account, nonce: 0n, callData: '0x', callGasLimit: 1n, verificationGasLimit: 1n, preVerificationGas: 1n, maxFeePerGas: 1n, maxPriorityFeePerGas: 1n, signature: '0x', ...extra,
+  } as never) as never]) as Hex;
+  const observation = { accountAddress: account, chainId: ARC_AUTHORITY.chainId, blockNumber: 1n, now: 100n, keyEpoch: 0n, state: undefined };
+
+  const prepared = await chain.prepareUserOperation(encode({ factory: ARC_AUTHORITY.factory, factoryData: factoryCall(keys[0], keys[1]) }), observation, 'fors');
+  assert.equal(prepared.useCount, 0n);
+  assert.deepEqual([prepared.deployment?.pkCommitment, prepared.deployment?.nextCommitment], [...keys]);
+  assert.equal(await chain.verifyUserOperationBinding(prepared), true);
+  assert.equal(await chain.verifyUserOperationBinding({ ...prepared, deployment: { ...prepared.deployment!, nextCommitment: keys[0] as never } }), false);
+
+  // Keys that CREATE2 would put at another address, or no initCode at all.
+  await assert.rejects(chain.prepareUserOperation(encode({ factory: ARC_AUTHORITY.factory, factoryData: factoryCall(keys[1], keys[0]) }), observation, 'fors'), /different account/);
+  await assert.rejects(chain.prepareUserOperation(encode({}), observation, 'fors'), /first operation must deploy/);
 });
