@@ -32,8 +32,29 @@ function bounded(value: number, label: string): number {
  * hide a weak mesh behind a large pool (or vice versa).
  */
 export function evaluatePublicReadiness(ring: RingSnapshot, relays: RelaySnapshot): PrivacyConditions {
-  const ringFreshness = asPrivacyScore(Math.min(10_000, Math.floor(ring.candidates.length * 10_000 / REQUIRED_RING_SIZE)));
-  const eligible = relays.nodes.filter((node) => node.batchOccupancy > 0);
+  const { privacyScore, ringFreshness, meshHealth } = readinessScores(ring.candidates.length, relays.nodes);
+  return {
+    scope: ring.scope,
+    privacyScore,
+    ringFreshnessScore: ringFreshness,
+    meshHealthScore: meshHealth,
+    observedAt: ring.observedAt < relays.observedAt ? ring.observedAt : relays.observedAt,
+    formulaVersion: PRIVACY_FORMULA_VERSION,
+    source: 'LIVE',
+  };
+}
+
+/**
+ * The formula itself, from counts: a pool's size and its relays' health. What
+ * the CRE workflow has, reading the subgraph from its enclave, and what the
+ * exit computes from its full snapshots — one formula for both.
+ */
+export function readinessScores(
+  poolSize: number,
+  nodes: readonly { readonly batchOccupancy: number; readonly operatorId: string; readonly reliabilityScore: number }[],
+): { privacyScore: ReturnType<typeof asPrivacyScore>; ringFreshness: ReturnType<typeof asPrivacyScore>; meshHealth: ReturnType<typeof asPrivacyScore> } {
+  const ringFreshness = asPrivacyScore(Math.min(10_000, Math.floor(poolSize * 10_000 / REQUIRED_RING_SIZE)));
+  const eligible = nodes.filter((node) => node.batchOccupancy > 0);
   const operators = new Set(eligible.map((node) => node.operatorId));
   const relayCapacity = Math.min(10_000, Math.floor(eligible.length * 10_000 / REQUIRED_RELAY_POOL));
   const reliability = eligible.length === 0
@@ -41,14 +62,5 @@ export function evaluatePublicReadiness(ring: RingSnapshot, relays: RelaySnapsho
     : Math.floor(eligible.reduce((sum, node) => sum + bounded(node.reliabilityScore, 'relay reliability'), 0) / eligible.length);
   // Fewer than three independent operators cannot form a 3-hop path at all.
   const meshHealth = asPrivacyScore(operators.size < 3 ? 0 : Math.min(relayCapacity, reliability));
-
-  return {
-    scope: ring.scope,
-    privacyScore: asPrivacyScore(Math.min(ringFreshness, meshHealth)),
-    ringFreshnessScore: ringFreshness,
-    meshHealthScore: meshHealth,
-    observedAt: ring.observedAt < relays.observedAt ? ring.observedAt : relays.observedAt,
-    formulaVersion: PRIVACY_FORMULA_VERSION,
-    source: 'LIVE',
-  };
+  return { privacyScore: asPrivacyScore(Math.min(ringFreshness, meshHealth)), ringFreshness, meshHealth };
 }

@@ -234,6 +234,12 @@ export interface EncryptedIntent {
   readonly version: ProtocolVersion;
   readonly scope: PoolScope;
   readonly encryptedPayload: Hex;
+  /**
+   * v2: the bulk key, recipient and credential, sealed to the CRE key. When
+   * present, encryptedPayload is the payment under that bulk key, and only
+   * CRE's release of the key opens it. Absent on v1 intents.
+   */
+  readonly creEnvelope?: Hex;
   readonly encryptionKeyId: string;
   readonly spendHash: Bytes32;
   readonly minPrivacyScore: PrivacyScore;

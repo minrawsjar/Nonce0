@@ -22,6 +22,8 @@ import { issueCredential } from '../credential.ts';
 import { createExecutor } from '../executor.ts';
 import { createIntentSealer, generateIntentKeypair } from '../seal-client.ts';
 import { createCreSimulator } from '../simulator.ts';
+import { createSettler, pendingForCre } from '../settler.ts';
+import { openEnvelope, releaseTag } from '../sealed-intent.ts';
 import { buildRingSpend, deriveCommitment } from '../../zk/spend.ts';
 
 // A real RING_8 payment through the CRE stand-in, offline: a genuine 219-rep
@@ -89,16 +91,18 @@ async function harness(credentialRecipient: Address = RECIPIENT) {
   const ref = await executor.submit(intent);
 
   const delivered: ApprovedRelease[] = [];
-  const simulator = createCreSimulator({
-    executor, intentSecretKey: intentKeys.secretKey, encryptionKeyId: KEY_ID, credentialMac,
+  const settlement = {
+    executor, credentialMac,
     // Evaluated one second later: the deadline has arrived, so it fires.
     policyVersion: POLICY, releaseTtlSeconds: 900n, now: () => (NOW + 1n) as UnixSeconds,
     attester: { identity, current: async () => ({ forsSeed: FORS_SEED, useCount: 0n }) },
-    deliver: async (release) => { delivered.push(release); return `0x${'aa'.repeat(32)}` as TxHash; },
-    evidence: async (txHash, release) => ({ txHash, spendHash: spendHash(release.spend), succeeded: true }),
+    deliver: async (release: ApprovedRelease) => { delivered.push(release); return `0x${'aa'.repeat(32)}` as TxHash; },
+    evidence: async (txHash: TxHash, release: ApprovedRelease) => ({ txHash, spendHash: spendHash(release.spend), succeeded: true }),
     nullifierSpent: async () => true,
-  });
-  return { executor, ref, simulator, delivered, spend };
+  };
+  const simulator = createCreSimulator({ ...settlement, intentSecretKey: intentKeys.secretKey, encryptionKeyId: KEY_ID });
+  const pending = pendingForCre(executor, NOW).intents[0]!;
+  return { executor, ref, simulator, settler: createSettler(settlement), pending, delivered, spend };
 }
 
 test('a real ring payment goes from WAITING to SETTLED through the CRE stand-in', async () => {
@@ -154,6 +158,28 @@ test('the attester refuses a proof below full strength, rather than signing a fo
 test('a credential for someone else fails the intent instead of paying anyone', async () => {
   const { executor, ref, simulator, delivered } = await harness(asAddress('0x000000000000000000000000000000000000dead'));
   await simulator.tick();
+  assert.equal((await executor.getStatus(ref.statusHandle)).state, 'FAILED');
+  assert.equal(delivered.length, 0, 'no release minted');
+});
+
+test('the executor acts only on a decision tagged by CRE', async () => {
+  const { executor, ref, settler, pending, delivered } = await harness();
+  const k = openEnvelope(intentKeys.secretKey, KEY_ID, pending.envelope).k;
+  const forged = { intentId: pending.intentId, verdict: 'RELEASE' as const, recipient: RECIPIENT.toLowerCase(), k, tag: `0x${'11'.repeat(32)}` as const };
+  assert.equal(settler.accept([forged]), 0, 'a forged tag is not accepted');
+  await settler.settle(forged);
+  assert.equal((await executor.getStatus(ref.statusHandle)).state, 'WAITING_FOR_PRIVACY');
+  assert.equal(delivered.length, 0);
+});
+
+test('a release naming anyone but the payment\'s recipient is refused, even tagged', async () => {
+  // What a compromised decision would look like: the right key, a valid tag,
+  // and a recipient the payer never paid. The spend itself says who is paid.
+  const { executor, ref, settler, pending, delivered } = await harness();
+  const k = openEnvelope(intentKeys.secretKey, KEY_ID, pending.envelope).k;
+  const recipient = '0x000000000000000000000000000000000000dead';
+  const tag = releaseTag(credentialMac, { intentId: pending.intentId, spendHash: pending.spendHash, verdict: 'RELEASE', recipient, k });
+  await settler.settle({ intentId: pending.intentId, verdict: 'RELEASE', recipient, k, tag });
   assert.equal((await executor.getStatus(ref.statusHandle)).state, 'FAILED');
   assert.equal(delivered.length, 0, 'no release minted');
 });

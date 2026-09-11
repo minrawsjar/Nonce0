@@ -1,6 +1,15 @@
 {
-  "authorizedKeys": [],
-  "encryptionKeyId": "opaque-intent-key-v1",
-  "policyVersion": "opaque-policy-v1",
-  "releaseTtlSeconds": "900"
+  "schedule": "*/30 * * * * *",
+  "executorUrl": "https://opaque-stack-production.up.railway.app",
+  "graphUrl": "https://api.studio.thegraph.com/query/1760100/opaque/v0.3.0",
+  "relayOperators": {
+    "R1": "local-operator-1",
+    "R2": "local-operator-2",
+    "R3": "local-operator-3",
+    "R4": "local-operator-4",
+    "R5": "local-operator-5",
+    "R6": "local-operator-6"
+  },
+  "encryptionKeyId": "opaque-intent-key-v2",
+  "policyVersion": "opaque-policy-v1"
 }

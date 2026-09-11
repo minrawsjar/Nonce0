@@ -32,6 +32,7 @@
 
 import { gcm } from '@noble/ciphers/aes.js';
 import { hkdf } from '@noble/hashes/hkdf.js';
+import { hmac } from '@noble/hashes/hmac.js';
 import { sha256 } from '@noble/hashes/sha2.js';
 import { ml_kem768 } from '@noble/post-quantum/ml-kem.js';
 
@@ -113,6 +114,130 @@ export function openIntent(secretKey: Hex, keyId: string, sealed: Hex): Uint8Arr
     // distinguishing them tells a submitter which part of their forgery to fix.
     throw new ProtocolFailure('INVALID_INPUT', 'sealed intent does not authenticate');
   }
+}
+
+// ── v2: a small envelope for CRE, the bulk for whoever settles ──────────────
+//
+// CRE takes 10 KB per request and returns 100 KB per response, and a ring
+// payment is 1.1 MiB. So the payment is sealed in two parts:
+//
+//   envelope   sealIntent() to the CRE key, ~1.5 KB: the bulk key K, and what
+//              the policy needs — recipient, credential, spendHash. Only the
+//              enclave can open it.
+//   bulk       AES-GCM under K of the whole plaintext (the spend and its
+//              proof). The executor holds it and cannot read it until CRE,
+//              having approved the payment, releases K.
+//
+// So the recipient stays sealed until the moment of release, as before, and
+// the executor never holds a key that opens anything on its own.
+
+const BULK_AAD = 'opaque/v2/bulk';
+export const BULK_KEY_BYTES = 32;
+/** The largest envelope an executor accepts or a workflow opens. */
+export const MAX_ENVELOPE_BYTES = 4096;
+
+/**
+ * What the envelope carries. Bytes as hex, bigints as decimal strings, like
+ * every value that crosses JSON here.
+ *
+ * The payer's timing terms and pool are sealed in, not only sent beside it:
+ * CRE decides WHEN from these, so an executor that restated them — "the
+ * deadline has passed" — could otherwise have every recipient released at once.
+ */
+export interface Envelope {
+  readonly k: Hex;
+  readonly recipient: string;
+  readonly credential: string;
+  readonly spendHash: string;
+  readonly scope: { readonly chainId: string; readonly pool: string; readonly denomination: number };
+  /** 0..10000. */
+  readonly minPrivacyScore: number;
+  /** Unix seconds. */
+  readonly deadline: string;
+}
+
+export const bulkAad = (spendHash: string): Uint8Array => utf8(`${BULK_AAD}|${spendHash.toLowerCase()}`);
+
+/**
+ * The executor's side, after release: decrypts the bulk with the K CRE
+ * released. Bound to spendHash, so a bulk cannot be swapped between intents.
+ */
+export function openBulk(k: Uint8Array, spendHash: string, bulk: Hex): Uint8Array {
+  const bytes = fromHex(bulk);
+  if (k.length !== BULK_KEY_BYTES) throw new ProtocolFailure('INVALID_INPUT', 'bulk key must be 32 bytes');
+  if (bytes.length > MAX_SEALED_INTENT_BYTES || bytes.length < NONCE_BYTES + GCM_TAG_BYTES) {
+    throw new ProtocolFailure('INVALID_INPUT', 'sealed payment has a bad length');
+  }
+  try {
+    return gcm(k, bytes.subarray(0, NONCE_BYTES), bulkAad(spendHash)).decrypt(bytes.subarray(NONCE_BYTES));
+  } catch {
+    throw new ProtocolFailure('INVALID_INPUT', 'sealed payment does not authenticate under the released key');
+  }
+}
+
+/**
+ * The CRE key as Vault stores it. A decapsulation key is 2,400 bytes and a
+ * Vault secret holds 2 KB, so the secret is the 64-byte ML-KEM seed and the
+ * key is derived from it, deterministically, where it is used. A full key is
+ * still accepted, for tests and the local stand-in.
+ */
+export function decapsulationKey(secret: Hex): Hex {
+  const bytes = fromHex(secret);
+  if (bytes.length === 64) return toHex(ml_kem768.keygen(bytes).secretKey);
+  if (bytes.length === KEM_SECRET_KEY_BYTES) return secret;
+  throw new ProtocolFailure('INVALID_INPUT', 'CRE secret is neither an ML-KEM-768 seed nor a decapsulation key');
+}
+
+/** ENCLAVE SIDE. Opens and validates an envelope. */
+export function openEnvelope(secretKey: Hex, keyId: string, envelope: Hex): Envelope {
+  if (fromHex(envelope).length > MAX_ENVELOPE_BYTES) {
+    throw new ProtocolFailure('INVALID_INPUT', 'envelope exceeds the size the enclave accepts');
+  }
+  let parsed: Partial<Envelope>;
+  try {
+    parsed = JSON.parse(new TextDecoder().decode(openIntent(secretKey, keyId, envelope))) as Partial<Envelope>;
+  } catch (error) {
+    if (error instanceof ProtocolFailure) throw error;
+    throw new ProtocolFailure('INVALID_INPUT', 'envelope is not readable');
+  }
+  const decimal = (v: unknown): boolean => typeof v === 'string' && /^\d{1,20}$/.test(v);
+  const scope = parsed.scope;
+  if (typeof parsed.k !== 'string' || fromHex(parsed.k as Hex).length !== BULK_KEY_BYTES
+    || typeof parsed.recipient !== 'string' || !/^0x[0-9a-f]{40}$/.test(parsed.recipient)
+    || typeof parsed.credential !== 'string' || typeof parsed.spendHash !== 'string'
+    || typeof scope !== 'object' || scope === null || !decimal(scope.chainId)
+    || typeof scope.pool !== 'string' || !/^0x[0-9a-f]{40}$/.test(scope.pool)
+    || !Number.isSafeInteger(scope.denomination) || scope.denomination <= 0
+    || !Number.isInteger(parsed.minPrivacyScore) || parsed.minPrivacyScore! < 0 || parsed.minPrivacyScore! > 10_000
+    || !decimal(parsed.deadline)) {
+    throw new ProtocolFailure('INVALID_INPUT', 'envelope is missing a field');
+  }
+  return parsed as Envelope;
+}
+
+/**
+ * What authorises the executor to act on CRE's decision: an HMAC, under the
+ * secret CRE and the executor share, over the intent, its spend, the verdict,
+ * and for a release the recipient and K. Length-prefixed fields, so no two
+ * decisions share bytes.
+ */
+export function releaseTag(secret: Uint8Array, input: {
+  readonly intentId: string;
+  readonly spendHash: string;
+  readonly verdict: 'RELEASE' | 'DENY';
+  readonly recipient?: string;
+  readonly k?: string;
+}): Hex {
+  const fields = ['opaque/v2/cre-decision', input.intentId, input.spendHash.toLowerCase(), input.verdict, input.recipient ?? '', input.k ?? ''];
+  const parts = fields.map((f) => utf8(f));
+  const out = new Uint8Array(parts.reduce((n, p) => n + 4 + p.length, 0));
+  let at = 0;
+  for (const p of parts) {
+    new DataView(out.buffer).setUint32(at, p.length, false);
+    out.set(p, at + 4);
+    at += 4 + p.length;
+  }
+  return toHex(hmac(sha256, secret, out));
 }
 
 // ── the plaintext inside the seal ─────────────────────────────────────────

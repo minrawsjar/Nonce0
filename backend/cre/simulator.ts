@@ -1,203 +1,93 @@
-// A local stand-in for the CRE confidential workflow, run in the executor's
-// process until Confidential Workflows access lands.
+// A local stand-in for the CRE confidential workflow, for a stack without a
+// deployed one (a laptop, the tests).
 //
-// It reads the same queue the workflow would (executor.pending), runs the same
-// evaluation (evaluate-intent.ts), the same credential check (credential.ts)
-// and the same attestation (attest.ts) — the modules are shared, not copied —
-// then drives the executor's own state machine to SETTLED.
+// It runs the workflow's own decision (cre-release.ts) over the executor's own
+// pending view, and hands the decisions to the executor's own settler — the
+// modules are shared, not copied — so local runs exercise exactly the path a
+// deployed workflow drives over HTTP. Only the transport differs: in process
+// here, GET /v1/cre/pending and POST /v1/cre/release there.
 //
 // ── What it is NOT ───────────────────────────────────────────────────────
 //
-// It is not confidential. The whole point of CRE is that INTENT_KEY lives in
-// a TEE and the decrypted recipient never leaves it; here it lives in an
-// ordinary process that any root user on the box can read. That is why
-// capabilities report `confidentialExecution: 'SIMULATED'`, and why this must
-// never serve anyone's real payment. It exists so the path around it can be
-// built and tested for real while the enclave is unavailable.
-//
-// ── Why it drives the store itself ───────────────────────────────────────
-//
-// The store has a real state machine — authorize → recordBroadcast →
-// reconcile, and reconcile is the only route to SETTLED — but nothing in the
-// running services ever called it. The executor queued and forwarded, so a
-// payment that settled on chain still read WAITING_FOR_PRIVACY in the wallet.
+// It is not confidential. The CRE key lives in an ordinary process, so
+// nothing it opens is protected; capabilities say `confidentialExecution:
+// 'SIMULATED'` whenever this runs. A deployed stack does not run it at all:
+// its key exists only in Chainlink's Vault DON.
 
-import {
-  ProtocolFailure,
-  type ApprovedRelease,
-  type Hex,
-  type IntentId,
-  type PoolScope,
-  type PrivacyScore,
-  type PrivateSpend,
-  type TxHash,
-  type UnixSeconds,
-} from '@opaque/protocol-types';
-import { asPrivateSpend } from '@opaque/protocol-types/codecs.js';
+import type { ApprovedRelease, Hex, IntentId, PoolScope, PrivacyScore, PrivateSpend, TxHash, UnixSeconds } from '@opaque/protocol-types';
 
-import { attestRingSpend, type AttesterIdentity } from './attest.ts';
-import { checkCredential, type RecipientCredential } from './credential.ts';
-import { evaluateIntent, type ScoreReading } from './evaluate-intent.ts';
+import type { AttesterIdentity } from './attest.ts';
+import { decide, ringPoolKey } from './cre-release.ts';
 import type { OpaqueExecutor } from './executor.ts';
 import type { SettlementEvidence } from './intent-store.ts';
-import { issueRelease } from './release.ts';
-import { decodeIntentPlaintext, openIntent } from './sealed-intent.ts';
+import { decapsulationKey } from './sealed-intent.ts';
+import { createSettler, pendingForCre } from './settler.ts';
 
 export interface CreSimulatorOptions {
   readonly executor: OpaqueExecutor;
-  /** ML-KEM decapsulation key. In production, a Vault DON secret. */
+  /** The CRE key: its 64-byte seed (as Vault holds it) or the decapsulation key. */
   readonly intentSecretKey: Hex;
   readonly encryptionKeyId: string;
-  /** Verifies recipient credentials AND MACs the release the egress trusts. */
+  /** Verifies recipient credentials, tags decisions, and MACs the release the egress trusts. */
   readonly credentialMac: Uint8Array;
   readonly policyVersion: string;
   readonly releaseTtlSeconds: bigint;
   readonly attester: {
     /** One attester can serve several pools: then, the identity for the spend's pool. */
     readonly identity: AttesterIdentity | ((scope: PoolScope) => AttesterIdentity);
-    /**
-     * The key to sign with and its CURRENT index in PQKeyRegistry. Asked
-     * before every attestation, so it can rotate first — cre/attester-keys.ts.
-     */
     readonly current: () => Promise<{ readonly forsSeed: Uint8Array; readonly useCount: bigint }>;
   };
-  /** Hands a release to the egress and returns the broadcast tx. */
   readonly deliver: (release: ApprovedRelease) => Promise<TxHash>;
-  /** What the chain says that tx did — required before anything is SETTLED. */
   readonly evidence: (txHash: TxHash, release: ApprovedRelease) => Promise<SettlementEvidence>;
   readonly nullifierSpent: (spend: PrivateSpend) => Promise<boolean>;
-  /** Optional pre-deadline score, for the intent's pool. Absent: an intent fires at its deadline. */
+  /** The pool's current privacy score. Absent or null: payments wait for their deadline (or go at once if they asked for 0). */
   readonly readFreshScore?: (scope: PoolScope) => Promise<{ score: PrivacyScore; observedAt: UnixSeconds } | null>;
-  /**
-   * Told when a pass fails for an intent that will be retried. Without it a
-   * payment stuck at READY_TO_RELEASE gave no signal at all — the retry is
-   * right, the silence was not. Receives the intent id and the error; never a
-   * recipient or a spend, so an operator can wire it to a log safely.
-   */
+  /** Told when a settlement fails and will be retried. Never given a recipient. */
   readonly onError?: (intentId: IntentId, error: unknown) => void;
   readonly now?: () => UnixSeconds;
 }
 
 export interface CreSimulator {
-  /** One pass over the queue. Returns how many intents moved. */
+  /** One pass, as one workflow execution would make. Returns how many intents moved. */
   tick(): Promise<number>;
   start(intervalMs?: number): void;
   stop(): void;
 }
 
 export function createCreSimulator(options: CreSimulatorOptions): CreSimulator {
-  const { executor } = options;
-  const store = executor.store;
   const now = options.now ?? (() => BigInt(Math.floor(Date.now() / 1000)) as UnixSeconds);
+  const secretKey = decapsulationKey(options.intentSecretKey);
+  const settler = createSettler(options);
   let timer: ReturnType<typeof setInterval> | undefined;
   let running = false;
 
-  async function settle(intentId: IntentId, spend: PrivateSpend, at: UnixSeconds): Promise<void> {
-    const { identity } = options.attester;
-    const attested = attestRingSpend({
-      spend,
-      identity: typeof identity === 'function' ? identity(spend.scope) : identity,
-      ...(await options.attester.current()),
-    });
-    const release = issueRelease({
-      intentId,
-      spend: attested,
-      policyVersion: options.policyVersion,
-      issuedAt: at,
-      ttlSeconds: options.releaseTtlSeconds,
-      secret: options.credentialMac,
-    });
-    // authorize BEFORE delivery: the outbox is created in the same step as
-    // the transition that permits it, so a crash here cannot mint a second,
-    // different release for the same intent on the next pass.
-    store.authorize({ intentId, release, now: at });
-    const txHash = await options.deliver(release);
-    store.recordBroadcast(intentId, txHash, at);
-    // SETTLED only on evidence that THIS release's spend succeeded. A spent
-    // nullifier alone is not proof — the pool is permissionless.
-    store.reconcile({
-      intentId,
-      evidence: await options.evidence(txHash, release),
-      nullifierSpent: await options.nullifierSpent(attested),
-      now: now(),
-    });
-  }
-
   async function tick(): Promise<number> {
-    if (running) return 0; // one pass at a time; the store also refuses double claims
+    if (running) return 0;
     running = true;
     let moved = 0;
     try {
       const at = now();
-      for (const record of executor.pending(at)) {
-        const result = await evaluateIntent(
-          {
-            intentId: record.intentId,
-            intent: record.intent,
-            now: at,
-            claimAttempt: () => store.claimAttempt(record.intentId),
-          },
-          {
-            async readFreshScore(intent): Promise<ScoreReading> {
-              const reading = await options.readFreshScore?.(intent.scope);
-              return reading === null || reading === undefined
-                ? { kind: 'UNAVAILABLE' }
-                : { kind: 'FRESH', score: reading.score, observedAt: reading.observedAt };
-            },
-            async decryptInTee(intent) {
-              const plain = openIntent(options.intentSecretKey, options.encryptionKeyId, intent.encryptedPayload);
-              const opened = decodeIntentPlaintext(plain);
-              // The real codec, not a hand-revived chainId: it validates the
-              // whole spend and revives every bigint that crossed as decimal.
-              return { spend: asPrivateSpend(opened.spend), credential: opened.credential };
-            },
-            async checkRecipientPolicy(spend, credential) {
-              let parsed: RecipientCredential;
-              try {
-                const raw = JSON.parse(credential) as Record<string, unknown>;
-                parsed = {
-                  recipient: raw['recipient'] as RecipientCredential['recipient'],
-                  policyVersion: String(raw['policyVersion'] ?? ''),
-                  expiresAt: BigInt(String(raw['expiresAt'] ?? '0')) as UnixSeconds,
-                  tag: raw['tag'] as Hex,
-                };
-              } catch {
-                return { kind: 'DENIED', reason: 'credential is not readable' };
-              }
-              // The recipient comes from the DECRYPTED SPEND, never the
-              // credential — the same rule the enclave workflow holds.
-              return checkCredential({
-                recipient: spend.recipient,
-                credential: parsed,
-                policyVersion: options.policyVersion,
-                now: at,
-                secret: options.credentialMac,
-              });
-            },
-          },
-        );
-
-        try {
-          if (result.kind === 'APPROVED') {
-            await settle(record.intentId, result.spend, at);
-            moved += 1;
-          } else if (result.kind === 'DENIED') {
-            store.transition({ intentId: record.intentId, from: ['WAITING_FOR_PRIVACY', 'POLICY_CHECKING'], to: 'FAILED', now: at });
-            moved += 1;
-          }
-        } catch (error) {
-          options.onError?.(record.intentId, error);
-          // Anything after authorize is recoverable: the outbox holds the ONE
-          // release for this intent, so the next pass retries it rather than
-          // minting another. Never FAILED on a lost acknowledgement.
-          if (error instanceof ProtocolFailure && error.code === 'PROOF_REJECTED') {
-            store.transition({ intentId: record.intentId, from: ['WAITING_FOR_PRIVACY', 'POLICY_CHECKING', 'READY_TO_RELEASE'], to: 'FAILED', now: at });
-            moved += 1;
-          }
-        } finally {
-          store.releaseClaim(record.intentId);
-        }
+      const pending = pendingForCre(options.executor, at).intents;
+      // The workflow reads every pool's score from the subgraph; the stand-in
+      // reads those its pending intents are in, by the same key.
+      const scores = new Map<string, number>();
+      for (const intent of pending) {
+        const scope = options.executor.store.get(intent.intentId as IntentId)!.intent.scope;
+        const key = ringPoolKey({ chainId: String(scope.chainId), pool: scope.pool.toLowerCase(), denomination: scope.denomination });
+        if (scores.has(key)) continue;
+        const reading = await options.readFreshScore?.(scope).catch(() => null);
+        if (reading != null) scores.set(key, Number(reading.score));
       }
+      for (const intent of pending) {
+        const decision = decide({
+          intent, now: at, scoreOf: (key) => scores.get(key), secretKey,
+          encryptionKeyId: options.encryptionKeyId, credentialSecret: options.credentialMac, policyVersion: options.policyVersion,
+        });
+        if (decision.verdict === 'WAIT') continue;
+        await settler.settle(decision);
+        moved += 1;
+      }
+      await settler.retry();
     } finally {
       running = false;
     }

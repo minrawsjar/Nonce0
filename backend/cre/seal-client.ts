@@ -24,12 +24,15 @@ import {
 import { fromHex, toHex } from '@opaque/protocol-types/codecs.js';
 
 import {
+  BULK_KEY_BYTES,
   KEM_PUBLIC_KEY_BYTES,
   MAX_SEALED_INTENT_BYTES,
   NONCE_BYTES,
   aad,
+  bulkAad,
   encodeIntentPlaintext,
   intentKey,
+  utf8,
 } from './sealed-intent.ts';
 
 export interface IntentKeypair {
@@ -110,12 +113,17 @@ export interface IntentSealerOptions {
  *
  * Everything the mesh, the executor and the chain get to see is chosen here,
  * and it is deliberately thin: a scope, a hash, a deadline, a score floor and
- * an opaque blob. The recipient, the amount beyond the pool's fixed
+ * opaque blobs. The recipient, the amount beyond the pool's fixed
  * denomination, and the policy credential are all INSIDE the ciphertext.
  *
- * `spendHash` is the binding that makes the rest safe. It is public, and
- * evaluate-intent.ts recomputes it over the decrypted spend, so a payload
- * swapped after submission is caught before any policy decision is made on it.
+ * Two parts (sealed-intent.ts, "v2"): the payment encrypted under a fresh key
+ * K (`encryptedPayload`), and K with the recipient and credential sealed to
+ * the CRE key (`creEnvelope`). CRE opens the envelope, decides, and releases
+ * K; only then can the executor read the payment.
+ *
+ * `spendHash` is the binding that makes the rest safe. It is public, it is in
+ * the envelope and the bulk's AAD, and the executor recomputes it over the
+ * decrypted spend, so a payload swapped after submission is caught.
  */
 export function createIntentSealer(
   options: IntentSealerOptions,
@@ -132,15 +140,31 @@ export function createIntentSealer(
     // for a ring spend that is the difference between 1.1 MiB and 2.2 MiB.
     // Bigints inside the JSON still cross as decimal strings.
     const payload = encodeIntentPlaintext(input.spend as { proof: Hex }, credential);
+    const recipient = String((input.spend as { recipient?: unknown }).recipient ?? '').toLowerCase();
+
+    const k = crypto.getRandomValues(new Uint8Array(BULK_KEY_BYTES));
+    const nonce = crypto.getRandomValues(new Uint8Array(NONCE_BYTES));
+    const body = gcm(k, nonce, bulkAad(input.spendHash)).encrypt(payload);
+    const bulk = new Uint8Array(NONCE_BYTES + body.length);
+    bulk.set(nonce, 0);
+    bulk.set(body, NONCE_BYTES);
+    if (bulk.length > MAX_SEALED_INTENT_BYTES) {
+      throw new ProtocolFailure('INVALID_INPUT', 'sealed payment exceeds the size the executor accepts');
+    }
+    // The timing terms and pool go inside too: CRE decides from these, not
+    // from the executor's copy beside the envelope (sealed-intent.ts Envelope).
+    const envelope = sealIntent(options.crePublicKey, options.encryptionKeyId, utf8(JSON.stringify({
+      k: toHex(k), recipient, credential, spendHash: input.spendHash,
+      scope: { chainId: String(input.scope.chainId), pool: input.scope.pool.toLowerCase(), denomination: input.scope.denomination },
+      minPrivacyScore: Number(input.request.minPrivacyScore),
+      deadline: String(input.request.deadline),
+    })));
 
     return {
       version: PROTOCOL_VERSION,
       scope: input.scope,
-      encryptedPayload: sealIntent(
-        options.crePublicKey,
-        options.encryptionKeyId,
-        payload,
-      ),
+      encryptedPayload: toHex(bulk),
+      creEnvelope: envelope,
       encryptionKeyId: options.encryptionKeyId,
       spendHash: input.spendHash,
       minPrivacyScore: input.request.minPrivacyScore,

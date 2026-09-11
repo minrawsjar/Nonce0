@@ -53,6 +53,7 @@ import { createWalletRpcAnswerer } from './chain/wallet-rpc.ts';
 import { issueCredential } from './cre/credential.ts';
 import { createExecutorServer } from './cre/executor-server.ts';
 import { generateIntentKeypair } from './cre/seal-client.ts';
+import { createSettler, type Settler, type SettlerOptions } from './cre/settler.ts';
 import { createCreSimulator } from './cre/simulator.ts';
 import { createEgress } from './mesh/egress.ts';
 import type { DirectoryTrustRoot, SignedDirectory } from './mesh/contracts.ts';
@@ -65,7 +66,8 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const STATE = join(HERE, '.stack');
 const OUT = join(HERE, '..', 'frontend', 'public', 'stack.json');
 const PORTS = { relays: 18_101, exit: 18_200, egress: 18_201, credentials: 18_202 } as const;
-const KEY_ID = 'opaque-intent-key-v1';
+// v2 is the Vault key the CRE workflow holds (CRE_MODE below); v1 a stand-in's.
+const KEY_ID = process.env['CRE_MODE'] === 'workflow' ? 'opaque-intent-key-v2' : 'opaque-intent-key-v1';
 const POLICY = 'opaque-policy-v1';
 // Every listener binds loopback. On a public box only the TLS proxy in front
 // (deploy/Caddyfile) is reachable, and the egress — which signs — never is.
@@ -88,17 +90,32 @@ const nowS = (): UnixSeconds => BigInt(Math.floor(Date.now() / 1000)) as UnixSec
 const log = (s: string) => process.stdout.write(`${s}\n`);
 const bigintReplacer = (_k: string, v: unknown) => (typeof v === 'bigint' ? `${v}n` : v);
 
-// ── dev secrets, persisted so a sealed intent survives a restart ─────────
+// ── who decides: the CRE workflow, or a stand-in in this process ─────────
+//
+// CRE_MODE=workflow (the deployed stack): the Chainlink CRE workflow
+// (opaque-cre/confidential-intent) decides every payment, in its enclave,
+// reading GET /v1/cre/pending and posting to POST /v1/cre/release. This box
+// holds only the CRE key's PUBLIC half (CRE_INTENT_PUBLIC_KEY); the secret
+// half exists in Chainlink's Vault DON and nowhere else, so nothing here can
+// open a payment before CRE releases it. CREDENTIAL_MAC is shared with CRE:
+// it issues and checks recipient credentials and tags CRE's decisions.
+//
+// Unset (a laptop): a stand-in runs the same decision in this process, with a
+// key persisted in .stack so a sealed intent survives a restart.
+const CRE_MODE = process.env['CRE_MODE'] === 'workflow' ? 'workflow' : 'standin';
 mkdirSync(STATE, { recursive: true, mode: 0o700 });
 const intentKeyFile = join(STATE, 'intent-key.json');
 const macFile = join(STATE, 'credential.mac');
-if (!existsSync(intentKeyFile)) {
+if (CRE_MODE === 'standin' && !existsSync(intentKeyFile)) {
   const k = generateIntentKeypair();
   writeFileSync(intentKeyFile, JSON.stringify({ publicKey: k.publicKey, secretKey: k.secretKey }), { mode: 0o600 });
 }
-if (!existsSync(macFile)) writeFileSync(macFile, toHex(crypto.getRandomValues(new Uint8Array(32))), { mode: 0o600 });
-const intentKeys = JSON.parse(readFileSync(intentKeyFile, 'utf8')) as { publicKey: `0x${string}`; secretKey: `0x${string}` };
-const credentialMac = fromHex(readFileSync(macFile, 'utf8').trim() as `0x${string}`);
+if (CRE_MODE === 'standin' && !existsSync(macFile)) writeFileSync(macFile, toHex(crypto.getRandomValues(new Uint8Array(32))), { mode: 0o600 });
+const intentKeys = CRE_MODE === 'workflow'
+  ? { publicKey: env('CRE_INTENT_PUBLIC_KEY') as `0x${string}`, secretKey: undefined }
+  : JSON.parse(readFileSync(intentKeyFile, 'utf8')) as { publicKey: `0x${string}`; secretKey: `0x${string}` };
+const credentialMac = fromHex((CRE_MODE === 'workflow' ? env('CREDENTIAL_MAC') : readFileSync(macFile, 'utf8')).trim() as `0x${string}`);
+if (credentialMac.length !== 32) throw new Error('CREDENTIAL_MAC must be 32 bytes of hex');
 
 // ── chain ────────────────────────────────────────────────────────────────
 // Every RING_8 pool, one per denomination; one attester signs for all of them.
@@ -209,8 +226,10 @@ await egress.listen(PORTS.egress, LOOPBACK);
 
 // WALLET_RPC (§7.5): the wallet's account and note reads, and its account's
 // UserOperations, so the RPC and the bundler see this box and not the wallet.
+let settler: Settler | undefined;
 const exit = createExecutorServer({
   graph: ringSource,
+  ...(CRE_MODE === 'workflow' ? { cre: { accept: (decisions) => settler!.accept(decisions) }, requireCreEnvelope: true } : {}),
   walletRpc: createWalletRpcAnswerer({
     publicClient: publicClient as never, bundlerUrl: ARC_AUTHORITY.bundlerUrl,
     entryPoint: ARC_AUTHORITY.entryPoint, accountImplementation: ARC_AUTHORITY.accountImplementation, factory: ARC_AUTHORITY.factory,
@@ -218,17 +237,12 @@ const exit = createExecutorServer({
 });
 await exit.listen(PORTS.exit, LOOPBACK);
 
-const simulator = createCreSimulator({
+// Settling a decision, whoever made it: attest, release, deliver, reconcile.
+const settlement: SettlerOptions = {
   executor: exit.executor,
-  intentSecretKey: intentKeys.secretKey,
-  encryptionKeyId: KEY_ID,
   credentialMac,
   policyVersion: POLICY,
   releaseTtlSeconds: 900n,
-  async readFreshScore(scope) {
-    const c = evaluatePublicReadiness(await ringSource.getRingSnapshot(scope), relaySnapshot());
-    return { score: c.privacyScore, observedAt: c.observedAt };
-  },
   attester: {
     identity: (scope) => ({ chainId: BigInt(deployment.network.chainId), registry: REGISTRY as never, attester: ATTESTER as never, pool: poolAt(scope).address as never, denomination: poolAt(scope).denomination }),
     // Rotates itself near the end of each key's budget; see cre/attester-keys.ts.
@@ -264,8 +278,22 @@ const simulator = createCreSimulator({
   },
   nullifierSpent: async (s) => publicClient.readContract({ address: s.scope.pool, abi: poolAbi, functionName: 'isNullifierSpent', args: [s.nullifier as `0x${string}`] }),
   onError: (id, error) => log(`  ! intent ${String(id).slice(0, 8)}… will retry: ${(error as Error).message}`),
+};
+const simulator = CRE_MODE === 'workflow' ? undefined : createCreSimulator({
+  ...settlement,
+  intentSecretKey: intentKeys.secretKey!,
+  encryptionKeyId: KEY_ID,
+  async readFreshScore(scope) {
+    const c = evaluatePublicReadiness(await ringSource.getRingSnapshot(scope), relaySnapshot());
+    return { score: c.privacyScore, observedAt: c.observedAt };
+  },
 });
-simulator.start(3_000);
+simulator?.start(3_000);
+if (CRE_MODE === 'workflow') {
+  settler = createSettler(settlement);
+  // CRE decides once; a delivery that failed after authorisation is retried here.
+  setInterval(() => void settler!.retry(), 10_000).unref();
+}
 
 const relays = !('secretKeys' in mesh) ? [] : await serveLocalMesh(mesh, new Map<MeshMessageKind, string>([
   ['PAYMENT', `http://127.0.0.1:${PORTS.exit}/v1/mesh/payment`],
@@ -347,7 +375,9 @@ const walletConfig = JSON.stringify({
   // Wallets built before several pools read this one. Newer ones take every
   // pool from the deployments compiled into them, never from this file.
   pool: { address: ring8.address, denomination: ring8.denomination, proofMode: ring8.proofMode },
-  capabilities: { pqWallet: 'LIVE', graph: 'LIVE', confidentialExecution: 'SIMULATED', policyScope: 'CRE_WORKFLOW_ONLY' },
+  // ATTESTED only when the deployed workflow runs in an enclave (CRE_TEE=1);
+  // a CRE workflow on the DON, or the local stand-in, is SIMULATED.
+  capabilities: { pqWallet: 'LIVE', graph: 'LIVE', confidentialExecution: CRE_MODE === 'workflow' && process.env['CRE_TEE'] === '1' ? 'ATTESTED' : 'SIMULATED', policyScope: 'CRE_WORKFLOW_ONLY' },
 }, bigintReplacer, 2);
 mkdirSync(dirname(OUT), { recursive: true });
 writeFileSync(OUT, walletConfig);
@@ -362,7 +392,7 @@ const router = PORT === undefined ? undefined : createServer((req, res) => {
   const hop = /^\/r(\d+)(\/.*)$/.exec(url);
   const relay = hop && relays.find((r) => r.relayId === `R${hop[1]}`);
   if (hop && relay) { req.url = hop[2]; relay.handler(req, res); return; }
-  if (url.startsWith('/v1/mesh/')) { exit.handler(req, res); return; }
+  if (url.startsWith('/v1/mesh/') || url.startsWith('/v1/cre/')) { exit.handler(req, res); return; }
   if (url === '/v1/credential') { credentialHandler(req, res); return; }
   if (url === '/stack.json') {
     res.writeHead(200, { 'content-type': 'application/json', 'cache-control': 'no-store', 'access-control-allow-origin': '*' });
@@ -381,7 +411,8 @@ for (const p of ringPools) {
 log(`  relays     ${mesh.signed.directory.entries.map((e) => e.endpoint.replace('/v1/relay', '')).join('  ')}`);
 log(`  exit       http://127.0.0.1:${PORTS.exit}   egress :${PORTS.egress}   credentials :${PORTS.credentials}`);
 log(`  wallet cfg ${OUT}${router ? `  and ${PUBLIC_URL ?? ''}/stack.json (all routes on :${PORT})` : ''}`);
-log('  THIS IS ONE OPERATOR, AND CRE IS SIMULATED. Not an anonymity set.');
+log(`  cre        ${CRE_MODE === 'workflow' ? 'the Chainlink CRE workflow decides (GET /v1/cre/pending, POST /v1/cre/release); no CRE secret on this box' : 'SIMULATED by a stand-in in this process'}`);
+log('  THIS IS ONE OPERATOR: six relays here are not an anonymity set.');
 
 // A derived mesh turns over weekly. The platform restarts a service that
 // exits non-zero, and the next boot derives the next generation, so the
@@ -394,7 +425,7 @@ if ('generationEndsAt' in mesh && mesh.generationEndsAt !== undefined) {
 
 for (const signal of ['SIGINT', 'SIGTERM'] as const) {
   process.on(signal, () => {
-    simulator.stop();
+    simulator?.stop();
     void Promise.all([...relays.map((r) => r.close()), exit.close(), egress.close(), new Promise((r) => credentials.close(r)), new Promise((r) => (router ? router.close(r) : r(undefined)))])
       .then(() => process.exit(0));
   });

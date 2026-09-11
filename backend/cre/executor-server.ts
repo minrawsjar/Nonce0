@@ -40,7 +40,10 @@ import { assertHex, fromHex, toHex } from '@opaque/protocol-types/codecs.js';
 
 import { ChunkStore, decodeChunkFrame, isChunkFrame, uploadIdFromHex } from '../mesh/chunks.ts';
 import { createQueryAnswerer, decodeMeshQuery, encodeAnswer, type QueryAnswererDeps } from '../mesh/queries.ts';
+import type { Decision } from './cre-release.ts';
 import { createExecutor, type OpaqueExecutor } from './executor.ts';
+import { MAX_ENVELOPE_BYTES } from './sealed-intent.ts';
+import { pendingForCre } from './settler.ts';
 
 const MAX_BODY_BYTES = 256 * 1024;
 
@@ -71,6 +74,14 @@ export interface ExecutorServerOptions {
   readonly receipt?: (txHash: TxHash) => Promise<Hex>;
   /** WALLET_RPC (chain/wallet-rpc.ts). Optional; absent, it is refused. */
   readonly walletRpc?: QueryAnswererDeps['walletRpc'];
+  /**
+   * The deployed CRE workflow's routes: GET /v1/cre/pending serves the
+   * envelopes awaiting a decision, POST /v1/cre/release takes its tagged
+   * decisions (settler.ts). Absent, both refuse.
+   */
+  readonly cre?: { readonly accept: (decisions: readonly Decision[]) => number };
+  /** Refuse v1 intents: a stack whose CRE key lives only in Vault could never open one. */
+  readonly requireCreEnvelope?: boolean;
 }
 
 export interface ExecutorServer {
@@ -123,11 +134,30 @@ function reviveIntent(raw: unknown): EncryptedIntent {
   if (typeof held['encryptedPayload'] !== 'string' || !/^0x[0-9a-f]*$/.test(held['encryptedPayload'])) {
     throw new ProtocolFailure('INVALID_INPUT', 'encryptedPayload must be hex');
   }
+  const envelope = held['creEnvelope'];
+  if (envelope !== undefined && (typeof envelope !== 'string' || !/^0x[0-9a-f]*$/.test(envelope) || envelope.length > 2 + 2 * MAX_ENVELOPE_BYTES)) {
+    throw new ProtocolFailure('INVALID_INPUT', 'creEnvelope must be hex, at most 4 KiB');
+  }
   return {
     ...held,
     deadline: decimal('deadline') as UnixSeconds,
     scope: { ...heldScope, chainId: BigInt(String(heldScope['chainId'] ?? '0')) },
   } as unknown as EncryptedIntent;
+}
+
+/** A CRE decision batch, shape-checked. The settler checks each tag. */
+function decisionsOf(raw: unknown): readonly Decision[] {
+  const list = (raw as { decisions?: unknown } | null)?.decisions;
+  if (!Array.isArray(list) || list.length > 200) throw new ProtocolFailure('INVALID_INPUT', 'decisions must be an array of at most 200');
+  const hex = (v: unknown, bytes: number) => typeof v === 'string' && new RegExp(`^0x[0-9a-f]{${bytes * 2}}$`).test(v);
+  return list.map((d: Record<string, unknown>) => {
+    const ok = typeof d === 'object' && d !== null && typeof d['intentId'] === 'string' && hex(d['tag'], 32)
+      && (d['verdict'] === 'RELEASE'
+        ? hex(d['k'], 32) && typeof d['recipient'] === 'string' && /^0x[0-9a-f]{40}$/.test(d['recipient'])
+        : d['verdict'] === 'DENY' && typeof d['reason'] === 'string' && d['reason'].length <= 200);
+    if (!ok) throw new ProtocolFailure('INVALID_INPUT', 'a decision is malformed');
+    return d as unknown as Decision;
+  });
 }
 
 /**
@@ -168,6 +198,9 @@ export function createExecutorServer(options: ExecutorServerOptions = {}): Execu
 
   /** Queues an intent and forwards its ciphertext to the confidential workflow. */
   async function submitIntent(intent: EncryptedIntent): Promise<IntentRef> {
+    if (options.requireCreEnvelope === true && intent.creEnvelope === undefined) {
+      throw new ProtocolFailure('INVALID_INPUT', 'this executor settles only v2 intents, sealed to CRE: update the wallet');
+    }
     const ref = await executor.submit(intent);
 
     if (options.triggerUrl !== undefined) {
@@ -266,6 +299,15 @@ export function createExecutorServer(options: ExecutorServerOptions = {}): Execu
         // What relays call. Point --egress-payment and --egress-query here.
         if (path === '/v1/mesh/payment' && req.method === 'POST') return await meshPayment(req, res);
         if (path === '/v1/mesh/query' && req.method === 'POST') return await meshQuery(req, res);
+        // What the CRE workflow calls, every 30 s: ciphertext out, decisions in.
+        if (path === '/v1/cre/pending' && req.method === 'GET') {
+          if (options.cre === undefined) throw new ProtocolFailure('MESH_UNAVAILABLE', 'this executor has no CRE workflow', true);
+          return send(res, 200, pendingForCre(executor, now()));
+        }
+        if (path === '/v1/cre/release' && req.method === 'POST') {
+          if (options.cre === undefined) throw new ProtocolFailure('MESH_UNAVAILABLE', 'this executor has no CRE workflow', true);
+          return send(res, 202, { accepted: options.cre.accept(decisionsOf(JSON.parse(await readBody(req)))) });
+        }
         if (path.startsWith('/v1/intent/') && req.method === 'GET') {
           // The handle is the capability. An unknown one and a wrong one are
           // the same refusal, so this is not an oracle for which exist.
