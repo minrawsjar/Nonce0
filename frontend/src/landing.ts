@@ -9,7 +9,7 @@ const body = document.body;
 const pin = document.querySelector<HTMLElement>('.hero__pin');
 const plates = Array.from(document.querySelectorAll<HTMLImageElement>('[data-wide]'));
 const note = document.querySelector<HTMLElement>('[data-note]');
-const line = document.querySelector<HTMLElement>('[data-line]');
+const mark = document.querySelector<HTMLElement>('[data-reveal-mark]');
 const nav = document.querySelector<HTMLElement>('.nav');
 const fsButton = document.querySelector<HTMLButtonElement>('[data-fs]');
 const clamp = (n: number): number => Math.max(0, Math.min(1, n));
@@ -17,7 +17,7 @@ const segment = (p: number, start: number, end: number): number => clamp((p - st
 
 // Allocate more scroll to larger composition changes. Transitions meet without
 // pauses; the incoming image fades over an opaque base to avoid dark pulses.
-const distances = [4.6, 8.4, 5.5, 8.3, 8.1, 13.5, 27.7, 32.5, 31.4, 26.8, 12.8, 10.4, 12.4, 13.9, 14.2, 12.7];
+const distances = [4.6, 8.4, 5.5, 8.3, 8.1, 13.5, 27.7];
 const total = distances.reduce((sum, distance) => sum + distance, 0);
 const stops = [0];
 for (const distance of distances) stops.push(stops[stops.length - 1]! + distance / total);
@@ -58,7 +58,7 @@ function initHero(): void {
   media.add({ motion: '(prefers-reduced-motion: no-preference)', narrow: '(max-width: 600px)' }, (context) => {
     if (!context.conditions?.motion) return;
     const render = (progress: number): void => {
-      const scene = segment(progress, 0.035, 0.90);
+      const scene = segment(progress, 0.035, 0.62);
       let current = frames.length - 2;
       for (let i = 0; i < frames.length - 1; i += 1) {
         if (scene < frames[i + 1]!.stop) { current = i; break; }
@@ -79,10 +79,17 @@ function initHero(): void {
       }
       pin.style.setProperty('--p', String(progress));
       if (note) note.style.opacity = String(1 - segment(progress, 0.04, 0.15));
-      if (line) {
-        const reveal = segment(progress, 0.88, 0.96);
-        line.style.opacity = String(reveal);
-        line.style.transform = `translate(-50%, ${(1 - reveal) * 12}px)`;
+      if (mark) {
+        // Four overlapping steps, in the order they were asked for: the black
+        // closes over the artwork, the letters arrive on it, the p and q take
+        // the accent, the words they stand for follow, then the tagline.
+        // Each starts before the one before it has finished, so the whole
+        // thing reads as one movement rather than four cues.
+        mark.style.setProperty('--veil', String(segment(progress, 0.60, 0.74)));
+        mark.style.setProperty('--mark-in', String(segment(progress, 0.68, 0.80)));
+        mark.style.setProperty('--accent', String(segment(progress, 0.80, 0.88)));
+        mark.style.setProperty('--sub-in', String(segment(progress, 0.85, 0.93)));
+        mark.style.setProperty('--tag-in', String(segment(progress, 0.91, 0.99)));
       }
     };
     const play = { progress: 0 };
@@ -107,7 +114,7 @@ function initHero(): void {
     syncHeader((tween.scrollTrigger?.progress ?? 0) < 1);
     return () => {
       body.classList.remove('in-hero');
-      for (const element of [...plates, pin, note, line]) element?.removeAttribute('style');
+      for (const element of [...plates, pin, note, mark]) element?.removeAttribute('style');
     };
   });
 }
