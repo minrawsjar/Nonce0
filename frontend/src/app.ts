@@ -222,11 +222,18 @@ async function renderBudget(): Promise<void> {
 // funding wallet the extension does not have. The mesh exit relays the
 // rotation and pays for it, so nothing pops up here. Two of the key's 32
 // signatures are held back for exactly this, so it can always afford to go.
+//
+// ONCE PER PAGE LOAD, WHATEVER HAPPENS. Signing the rotation spends one of
+// those two reserved signatures whether or not the transaction lands, so a
+// retry loop on a rotation that keeps failing would spend the second one too
+// and leave the key unable to rotate or disable at all. A failure says so and
+// stops; a reload is the retry, and a deliberate one.
 let rotating = false;
-let rotateAfter = 0;
+let rotated = false;
 async function autoRotate(): Promise<void> {
-  if (rotating || Date.now() < rotateAfter) return;
+  if (rotating || rotated) return;
   rotating = true;
+  rotated = true;
   setStatus('rotate-status', 'Few signatures left on this key. Rotating to the next one…');
   try {
     const before = (await rt.app.walletState()).pkCommitment;
@@ -235,10 +242,7 @@ async function autoRotate(): Promise<void> {
     setStatus('rotate-status', 'Rotated. A fresh key is active, with the next one already committed behind it.');
     await renderBudget();
   } catch (error) {
-    // Every 20 s is too eager for something that costs a transaction, and the
-    // exit refuses a second rotation for the same account within a minute.
-    rotateAfter = Date.now() + 60_000;
-    setStatus('rotate-status', `Could not rotate yet: ${(error as Error).message}. Trying again shortly.`);
+    setStatus('rotate-status', `Could not rotate this key: ${(error as Error).message}. Reload to try once more, or back up and restore into a new wallet.`);
   } finally { rotating = false; }
 }
 
