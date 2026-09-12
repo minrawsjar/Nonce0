@@ -22,8 +22,9 @@
 //
 // A ring payment carries a 1.1 MiB zero-knowledge proof; CRE takes 100 KB per
 // response. So the proof never comes here: the executor verifies it at full
-// strength before its attester signs. And Arc has no CRE forwarder, so a
-// release settles through the executor's egress rather than a CRE write.
+// strength before its attester signs, and submits the spend through its own
+// egress. Arc testnet has a KeystoneForwarder now, so that last write could
+// move here; it would need a receiver contract in front of the pools.
 //
 // ── What is and is not confidential ──────────────────────────────────────
 //
