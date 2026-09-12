@@ -213,10 +213,14 @@ async function renderBudget(): Promise<void> {
     ? `Active${balance} · deposits are signed by its PQ key`
     : `Not on chain yet${balance} · your first deposit sets it up`;
   el('withdraw-box').hidden = (funds?.usdc ?? 0) === 0;
+  // Only once the key is nearly spent. Rotation is not something to think
+  // about at 31 of 32 left, and offering it there invites a MetaMask prompt
+  // the extension cannot answer at all (extension/README.md, "Not done"). The
+  // meter above is the warning; this is the escape hatch when it turns red.
   // Two signatures are held back for exactly this, so a key can always rotate.
   const rotate = el<HTMLButtonElement>('rotate');
-  rotate.hidden = !state.active;
-  rotate.textContent = low ? 'Rotate key now: few signatures left' : 'Rotate key';
+  rotate.hidden = !state.active || !low;
+  rotate.textContent = 'Rotate key now: few signatures left';
 }
 
 async function onRotate(): Promise<void> {
@@ -419,7 +423,11 @@ function renderBalance(): void {
   const waiting = available.filter((n) => !ringReady(n)).reduce((sum, n) => sum + usdcOf(n), 0);
   const count = `${available.length} note${available.length === 1 ? '' : 's'}`;
   const parts = [count, ...(waiting > 0 ? [`${waiting} USDC waits for its pool to fill`] : [])];
-  if (accountUsdc >= 1 + DEPOSIT_GAS_USDC) parts.push(`${accountUsdc.toFixed(2)} USDC at your address, ready to deposit`);
+  // What is actually depositable, which is the balance less the gas a deposit
+  // keeps back. Printing the raw balance sends people to deposit a round
+  // number the account cannot afford, and that failure reads as a bug.
+  const depositable = Math.floor(accountUsdc - DEPOSIT_GAS_USDC);
+  if (depositable >= 1) parts.push(`${depositable} USDC at your address, ready to deposit`);
   el('balance').textContent = `${total}.00`;
   el('note-count').textContent = parts.join(' · ');
   el('asset-balance').textContent = `${total}.00`;
@@ -473,9 +481,20 @@ async function onDeposit(): Promise<void> {
     const state = await rt.app.walletState();
     const account = state.accountAddress as `0x${string}`;
     const want = amount + DEPOSIT_GAS_USDC;
-    const topUp = Math.ceil((want - (await rt.accountFunds(account)).usdc) * 100) / 100;
+    const have = (await rt.accountFunds(account)).usdc;
+    const topUp = Math.ceil((want - have) * 100) / 100;
     if (topUp > 0) {
       if (!rt.hasWallet) {
+        // A deposit keeps DEPOSIT_GAS_USDC back for its own gas, so a round
+        // balance never covers the round number people type. Offer the amount
+        // that does fit before sending anyone off to fetch more USDC: the
+        // dialog below covers this message, and a covered message is how
+        // "I pressed Deposit and nothing happened" begins.
+        const affordable = Math.floor(have - DEPOSIT_GAS_USDC);
+        if (affordable >= 1) {
+          status.textContent = `Your address holds ${have.toFixed(2)} USDC, which covers ${affordable} USDC of notes plus gas. Deposit ${affordable}, or send ${topUp.toFixed(2)} USDC more to deposit ${amount}.`;
+          return;
+        }
         status.textContent = `Send ${topUp.toFixed(2)} USDC to your Opaque address (${notes} and gas) from any wallet, then press Deposit again.`;
         el<HTMLDialogElement>('receive-dialog').showModal();
         return;
