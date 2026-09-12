@@ -140,8 +140,11 @@ function initHero(): void {
       onUpdate: () => render(play.progress),
       scrollTrigger: {
         trigger: '.hero', start: 'top top',
-        end: () => `+=${pin.clientHeight * (context.conditions?.narrow ? 3.2 : 4.5)}`,
-        pin, scrub: 0.45, anticipatePin: 1, invalidateOnRefresh: true,
+        // Keep the cinematic read, but let one deliberate wheel gesture advance
+        // more than a single dissolve. The old 4.5 viewports made the intro
+        // feel like a barrier before the protocol page began.
+        end: () => `+=${pin.clientHeight * (context.conditions?.narrow ? 2.25 : 2.75)}`,
+        pin, scrub: 0.25, anticipatePin: 1, invalidateOnRefresh: true,
         onToggle: (self) => syncHeader(self.progress < 1),
         onRefresh: (self) => syncHeader(self.progress < 1 && window.scrollY <= self.end),
       },

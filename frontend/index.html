@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>opaque — even an opaque wall can be broken tomorrow. But never your wallet.</title>
-<meta name="description" content="Building the infrastructure for a post-quantum internet — secure, open, and built for what's next.">
+<title>opaque — post-quantum private settlement infrastructure</title>
+<meta name="description" content="Post-quantum privacy infrastructure for USDC: hash-based authorization, anonymous settlement, private network routing, and privacy-aware execution on Arc.">
 <meta name="theme-color" content="#07060a">
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <!-- The opening frame is the largest paint on the page and the whole of the
@@ -37,13 +37,13 @@
         <img src="media/logo.png" alt="opaque" width="942" height="200" decoding="async">
       </a>
       <nav class="nav__links" aria-label="Primary">
-        <a href="#how">How it works</a>
-        <a href="#why">The gap</a>
+        <a href="#how">Protocol</a>
+        <a href="#why">Why Opaque</a>
         <a href="#threat">Threat model</a>
         <a href="#build">Built on</a>
-        <a href="#extension">Extension</a>
+        <a href="#extension">Wallet</a>
       </nav>
-      <a href="app.html" class="btn btn--outline">Get Started</a>
+      <a href="app.html" class="btn btn--outline">Open wallet</a>
     </div>
   </div>
   <!-- preserveAspectRatio="none" on purpose: the wave should stretch to the
@@ -109,11 +109,9 @@
       <!-- The headline is carved into the stone, so it exists for the eye and
            for nothing else. This carries the same words — off-screen, but there
            for search, for screen readers, and if the images never arrive. -->
-      <h1 class="sr-only hero__title">The future breaks everything. But never your wallet.</h1>
+      <h1 class="sr-only hero__title">Opaque: post-quantum private settlement infrastructure.</h1>
 
-      <p class="label label--bright hero__note" data-note>Same internet.<br>A more private<br>tomorrow.</p>
-
-      <p class="hero__line" data-line>Even an opaque wall can be broken tomorrow.<br>But never your wallet.</p>
+      <p class="hero__line" data-line>a glance into the quantum-safe future</p>
 
       <a class="hero__skip" href="#how">Skip intro <span aria-hidden="true">↗</span></a>
 
@@ -125,16 +123,13 @@
     </div>
   </section>
 
-  <!-- ══ The argument ═══════════════════════════════════════════════════
-       What the thing actually is. This copy is the earlier build's, carried
-       over unchanged and re-set in the dark instrument — the words were the
-       part that was working. -->
+  <!-- ══ The protocol ═══════════════════════════════════════════════════ -->
 
   <div class="wrap slab" id="how">
-    <p class="sec-n" data-reveal data-n="01">Post-quantum · network-private · conditional</p>
+    <p class="sec-n" data-reveal data-n="01">Post-quantum · network-private · privacy-aware settlement</p>
     <h2 class="h2" data-reveal>Private payments built for the quantum era.</h2>
     <p class="lede">An eight-note ring hides which note was spent. A three-hop relay mesh hides where
-      the request came from. A confidential intent waits for the right privacy conditions.</p>
+      the request came from. A confidential intent settles when privacy conditions are strong—or at its deadline.</p>
     <p class="prose" style="max-width:52ch;margin-top:var(--gap-6)">
       Most privacy systems focus on <em>what</em> happened on-chain. Opaque also protects the key that
       authorises a spend and the network path used to submit it—two places where privacy can disappear
@@ -145,30 +140,28 @@
   <div class="wrap slab">
     <div class="pillars">
       <div class="pillar" data-reveal>
-        <p class="sec-n" data-reveal data-n="02">Quantum-safe keys</p>
-        <h3>Hash-based authorisation, without elliptic curves.</h3>
+        <p class="sec-n" data-reveal data-n="02">Post-quantum authorization</p>
+        <h3>Authorize value without elliptic curves.</h3>
         <p class="prose">
-          The wallet uses a FORS+C hash-based key to authorise deposits and rotation. Anonymous spends
-          use a hash-only proof over eight note commitments, so the spend path does not depend on
-          elliptic-curve cryptography.
+          FORS+C hash-based keys authorize deposits and rotation. Hash-only proofs authorize a spend,
+          so the settlement path does not rely on elliptic-curve cryptography.
         </p>
       </div>
       <div class="pillar" data-reveal>
-        <p class="sec-n" data-reveal data-n="03">Network-level</p>
-        <h3>Hiding the payment is not hiding the person.</h3>
+        <p class="sec-n" data-reveal data-n="03">Private settlement</p>
+        <h3>Hide which note moved—not just the address.</h3>
         <p class="prose">
-          Encrypting a transaction can still leave an IP address behind. Opaque routes payment and query
-          traffic through three onion-encrypted hops, with batching and random delay, to resist simple
-          timing links between a wallet connection and settlement.
+          An eight-note ring makes the spent note ambiguous. Fixed-denomination pools and nullifiers
+          preserve fund safety while separating a private spend from its deposit.
         </p>
       </div>
       <div class="pillar" data-reveal>
-        <p class="sec-n" data-reveal data-n="04">Conditional settlement</p>
-        <h3>Execute when the privacy conditions are strong.</h3>
+        <p class="sec-n" data-reveal data-n="04">Private transport &amp; timing</p>
+        <h3>Route privately. Settle when conditions are stronger.</h3>
         <p class="prose">
-          A Chainlink CRE workflow releases a confidential intent after compliance passes and the
-          requested privacy score is available—or its deadline arrives. Fixed-denomination USDC then
-          settles through the pool on Arc.
+          A three-hop encrypted relay mesh obscures network origin. The Graph guides relay and decoy
+          selection; Chainlink CRE releases a confidential intent when its privacy target is met—or its
+          deadline arrives.
         </p>
       </div>
     </div>
@@ -199,8 +192,8 @@
   </div>
 
   <div class="wrap slab" id="why">
-    <p class="sec-n" data-reveal data-n="06">The gap</p>
-    <h2 class="h2" data-reveal>Why nothing like this exists yet.</h2>
+    <p class="sec-n" data-reveal data-n="06">Why Opaque</p>
+    <h2 class="h2" data-reveal>Privacy fails at the seams.</h2>
     <div class="compare">
       <div data-reveal class="compare__rows">
         <div data-reveal class="compare__row">
@@ -313,11 +306,11 @@
 
 
   <div class="wrap slab" id="extension">
-    <p class="sec-n" data-reveal data-n="09">Get the extension</p>
-    <h2 class="h2" data-reveal>The wallet, in Chrome's side panel.</h2>
+    <p class="sec-n" data-reveal data-n="09">Wallet access</p>
+    <h2 class="h2" data-reveal>One way to use the Opaque protocol.</h2>
     <div class="get">
       <a class="btn btn--solid" href="opaque-extension.zip" download>Download the extension <span aria-hidden="true">&darr;</span></a>
-      <p class="prose">For Chrome, installed in Developer mode while the Web Store listing is in review.</p>
+      <p class="prose">A Chrome side-panel client for creating and managing private USDC intents.</p>
     </div>
     <ol class="steps prose">
       <li><span>Unzip <b>opaque-extension.zip</b>: double-click it on a Mac, or right-click it and choose
@@ -356,27 +349,9 @@
     <!-- The closing statement, not a column of links. This is the last thing
          anyone reads, so it gets the room. -->
     <div class="foot__say">
-      <p class="foot__line">Everything breaks eventually.<br><em>Your wallet is the exception.</em></p>
-      <a href="app.html" class="btn btn--solid">Open the wallet <span aria-hidden="true">&rarr;</span></a>
+      <p class="foot__line">Every layer can leak.<br><em>Opaque protects the path between them.</em></p>
+      <a href="app.html" class="btn btn--solid">Open wallet <span aria-hidden="true">&rarr;</span></a>
     </div>
-
-    <nav class="foot__cols" aria-label="Footer">
-      <div class="foot__col">
-        <p class="label label--dim">The argument</p>
-        <a href="#how">How it works</a>
-        <a href="#why">The gap</a>
-        <a href="#threat">Threat model</a>
-        <a href="#build">Built on</a>
-        <a href="#extension">Extension</a>
-      </div>
-      <div class="foot__col">
-        <p class="label label--dim">Elsewhere</p>
-        <a href="https://github.com" rel="noreferrer">GitHub</a>
-        <a href="https://x.com" rel="noreferrer">X</a>
-        <a href="https://linkedin.com" rel="noreferrer">LinkedIn</a>
-        <a href="https://discord.com" rel="noreferrer">Discord</a>
-      </div>
-    </nav>
   </div>
 
   <!-- The wordmark as the floor of the page: clipped by the footer box so it

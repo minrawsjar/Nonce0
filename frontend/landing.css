@@ -140,13 +140,9 @@ body.in-hero .nav { opacity: 0; visibility: hidden; pointer-events: none; }
 }
 
 .nav__brand { display: flex; align-items: center; }
-/* Sized off the sub-line, not the wordmark. The descenders of the p and q in
-   "opaque" double as the p and q of "post" and "quantum", and that line is only
-   about a sixth of the mark's height — at the 29px this used to be it fell to
-   ~5px and read as "ost — uantum", which looks like a broken image rather than
-   a logo. At 46px the whole lockup resolves. */
+/* Keep the compact lockup legible without competing with the navigation. */
 .nav__brand img {
-  height: clamp(46px, 4.6vw, 62px);
+  height: clamp(34px, 2.8vw, 42px);
   width: auto;
 }
 
@@ -252,15 +248,18 @@ body.in-hero .nav { opacity: 0; visibility: hidden; pointer-events: none; }
 .hero__line {
   position: absolute;
   z-index: 8;
-  left: 50%;
-  top: 71%;
+  /* hero-08's rendered lockup is right-weighted on wide frames. */
+  left: 61.5%;
+  /* The final plate already owns the lockup; keep this immediately beneath it. */
+  top: 59%;
   transform: translateX(-50%);
   width: min(720px, 84vw);
   margin: 0;
   text-align: center;
-  font-size: clamp(18px, 2.2vw, 31px);
+  font-size: clamp(16px, 1.8vw, 26px);
   font-weight: 300;
   line-height: 1.45;
+  color: #b9b3ae;
   opacity: 0;
   text-shadow: 0 2px 28px rgba(0, 0, 0, 0.85);
 }
@@ -321,11 +320,11 @@ body:not(.in-hero) .fs { opacity: 0; visibility: hidden; pointer-events: none; }
   left: 50%;
   top: calc(var(--p, 0) * 100%);
   width: 9px; height: 9px;
-  margin: -4.5px 0 0 -4.5px;
-  border-radius: 50%;
-  border: 1px solid var(--ember);
-  background: rgba(255, 122, 24, 0.18);
-  box-shadow: 0 0 14px rgba(255, 122, 24, 0.7);
+  margin: -6px 0 0 -5px;
+  border: solid var(--ember);
+  border-width: 0 1.5px 1.5px 0;
+  box-shadow: 2px 2px 8px rgba(255, 122, 24, 0.35);
+  transform: rotate(45deg);
 }
 .rail__hint {
   position: absolute;
@@ -674,9 +673,6 @@ body:not(.in-hero) .fs { opacity: 0; visibility: hidden; pointer-events: none; }
 .foot__inner {
   position: relative;
   z-index: 1;
-  display: grid;
-  grid-template-columns: 1.5fr 1fr;
-  gap: clamp(32px, 6vw, 90px);
   align-items: start;
   padding-block: clamp(48px, 8vh, 86px) clamp(28px, 4vh, 44px);
 }
@@ -694,36 +690,6 @@ body:not(.in-hero) .fs { opacity: 0; visibility: hidden; pointer-events: none; }
   color: var(--ember-lit);
   text-shadow: 0 0 34px rgba(255, 122, 24, 0.4);
 }
-
-.foot__cols {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: clamp(24px, 3vw, 44px);
-}
-.foot__col { display: grid; gap: 11px; align-content: start; }
-.foot__col .label { margin-bottom: 4px; }
-/* An underline that grows from the left rather than appearing whole. */
-.foot__col a {
-  position: relative;
-  width: fit-content;
-  padding-bottom: 2px;
-  font-size: 13.5px;
-  font-weight: 300;
-  color: var(--muted);
-  transition: color 0.2s ease;
-}
-.foot__col a::after {
-  content: "";
-  position: absolute;
-  inset: auto 0 0 0;
-  height: 1px;
-  background: var(--ember);
-  transform: scaleX(0);
-  transform-origin: 0 50%;
-  transition: transform 0.25s ease;
-}
-.foot__col a:hover { color: var(--text); }
-.foot__col a:hover::after { transform: scaleX(1); }
 
 /* The wordmark as the floor of the page — oversized, clipped by the footer, and
    sitting under everything. It reads as ground rather than as a logo dropped on
@@ -766,14 +732,13 @@ body:not(.in-hero) .fs { opacity: 0; visibility: hidden; pointer-events: none; }
 @media (max-width: 900px) {
   .nav__links { display: none; }
   .rail { top: 62%; right: 14px; }
-  .foot__inner { grid-template-columns: 1fr; gap: clamp(28px, 6vh, 44px); }
   .foot__base { flex-direction: column; }
 
   /* Keep tablet artwork centered. Phones use the full composition below. */
   .plate { object-position: 50% 50%; }
   .fs { width: 38px; height: 38px; }
   .hero__note { top: 12%; }
-  .hero__line { top: 66%; }
+  .hero__line { left: 50%; top: 64%; }
 }
 
 /* Keep an exit available throughout the pinned intro. */
@@ -813,11 +778,11 @@ body:not(.in-hero) .fs { opacity: 0; visibility: hidden; pointer-events: none; }
     letter-spacing: -0.035em;
   }
   .hero__note { display: none; }
-  .hero__line { top: 76%; width: calc(100% - 64px); font-size: 16px; }
+  .hero__line { left: 50%; top: 69%; width: calc(100% - 64px); font-size: 16px; }
   .rail { top: 76%; bottom: 10%; }
   .nav__band { padding-block: 8px; }
   .nav__inner { gap: 12px; }
-  .nav__brand img { height: 40px; }
+  .nav__brand img { height: 32px; }
   .nav .btn--outline { padding: 8px 15px; }
   .slab { padding-block: 64px; }
 }
@@ -826,6 +791,4 @@ body:not(.in-hero) .fs { opacity: 0; visibility: hidden; pointer-events: none; }
 @media (prefers-reduced-motion: reduce) {
   .hero__line, .rail { display: none; }
   .nav, .btn, .fs, .card, .tag { transition: none; }
-  /* The footer's social icons became named links; their underline grows on
-     hover, and that growth is the thing being opted out of here. */
-  .foot__col a::after { transition: none; }}
+}
