@@ -183,3 +183,57 @@ test('a release naming anyone but the payment\'s recipient is refused, even tagg
   assert.equal((await executor.getStatus(ref.statusHandle)).state, 'FAILED');
   assert.equal(delivered.length, 0, 'no release minted');
 });
+
+test('two notes decided in one tick attest at consecutive use counts, never the same one', async () => {
+  // A 7 USDC payment is two notes, and CRE decides both in one tick. Settled in
+  // parallel, both read the attester's use count before either spend landed,
+  // both signed for it, and the second reverted on chain with BadSignature.
+  const executor = createExecutor({ now: () => NOW });
+  const credential = issueCredential({ recipient: RECIPIENT, policyVersion: POLICY, expiresAt: (NOW + 3600n) as UnixSeconds }, credentialMac);
+  const seal = createIntentSealer({
+    crePublicKey: intentKeys.publicKey,
+    encryptionKeyId: KEY_ID,
+    resolveCredential: async () => JSON.stringify(credential, (_k, v) => (typeof v === 'bigint' ? v.toString(10) : v)),
+  });
+  for (const mine of [3, 5]) {
+    const spend = buildRingSpend({ scope, recipient: RECIPIENT, noteSecret: secrets[mine]!, decoys: commitments.filter((_, i) => i !== mine) });
+    await executor.submit(await seal({
+      scope, spendHash: spendHash(spend), spend,
+      request: {
+        noteId: `note-${mine}` as NoteId, recipient: RECIPIENT, minPrivacyScore: 5_000 as PrivacyScore,
+        deadline: (NOW + 1n) as UnixSeconds, credentialHandle: 'cred-1' as CredentialHandle, idempotencyKey: `pay-${mine}` as IdempotencyKey,
+      },
+    }));
+  }
+
+  // The registry's count moves only when a spend carrying it lands.
+  let registryUseCount = 0n;
+  const signedAt: bigint[] = [];
+  let n = 0;
+  const settler = createSettler({
+    executor, credentialMac, policyVersion: POLICY, releaseTtlSeconds: 900n, now: () => (NOW + 1n) as UnixSeconds,
+    attester: { identity, current: async () => ({ forsSeed: FORS_SEED, useCount: registryUseCount }) },
+    deliver: async () => {
+      signedAt.push(registryUseCount);
+      await new Promise((resolve) => setTimeout(resolve, 25)); // a broadcast takes time; the race lives here
+      return `0x${String(++n).padStart(64, '0')}` as TxHash;
+    },
+    evidence: async (txHash: TxHash, release: ApprovedRelease) => {
+      registryUseCount++;
+      return { txHash, spendHash: spendHash(release.spend), succeeded: true };
+    },
+    nullifierSpent: async () => true,
+  });
+
+  const decisions = pendingForCre(executor, NOW).intents.map((pending) => {
+    const k = openEnvelope(intentKeys.secretKey, KEY_ID, pending.envelope).k;
+    const recipient = RECIPIENT.toLowerCase();
+    return { intentId: pending.intentId, verdict: 'RELEASE' as const, recipient, k, tag: releaseTag(credentialMac, { intentId: pending.intentId, spendHash: pending.spendHash, verdict: 'RELEASE', recipient, k }) };
+  });
+  assert.equal(decisions.length, 2);
+
+  await Promise.all(decisions.map((d) => settler.settle(d)));
+
+  assert.deepEqual(signedAt, [0n, 1n], 'each attestation signed after the previous one landed, one index each');
+  for (const d of decisions) assert.equal(executor.store.get(d.intentId as never)?.state, 'SETTLED');
+});

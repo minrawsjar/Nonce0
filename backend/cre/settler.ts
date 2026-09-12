@@ -102,6 +102,38 @@ export function createSettler(options: SettlerOptions): Settler {
     typeof options.attester.identity === 'function' ? options.attester.identity(scope) : options.attester.identity;
   const lastTry = new Map<IntentId, number>();
 
+  // ONE ATTESTATION AT A TIME, FROM SIGNING TO A LANDED TRANSACTION.
+  //
+  // The registry accepts the attester's signature only for its current use
+  // count, and the count moves only when a spend carrying it succeeds. Two notes
+  // of one payment are decided in the same CRE tick; settled in parallel, both
+  // read count N, both sign for N, the first lands and the second reverts with
+  // BadSignature. It is also a few-time key signing two messages at one index,
+  // which spends more of its budget than the registry counts. Reserving counts
+  // ahead does not work either: if N fails, everything signed for N+1 reverts.
+  let tail: Promise<unknown> = Promise.resolve();
+  const oneAtATime = <T>(run: () => Promise<T>): Promise<T> => {
+    const next = tail.then(run, run);
+    tail = next.catch(() => undefined);
+    return next;
+  };
+
+  /**
+   * A load-balanced RPC can answer from before the block that consumed an index,
+   * and the next attestation would sign that index again. Hold the turn until
+   * the registry shows it moved, or a rotation replaced the key.
+   * ponytail: reads through current(), which rotates near the end of a key's
+   * budget; a stale read there reverts the rotation, which is retried next turn.
+   * Give the settler a plain state read if that starts showing up.
+   */
+  async function untilConsumed(used: { readonly useCount: bigint; readonly generation?: number }): Promise<void> {
+    for (let attempt = 0; attempt < 15; attempt++) {
+      const seen = await options.attester.current() as { readonly useCount: bigint; readonly generation?: number };
+      if (seen.generation !== used.generation || seen.useCount > used.useCount) return;
+      await new Promise((resolve) => setTimeout(resolve, 1_000));
+    }
+  }
+
   /** A decision this executor should act on: a known, undecided intent, and a tag only CRE could make. */
   function authentic(decision: Decision): IntentRecord | undefined {
     const record = store.get(decision.intentId as IntentId);
@@ -163,16 +195,21 @@ export function createSettler(options: SettlerOptions): Settler {
         refuse(intentId, 'INVALID_INPUT', 'the payment is scoped to a different pool');
         return;
       }
-      const at = now();
-      const attested = attestRingSpend({ spend, identity: identityFor(spend.scope), ...(await options.attester.current()) });
-      const release = issueRelease({
-        intentId, spend: attested, policyVersion: options.policyVersion,
-        issuedAt: at, ttlSeconds: options.releaseTtlSeconds, secret: options.credentialMac,
+      const checked = spend;
+      await oneAtATime(async () => {
+        const at = now();
+        const key = await options.attester.current();
+        const attested = attestRingSpend({ spend: checked, identity: identityFor(checked.scope), ...key });
+        const release = issueRelease({
+          intentId, spend: attested, policyVersion: options.policyVersion,
+          issuedAt: at, ttlSeconds: options.releaseTtlSeconds, secret: options.credentialMac,
+        });
+        // Authorised BEFORE delivery: the outbox is created in the same step as
+        // the transition that permits it, so a crash cannot mint a second one.
+        store.authorize({ intentId, release, now: at });
+        await deliver(intentId, release);
+        if (store.get(intentId)?.state === 'SETTLED') await untilConsumed(key);
       });
-      // Authorised BEFORE delivery: the outbox is created in the same step as
-      // the transition that permits it, so a crash cannot mint a second one.
-      store.authorize({ intentId, release, now: at });
-      await deliver(intentId, release);
     } catch (error) {
       options.onError?.(intentId, error);
       if (error instanceof ProtocolFailure && error.code === 'PROOF_REJECTED') refuse(intentId, 'PROOF_REJECTED', error.message);
@@ -201,7 +238,12 @@ export function createSettler(options: SettlerOptions): Settler {
           });
           if (spent || after.state !== 'RETRYING') continue;
         }
-        await deliver(record.intentId, record.outbox);
+        // In turn with fresh attestations: this re-sends one already signed, and
+        // must not race a new one for the same index. It deliberately does not
+        // call current() first — that can rotate, consuming the very index this
+        // stored attestation was signed for.
+        const outbox = record.outbox;
+        await oneAtATime(() => deliver(record.intentId, outbox));
       } catch (error) {
         options.onError?.(record.intentId, error);
       } finally {
