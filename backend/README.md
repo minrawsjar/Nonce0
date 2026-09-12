@@ -123,7 +123,7 @@ Names only. Secrets go into Railway over stdin, never in argv ([docs/hosting.md]
 
 | Variable | Purpose |
 |---|---|
-| `EGRESS_PRIVATE_KEY` | Pays gas for settlements and the attester's rotations |
+| `EGRESS_PRIVATE_KEY` | Pays gas for settlements, the attester's rotations and wallets' key rotations |
 | `ATTESTER_FORS_MASTER` | Derives every generation of the attester's FORS+C key |
 | `MESH_MASTER` | Derives every relay key and weekly directory; must match the root compiled into the wallet |
 | `RELAY_OPERATOR_KEY` | Announces the relays and reports their health to `RelayDirectory` |

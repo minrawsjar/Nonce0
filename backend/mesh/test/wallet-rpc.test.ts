@@ -1,15 +1,15 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 
-import { encodeAbiParameters, encodeFunctionData, parseAbi, parseAbiParameters, toFunctionSelector } from 'viem';
+import { encodeAbiParameters, encodeFunctionData, encodeFunctionResult, parseAbi, parseAbiParameters, toFunctionSelector } from 'viem';
 import { toPackedUserOperation } from 'viem/account-abstraction';
 
-import type { Address, Hex } from '@opaque/protocol-types';
+import type { Address, Bytes32, Hex } from '@opaque/protocol-types';
 import { fromHex, toHex } from '@opaque/protocol-types/codecs.js';
 
 import { encodeSignature, keyGen, sign } from '@opaque/pq-wallet';
 
-import { createWalletRpcAnswerer, readOne, STATE_ABI, userOperationCall, walletRpcAllowlist } from '../../chain/wallet-rpc.ts';
+import { createWalletRpcAnswerer, readOne, relayRotation, STATE_ABI, userOperationCall, walletRpcAllowlist, type WalletRpcSend } from '../../chain/wallet-rpc.ts';
 import { ARC_AUTHORITY, createLiveWalletChain } from '../../chain/pq-wallet-chain.ts';
 import { accountSalt, predictAccount } from '../../chain/pq-account.ts';
 
@@ -156,4 +156,53 @@ test('the adapter signs an unregistered account only for the operation that depl
   // Keys that CREATE2 would put at another address, or no initCode at all.
   await assert.rejects(chain.prepareUserOperation(encode({ factory: ARC_AUTHORITY.factory, factoryData: factoryCall(keys[1], keys[0]) }), observation, 'fors'), /different account/);
   await assert.rejects(chain.prepareUserOperation(encode({}), observation, 'fors'), /first operation must deploy/);
+});
+
+test('ROTATE relays a rotation the account signed, at the exit\'s expense, under guards that bound the bill', async () => {
+  const spent = `0x${'33'.repeat(20)}`;
+  const fresh = `0x${'44'.repeat(20)}`;
+  const useCounts = new Map([[spent, 7n], [fresh, 0n]]);
+  const written: { args: readonly unknown[]; account: { address: string } }[] = [];
+  let asked = '';
+  const publicClient = {
+    getCode: async ({ address }: { address: string }) => (address === stranger ? '0x' : cloneCode),
+    call: async ({ data }: { data: Hex }) => {
+      asked = `0x${data.slice(34)}`;
+      return { data: encodeFunctionResult({ abi: STATE_ABI, functionName: 'stateOf', result: {
+        pkCommitment: `0x${'aa'.repeat(32)}`, nextCommitment: `0x${'bb'.repeat(32)}`,
+        useCount: useCounts.get(asked) ?? 0n, maxUses: 32n, rotationDeadline: 2_000_000_000n, disableAfter: 0n,
+      } as never }) };
+    },
+    simulateContract: async (request: unknown) => ({ request }),
+    extend: () => ({ writeContract: async (request: never) => { written.push(request); return `0x${'99'.repeat(32)}`; } }),
+    waitForTransactionReceipt: async () => ({ status: 'success' }),
+  };
+  const payerAddress = `0x${'ee'.repeat(20)}`;
+  const payer = { address: payerAddress } as never;
+  const options = {
+    publicClient: publicClient as never, bundlerUrl: 'https://bundler.invalid',
+    entryPoint: entryPoint() as Address, accountImplementation: implementation,
+  };
+  const send = createWalletRpcAnswerer({ ...options, payer });
+  const next = `0x${'cd'.repeat(32)}` as Bytes32;
+  // The real thing: 9,251 bytes, the size that decides whether this fits a mesh message at all.
+  const signature = `0x${'ef'.repeat(9_251)}` as Hex;
+  const rotate = (account: string, s: WalletRpcSend = send) => relayRotation(s, account as Address, next, 32n, 2_000_000_000n, signature);
+
+  assert.equal(await rotate(spent), `0x${'99'.repeat(32)}`);
+  assert.equal(written.length, 1);
+  // The account's own signature, and the exit's key paying for it.
+  assert.deepEqual(written[0]!.args, [spent, next, 32n, 2_000_000_000n, signature]);
+  assert.equal(written[0]!.account.address, payerAddress);
+
+  // A second rotation for the same account waits; nothing else reaches the chain.
+  await assert.rejects(rotate(spent), /a moment ago/);
+  // Not a PQ account at all.
+  await assert.rejects(rotate(stranger), /only PQ accounts/);
+  // A key that has signed nothing is either new or just rotated. Refusing those
+  // is what makes each relayed rotation cost its asker a real operation first.
+  await assert.rejects(rotate(fresh), /does not need rotating/);
+  // An exit with no key of its own pays for nothing.
+  await assert.rejects(rotate(spent, createWalletRpcAnswerer(options)), /does not relay rotations/);
+  assert.equal(written.length, 1);
 });

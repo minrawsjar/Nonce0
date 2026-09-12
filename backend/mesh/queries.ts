@@ -37,7 +37,7 @@ import { asPoolScope, assertHex, encodeBigint, fromHex } from '@opaque/protocol-
  * Every kind the exit will answer. MESH_STATUS is absent on purpose: it has no
  * backing store yet, and asking for it is refused, not silently ignored.
  * WALLET_RPC is answered only by an exit configured with a walletRpc, and only
- * for its four operations, each an allowlist of its own (chain/wallet-rpc.ts):
+ * for its five operations, each an allowlist of its own (chain/wallet-rpc.ts):
  * a list of questions, not a general RPC proxy.
  */
 const ANSWERED = new Set<MeshQuery['kind']>([
@@ -48,7 +48,7 @@ const ANSWERED = new Set<MeshQuery['kind']>([
   'POOL_RECEIPT',
   'WALLET_RPC',
 ]);
-const WALLET_OPERATIONS = new Set<WalletRpcOperation>(['STATE', 'ESTIMATE', 'SUBMIT_USER_OPERATION', 'USER_OPERATION_RECEIPT']);
+const WALLET_OPERATIONS = new Set<WalletRpcOperation>(['STATE', 'ESTIMATE', 'SUBMIT_USER_OPERATION', 'USER_OPERATION_RECEIPT', 'ROTATE']);
 
 const refuse = (message: string): never => {
   throw new ProtocolFailure('INVALID_INPUT', message);

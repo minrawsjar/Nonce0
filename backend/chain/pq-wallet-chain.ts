@@ -6,8 +6,9 @@
 // first UserOperation carries initCode (PQAccountFactory.createAccount), and
 // CREATE2 commits the address to its keys, so that operation can only create
 // this account, registered to these keys. It pays its own gas from USDC sent
-// to its address. A funding wallet (MetaMask) only PAYS, for a rotation or a
-// disable the FORS key already signed, and never signs for the account.
+// to its address. A rotation the FORS key signed is relayed and paid for at the
+// mesh exit; a funding wallet (MetaMask) is left only for a disable, and never
+// signs for the account.
 //
 // keyEpoch: PQKeyRegistry has no epoch. The SDK checks that the chain's key is
 // at the epoch its store holds that key under; here that epoch is looked up in
@@ -15,10 +16,10 @@
 // holds", which the SDK also checks directly.
 //
 // Over the mesh (§7.5), through WALLET_RPC (chain/wallet-rpc.ts): every read
-// that names the account, and every UserOperation. The RPC and the bundler
-// see the exit, not this wallet. What still goes direct is what the funding
-// wallet pays for (deploy, rotate, disable): its own transactions, which name
-// it on chain whatever route they take.
+// that names the account, every UserOperation, and the key's rotations. The RPC
+// and the bundler see the exit, not this wallet. What still goes direct is what
+// the funding wallet pays for: its own transactions, which name it on chain
+// whatever route they take.
 
 import {
   decodeAbiParameters,
@@ -48,7 +49,7 @@ import type { WalletStateStore } from '../../packages/pq-wallet/src/wallet-state
 
 import { accountSalt, predictAccount, userOperationPayload } from './pq-account.ts';
 import { ERC20_ABI } from './pool.ts';
-import { bundlerCall, readOne, readState, STATE_ABI, userOperationCall, type WalletRpcSend } from './wallet-rpc.ts';
+import { bundlerCall, readOne, readState, relayRotation, STATE_ABI, userOperationCall, type WalletRpcSend } from './wallet-rpc.ts';
 import type { DepositGroup } from './wallet-chain.ts';
 
 /** The deployed account stack, as the SDK pins it. Changing any field is a different wallet. */
@@ -214,8 +215,11 @@ export function createLiveWalletChain(options: LiveWalletChainOptions): WalletCh
         && sameDeployment(deploymentOf(op.initCode), prepared.deployment);
     },
 
+    // Relayed at the mesh exit, which pays. The account cannot pay for this
+    // itself (chain/wallet-rpc.ts), and a browser with no funding wallet — the
+    // extension — must still be able to keep its key alive.
     rotate: (account, next, maxUses, deadline, signed) =>
-      pay(authority.registry, REGISTRY, 'rotate', [account, next, maxUses, deadline, signed.signature]),
+      relayRotation(options.walletRpc, account, next, maxUses, deadline, signed.signature),
     disable: (account, signed) => pay(authority.registry, REGISTRY, 'initiateDisable', [account, signed.signature]),
   };
 }

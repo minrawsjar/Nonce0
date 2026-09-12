@@ -213,34 +213,33 @@ async function renderBudget(): Promise<void> {
     ? `Active${balance} · deposits are signed by its PQ key`
     : `Not on chain yet${balance} · your first deposit sets it up`;
   el('withdraw-box').hidden = (funds?.usdc ?? 0) === 0;
-  // Only once the key is nearly spent. Rotation is not something to think
-  // about at 31 of 32 left, and offering it there invites a MetaMask prompt
-  // the extension cannot answer at all (extension/README.md, "Not done"). The
-  // meter above is the warning; this is the escape hatch when it turns red.
-  // Two signatures are held back for exactly this, so a key can always rotate.
-  const rotate = el<HTMLButtonElement>('rotate');
-  rotate.hidden = !state.active || !low;
-  rotate.textContent = 'Rotate key now: few signatures left';
+  if (state.active && low) void autoRotate();
 }
 
-async function onRotate(): Promise<void> {
-  if (!rt.hasWallet) {
-    setStatus('rotate-status', 'Rotating is still paid by a funding wallet, which this browser has none of. Back up, restore on opaque.credit with MetaMask, rotate there, and restore back.');
-    return;
-  }
-  if (!await connectFundingWallet()) return;
-  const button = el<HTMLButtonElement>('rotate');
-  button.disabled = true;
-  setStatus('rotate-status', 'Signing the rotation with the current key; your funding wallet submits it…');
+// The key rotates itself once it is nearly spent. There is no button for this
+// on purpose: a few-time key whose replacement waited on someone noticing a
+// warning is one busy afternoon from being spent, and the old button needed a
+// funding wallet the extension does not have. The mesh exit relays the
+// rotation and pays for it, so nothing pops up here. Two of the key's 32
+// signatures are held back for exactly this, so it can always afford to go.
+let rotating = false;
+let rotateAfter = 0;
+async function autoRotate(): Promise<void> {
+  if (rotating || Date.now() < rotateAfter) return;
+  rotating = true;
+  setStatus('rotate-status', 'Few signatures left on this key. Rotating to the next one…');
   try {
     const before = (await rt.app.walletState()).pkCommitment;
     await rt.app.rotateWallet();
     await settle(async () => (await rt.app.walletState()).pkCommitment !== before);
-    setStatus('rotate-status', 'Rotated. The next key is active, with a fresh budget, and another is committed behind it.');
+    setStatus('rotate-status', 'Rotated. A fresh key is active, with the next one already committed behind it.');
     await renderBudget();
   } catch (error) {
-    setStatus('rotate-status', isRejected(error) ? '' : `Could not rotate: ${(error as Error).message}`);
-  } finally { button.disabled = false; }
+    // Every 20 s is too eager for something that costs a transaction, and the
+    // exit refuses a second rotation for the same account within a minute.
+    rotateAfter = Date.now() + 60_000;
+    setStatus('rotate-status', `Could not rotate yet: ${(error as Error).message}. Trying again shortly.`);
+  } finally { rotating = false; }
 }
 
 async function onWithdraw(): Promise<void> {
@@ -814,7 +813,6 @@ async function init(): Promise<void> {
   el('copy-address').addEventListener('click', (event) => void copyText(opaqueAddress, event.currentTarget as HTMLButtonElement));
   el('refresh-balance').addEventListener('click', () => { void refreshNotes(); void renderBudget().catch(() => undefined); });
   el('connect-wallet').addEventListener('click', () => void connectFundingWallet());
-  el('rotate').addEventListener('click', () => void onRotate());
   el('withdraw').addEventListener('click', () => void onWithdraw());
   el('backup-export').addEventListener('click', () => void onBackupExport());
   el('backup-import').addEventListener('click', () => el<HTMLInputElement>('backup-file').click());

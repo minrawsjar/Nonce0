@@ -345,7 +345,9 @@ export interface MeshStatusEvent {
 
 export type WalletRpcOperation =
   | 'STATE' | 'DIGEST' | 'ESTIMATE'
-  | 'SUBMIT_USER_OPERATION' | 'USER_OPERATION_RECEIPT';
+  | 'SUBMIT_USER_OPERATION' | 'USER_OPERATION_RECEIPT'
+  /** A key rotation the account already signed, submitted and paid for by the exit. */
+  | 'ROTATE';
 
 export type MeshQuery =
   | { readonly kind: 'RING_SNAPSHOT'; readonly scope: PoolScope }

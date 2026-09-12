@@ -10,6 +10,8 @@
 //   ESTIMATE                eth_estimateUserOperationGas, pimlico_getUserOperationGasPrice
 //   SUBMIT_USER_OPERATION   eth_sendUserOperation
 //   USER_OPERATION_RECEIPT  eth_getUserOperationReceipt
+//   ROTATE                  PQKeyRegistry.rotate, signed by the account's
+//                           current key and PAID FOR BY THIS EXIT
 //
 // Bundler calls must name the pinned v0.7 EntryPoint and come from a PQ
 // account clone, or deploy one: an initCode is accepted only as the pinned
@@ -19,11 +21,18 @@
 // An answer carries its own error ({ error }) instead of failing the query.
 // A query that fails at the exit leaves nothing at the drop, and the wallet
 // would wait out its deadline to learn nothing.
+//
+// ROTATE is the one operation the exit pays for. An account cannot pay for its
+// own rotation: a UserOperation spends a signature during validation, so a
+// rotation carried inside one would be signed against the wrong useCount and
+// revert. PQKeyRegistry.rotate takes the account as an argument and checks no
+// msg.sender, so anyone may submit it, and the exit's egress key is already
+// the thing that pays for settlement and the attester's own rotations.
 
-import { decodeAbiParameters, decodeFunctionResult, encodeAbiParameters, encodeFunctionData, parseAbi, parseAbiParameters, toFunctionSelector, type PublicClient } from 'viem';
+import { decodeAbiParameters, decodeFunctionResult, encodeAbiParameters, encodeFunctionData, parseAbi, parseAbiParameters, toFunctionSelector, walletActions, type Account, type PublicClient } from 'viem';
 import { formatUserOperationRequest, toPackedUserOperation } from 'viem/account-abstraction';
 
-import { ProtocolFailure, type Address, type Hex, type WalletRpcOperation } from '@opaque/protocol-types';
+import { ProtocolFailure, type Address, type Bytes32, type Hex, type TxHash, type WalletRpcOperation } from '@opaque/protocol-types';
 import { fromHex, toHex } from '@opaque/protocol-types/codecs.js';
 
 import { deployment, entryPoint, requireContract } from '../../deployments/index.ts';
@@ -31,7 +40,7 @@ import { deployment, entryPoint, requireContract } from '../../deployments/index
 /** The one thing the page hands the mesh: an operation and its JSON, as hex. */
 export type WalletRpcSend = (operation: WalletRpcOperation, encodedRequest: Hex) => Promise<Hex>;
 
-export const WALLET_RPC_OPERATIONS: readonly WalletRpcOperation[] = ['STATE', 'ESTIMATE', 'SUBMIT_USER_OPERATION', 'USER_OPERATION_RECEIPT'];
+export const WALLET_RPC_OPERATIONS: readonly WalletRpcOperation[] = ['STATE', 'ESTIMATE', 'SUBMIT_USER_OPERATION', 'USER_OPERATION_RECEIPT', 'ROTATE'];
 
 const BUNDLER_METHODS: Readonly<Record<string, readonly string[]>> = {
   ESTIMATE: ['eth_estimateUserOperationGas', 'pimlico_getUserOperationGasPrice'],
@@ -68,6 +77,10 @@ export function walletRpcAllowlist(): ReadonlyMap<string, ReadonlySet<string>> {
  */
 const USER_OPERATION_REQUEST = parseAbiParameters('string method, address entryPoint, (address sender, uint256 nonce, bytes initCode, bytes callData, bytes32 accountGasLimits, uint256 preVerificationGas, bytes32 gasFees, bytes paymasterAndData, bytes signature) op');
 
+const REGISTRY_ROTATE = parseAbi(['function rotate(address, bytes32, uint64, uint64, bytes)']);
+/** At most one relayed rotation per account per minute, so a loop cannot drain the egress. */
+const ROTATE_COOLDOWN_MS = 60_000;
+
 const MAX_CALLS = 8;
 const CREATE_ACCOUNT = toFunctionSelector('createAccount(bytes32,bytes32,uint64,uint64)');
 const MAX_REQUEST_BYTES = 60_000;
@@ -82,6 +95,8 @@ export function createWalletRpcAnswerer(options: {
   readonly accountImplementation: Address;
   /** PQAccountFactory: the one initCode relayed is its createAccount. Unset, none is. */
   readonly factory?: Address;
+  /** Pays for ROTATE. Unset, ROTATE is refused: nothing else here spends gas. */
+  readonly payer?: Account;
   readonly allowlist?: ReadonlyMap<string, ReadonlySet<string>>;
   readonly fetch?: typeof globalThis.fetch;
 }): WalletRpcSend {
@@ -92,7 +107,17 @@ export function createWalletRpcAnswerer(options: {
   const cloneCode = `0x363d3d373d3d3d363d73${options.accountImplementation.slice(2).toLowerCase()}5af43d82803e903d91602b57fd5bf3`;
   const pqAccounts = new Set<string>();
 
+  const signer = options.payer === undefined ? undefined : publicClient.extend(walletActions);
+  const rotatedAt = new Map<string, number>();
+
   const refuse = (message: string): never => { throw new ProtocolFailure('INVALID_INPUT', message); };
+  /** Only a deployed PQAccount clone. Cached: a clone's code never changes. */
+  async function assertPqAccount(address: string): Promise<void> {
+    if (pqAccounts.has(address)) return;
+    const code = await publicClient.getCode({ address: address as Address });
+    if (code?.toLowerCase() !== cloneCode) refuse('only PQ accounts are relayed');
+    pqAccounts.add(address);
+  }
   /** A first operation's factory call: only the pinned factory, only createAccount. */
   const deploys = (factory: unknown, factoryData: unknown): boolean => {
     if (factory === undefined || factory === null) return false;
@@ -136,11 +161,7 @@ export function createWalletRpcAnswerer(options: {
       if (!/^0x[0-9a-f]{40}$/.test(sender)) refuse('a UserOperation needs a sender');
       // A deploying operation's sender has no code yet; the EntryPoint refuses
       // it unless the factory created exactly that address.
-      if (!deploys(op.factory, op.factoryData) && !pqAccounts.has(sender)) {
-        const code = await publicClient.getCode({ address: sender as Address });
-        if (code?.toLowerCase() !== cloneCode) refuse('only PQ accounts are relayed');
-        pqAccounts.add(sender);
-      }
+      if (!deploys(op.factory, op.factoryData)) await assertPqAccount(sender);
     } else if (method === 'eth_getUserOperationReceipt') {
       if (!/^0x[0-9a-fA-F]{64}$/.test(String(p[0]))) refuse('a receipt needs a UserOperation hash');
     }
@@ -156,6 +177,50 @@ export function createWalletRpcAnswerer(options: {
       return { success: r.success, actualGasUsed: r.actualGasUsed, receipt: { transactionHash: r.receipt.transactionHash, blockNumber: r.receipt.blockNumber } };
     }
     return body.result ?? null;
+  }
+
+  /**
+   * A rotation the account's own key already signed, submitted with the exit's
+   * gas. What makes that safe is on chain, not here: the registry verifies the
+   * FORS signature against the key it holds for this account, at that key's
+   * exact useCount, so this exit can neither forge a rotation nor replay one,
+   * and a wrong one costs nothing because it is simulated first.
+   *
+   * What is left to guard is the gas bill, and both guards below are about
+   * only that.
+   */
+  async function rotate(request: Record<string, unknown>): Promise<unknown> {
+    // Thrown, not refused: `refuse` returns never but does not narrow here.
+    if (signer === undefined) throw new ProtocolFailure('INVALID_INPUT', 'this exit does not relay rotations');
+    const account = String(request['account'] ?? '').toLowerCase();
+    const next = String(request['next'] ?? '').toLowerCase();
+    const signature = String(request['signature'] ?? '');
+    if (!/^0x[0-9a-f]{40}$/.test(account)) refuse('a rotation names its account');
+    if (!/^0x[0-9a-f]{64}$/.test(next)) refuse('a rotation names the next key commitment');
+    if (!/^0x[0-9a-f]+$/i.test(signature)) refuse('a rotation carries a signature');
+    const maxUses = BigInt(String(request['maxUses']));
+    const deadline = BigInt(String(request['deadline']));
+    await assertPqAccount(account);
+    if (Date.now() - (rotatedAt.get(account) ?? 0) < ROTATE_COOLDOWN_MS) refuse('a rotation for this account was relayed a moment ago');
+    // rotate() resets useCount to 0, so a key that has signed nothing is either
+    // brand new or just rotated. Refusing those means every relayed rotation
+    // costs whoever asks one real operation of their own first, which is what
+    // stops this being free gas in a loop.
+    const registry = requireContract('pqKeyRegistry') as Address;
+    const read = await publicClient.call({ to: registry, data: encodeFunctionData({ abi: STATE_ABI, functionName: 'stateOf', args: [account as Address] }) as Hex });
+    const state = decodeFunctionResult({ abi: STATE_ABI, functionName: 'stateOf', data: read.data ?? '0x' }) as unknown as { pkCommitment: Hex; useCount: bigint };
+    if (BigInt(state.pkCommitment) === 0n) refuse('that account has no registered key');
+    if (state.useCount === 0n) refuse('that key has signed nothing, so it does not need rotating');
+    // Simulated first: a signature for the wrong useCount reverts here, for free.
+    const { request: tx } = await publicClient.simulateContract({
+      address: registry, abi: REGISTRY_ROTATE, functionName: 'rotate',
+      args: [account as Address, next as Bytes32, maxUses, deadline, signature as Hex], account: options.payer,
+    } as never);
+    const hash = await signer.writeContract(tx as never) as TxHash;
+    rotatedAt.set(account, Date.now());
+    const receipt = await publicClient.waitForTransactionReceipt({ hash });
+    if (receipt.status !== 'success') throw new ProtocolFailure('SETTLEMENT_REVERTED', `rotate reverted in ${hash}`);
+    return { txHash: hash };
   }
 
   /** An ABI UserOperation request, as the bundler's JSON-RPC params. */
@@ -185,7 +250,9 @@ export function createWalletRpcAnswerer(options: {
       if (bytes.length > MAX_REQUEST_BYTES) refuse('request too large');
       // JSON starts with '{'; anything else is an ABI UserOperation request.
       const request: Record<string, unknown> = bytes[0] === 0x7b ? JSON.parse(new TextDecoder().decode(bytes)) as Record<string, unknown> : unpack(encodedRequest);
-      const result = operation === 'STATE' ? await state(request) : await bundler(operation, request);
+      const result = operation === 'STATE' ? await state(request)
+        : operation === 'ROTATE' ? await rotate(request)
+          : await bundler(operation, request);
       return json({ result });
     } catch (error) {
       // Public messages only: nothing here carries a secret.
@@ -219,6 +286,20 @@ export async function userOperationCall(
   const packed = toPackedUserOperation(op);
   const operation: WalletRpcOperation = method === 'eth_sendUserOperation' ? 'SUBMIT_USER_OPERATION' : 'ESTIMATE';
   return answerOf(await send(operation, encodeAbiParameters(USER_OPERATION_REQUEST, [method, entryPoint, packed as never]) as Hex));
+}
+
+/**
+ * A signed rotation, submitted and paid for at the exit. The account cannot pay
+ * for this itself: a UserOperation spends a signature while it validates, so a
+ * rotation inside one would be signed for the wrong useCount.
+ */
+export async function relayRotation(
+  send: WalletRpcSend, account: Address, next: Bytes32, maxUses: bigint, deadline: bigint, signature: Hex,
+): Promise<TxHash> {
+  const { txHash } = await call(send, 'ROTATE', {
+    account, next, maxUses: maxUses.toString(10), deadline: deadline.toString(10), signature,
+  }) as { txHash: TxHash };
+  return txHash;
 }
 
 export interface StateRead { readonly blockNumber: bigint; readonly timestamp: bigint; readonly results: readonly Hex[] }

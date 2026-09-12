@@ -132,7 +132,7 @@ Opaque replaces each of those with a mechanism that does not rest on elliptic cu
 | **Privacy** | Shows the eight-note cover set and the relay route. Every member is drawn the same way. | None |
 | **Withdraw** | Sends all USDC in the account to an address you choose. | One UserOperation |
 | **Backup and Restore** | Exports the account key and notes, encrypted under a passphrase. | None |
-| **Rotate key** | Moves the account to a fresh FORS+C key before the current one runs out of signatures. | One registry update |
+| **Key rotation** | Automatic. Near the end of the key's budget the wallet signs a rotation to its pre-committed next key, and the mesh exit submits and pays for it. No prompt, no button. | One registry update |
 
 ## Project Structure
 

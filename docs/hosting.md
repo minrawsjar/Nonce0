@@ -42,7 +42,8 @@ the config, and `POST /v1/release` (the egress) returns 404.
 
 What the secrets do:
 
-- `EGRESS_PRIVATE_KEY` pays for settlements and for the attester's rotations.
+- `EGRESS_PRIVATE_KEY` pays for settlements, for the attester's rotations and
+  for wallets' own key rotations, relayed at the exit.
 - `ATTESTER_FORS_MASTER` derives every generation of the attester's FORS key
   (`backend/cre/attester-keys.ts`); the stack rotates it when 4 signatures are
   left.

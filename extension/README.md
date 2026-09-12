@@ -65,9 +65,9 @@ Brave and Edge install from the Chrome Web Store too. Everything the listing ask
 
 Bump `version` in `manifest.json` for every upload, then `npm run ext`. Wallet extensions get a manual review, usually several days. A store install has a different extension id from an unpacked one, so it starts with empty storage: use **Backup** and **Restore**.
 
-## Not Done
+## Key Rotation
 
-**Key rotation** is still paid for by a funding wallet, which the extension does not have. Each deposit or withdrawal uses one of the account key's 32 signatures, and the panel shows how many are left. Until rotation goes through the account itself, rotate by restoring a backup on opaque.credit, rotating there with MetaMask, and restoring back.
+Each deposit or withdrawal uses one of the account key's 32 signatures, and the panel shows how many are left. Near the end of that budget the key rotates itself: the wallet signs the rotation with the current key and the mesh exit submits and pays for it, so there is no prompt and nothing to press. Two of the 32 signatures are reserved for exactly this. The extension needs no funding wallet for it, which is the point.
 
 ## Icons
 

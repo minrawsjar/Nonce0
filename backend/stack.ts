@@ -233,6 +233,9 @@ const exit = createExecutorServer({
   walletRpc: createWalletRpcAnswerer({
     publicClient: publicClient as never, bundlerUrl: ARC_AUTHORITY.bundlerUrl,
     entryPoint: ARC_AUTHORITY.entryPoint, accountImplementation: ARC_AUTHORITY.accountImplementation, factory: ARC_AUTHORITY.factory,
+    // Pays for ROTATE, as it already pays for settlement and the attester's own
+    // rotations. An account cannot pay for its own: see chain/wallet-rpc.ts.
+    payer: privateKeyToAccount(env('EGRESS_PRIVATE_KEY') as `0x${string}`),
   }),
 });
 await exit.listen(PORTS.exit, LOOPBACK);

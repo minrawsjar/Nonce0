@@ -120,8 +120,8 @@ query. The exit answers it against a strict allowlist
 wallet asked, and nobody learns which nullifier is yours before it is spent.
 The browser e2e fails if the page sends any such request itself.
 
-The one exception is the **funding wallet**: deploy, rotate, and deposits made
-before activation. Those transactions, and the reads they need, go through the
+The one exception is the **funding wallet**: deposits made before activation,
+and a disable. Those transactions, and the reads they need, go through the
 wallet's own provider (MetaMask's RPC). They name that wallet on chain
 whatever route they take. A content blocker that blocks `rpc.testnet.arc.io`
 in the page no longer breaks anything.
@@ -130,9 +130,13 @@ in the page no longer breaks anything.
 
 Under *Account details* and *Signing key*:
 
-- **Rotate key.** Promotes the pre-committed next key, which starts with a
-  fresh budget of 32, and commits another. The funding wallet pays for the
-  transaction. Two signatures are held back so a key can always rotate.
+- **Key rotation.** Automatic, with nothing to press. Once a quarter of the
+  budget is left the wallet signs a rotation with the current key and the mesh
+  exit submits it and pays for it, promoting the pre-committed next key, which
+  starts with a fresh budget of 32, and committing another. Two signatures are
+  held back so a key can always afford to rotate. The account cannot pay for
+  this itself: a UserOperation spends a signature while it validates, so a
+  rotation carried inside one would be signed for the wrong use count.
 - **Withdraw.** Sends everything the account holds, less the gas for the
   withdrawal itself, to your funding wallet or any address you type. A few
   cents of prepaid gas stay with the EntryPoint and pay for the account's
