@@ -135,6 +135,8 @@ export function issueRelease(input: {
 export interface ReleaseSeenSet {
   /** True if this intent already had a release delivered. Records it either way. */
   seen(intentId: IntentId): boolean;
+  /** Undoes seen() for a delivery that failed before anything was broadcast. */
+  forget(intentId: IntentId): void;
 }
 
 export class MemoryReleaseSeenSet implements ReleaseSeenSet {
@@ -143,6 +145,9 @@ export class MemoryReleaseSeenSet implements ReleaseSeenSet {
     if (this.#delivered.has(intentId)) return true;
     this.#delivered.add(intentId);
     return false;
+  }
+  forget(intentId: IntentId): void {
+    this.#delivered.delete(intentId);
   }
 }
 

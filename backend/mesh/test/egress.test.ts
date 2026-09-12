@@ -145,6 +145,34 @@ test('a submitter error never leaks its message to the caller', async () => {
   assert.equal(answer.json.retryable, true);
 });
 
+test('a submit that fails can be retried, and then settles once', async () => {
+  // Two notes of one payment were released together and collided on the
+  // egress nonce. The loser was marked delivered before it failed, so every
+  // retry after it was refused as "already delivered" and the note never moved.
+  let failures = 1;
+  const submitted: PrivateSpend[] = [];
+  const egress = createEgress({
+    secret,
+    now: () => NOW,
+    submitter: {
+      async submit(s: PrivateSpend): Promise<TxHash> {
+        if (failures-- > 0) throw new Error('nonce too low');
+        submitted.push(s);
+        return `0x${'ab'.repeat(32)}` as TxHash;
+      },
+    },
+  });
+  const release = wire(releaseFor('intent-retry'));
+
+  assert.equal((await post(egress, release)).status, 502);
+  const retried = await post(egress, release);
+  assert.equal(retried.status, 202, 'the retry is a fresh submit, not "already delivered"');
+  assert.equal(submitted.length, 1);
+  // And once it has landed, the usual rule holds again: no second broadcast.
+  assert.equal((await post(egress, release)).json.deduplicated, true);
+  assert.equal(submitted.length, 1);
+});
+
 test('malformed bodies are refused without a stack', async () => {
   const { egress } = harness();
   assert.equal((await post(egress, 'not json')).status, 400);

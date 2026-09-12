@@ -67,14 +67,28 @@ export async function deliverApprovedRelease(input: {
     return { txHash: input.priorTxHash, deduplicated: true };
   }
 
-  const authorizations = input.release.authorizations;
-  if (authorizations !== undefined) {
-    if (authorizations.length === 0 || input.submitter.submitAuthorizations === undefined) {
-      throw new ProtocolFailure('SETTLEMENT_REVERTED', 'CRE authorization settlement is unavailable', true);
+  // A submit that throws leaves no transaction hash to bind a retry to, so
+  // without this the intent is wedged for the life of the process: every retry
+  // is "already delivered" with nothing to reconcile against. Forgetting it is
+  // safe because resending cannot double-pay. The pool spends a nullifier once,
+  // and the submitter simulates first, so a spend that already landed reverts in
+  // simulation rather than on chain.
+  // ponytail: assumes the throw came before broadcast. A throw after it (a
+  // receipt wait timing out) resends into a revert and never records the spend
+  // that did land; record the hash at broadcast if receipt waits start timing out.
+  try {
+    const authorizations = input.release.authorizations;
+    if (authorizations !== undefined) {
+      if (authorizations.length === 0 || input.submitter.submitAuthorizations === undefined) {
+        throw new ProtocolFailure('SETTLEMENT_REVERTED', 'CRE authorization settlement is unavailable', true);
+      }
+      return { txHash: await input.submitter.submitAuthorizations(authorizations), deduplicated: false };
     }
-    return { txHash: await input.submitter.submitAuthorizations(authorizations), deduplicated: false };
+    return { txHash: await input.submitter.submit(spend), deduplicated: false };
+  } catch (error) {
+    input.seen.forget(input.release.intentId);
+    throw error;
   }
-  return { txHash: await input.submitter.submit(spend), deduplicated: false };
 }
 
 /** Egress-side audit line. Deliberately free of anything that identifies a payer. */

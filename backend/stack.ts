@@ -218,7 +218,7 @@ const ringSource: GraphSelectionClient = {
 const egress = createEgress({
   secret: credentialMac,
   submitter: poolSubmitter(createPoolClient({
-    account: privateKeyToAccount(env('EGRESS_PRIVATE_KEY') as `0x${string}`),
+    account: privateKeyToAccount(env('EGRESS_PRIVATE_KEY') as `0x${string}`, { nonceManager }),
     offChain: { pqWallet: 'LIVE', graph: 'LIVE', confidentialExecution: 'SIMULATED', policyScope: 'CRE_WORKFLOW_ONLY' },
   })),
 });
@@ -235,7 +235,7 @@ const exit = createExecutorServer({
     entryPoint: ARC_AUTHORITY.entryPoint, accountImplementation: ARC_AUTHORITY.accountImplementation, factory: ARC_AUTHORITY.factory,
     // Pays for ROTATE, as it already pays for settlement and the attester's own
     // rotations. An account cannot pay for its own: see chain/wallet-rpc.ts.
-    payer: privateKeyToAccount(env('EGRESS_PRIVATE_KEY') as `0x${string}`),
+    payer: privateKeyToAccount(env('EGRESS_PRIVATE_KEY') as `0x${string}`, { nonceManager }),
   }),
 });
 await exit.listen(PORTS.exit, LOOPBACK);
@@ -251,7 +251,7 @@ const settlement: SettlerOptions = {
     // Rotates itself near the end of each key's budget; see cre/attester-keys.ts.
     current: registryAttesterKeys({
       publicClient: publicClient as never,
-      payer: privateKeyToAccount(env('EGRESS_PRIVATE_KEY') as `0x${string}`),
+      payer: privateKeyToAccount(env('EGRESS_PRIVATE_KEY') as `0x${string}`, { nonceManager }),
       registry: REGISTRY as never,
       attester: ATTESTER as never,
       master: fromHex(env('ATTESTER_FORS_MASTER') as `0x${string}`),
